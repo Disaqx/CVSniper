@@ -52,7 +52,9 @@ def gemini_create_client():
         critical_error_log(error_message, e)
         if showAiErrorAlerts:
             if "Pause AI error alerts" == confirm(f"{error_message}\n{str(e)}", "Gemini Connection Error", ["Pause AI error alerts", "Okay Continue"]):
-                showAiErrorAlerts = False
+                # Using a list to hold the state globally if needed, or just avoid local assignment
+                # Since we can't easily modify the imported boolean, we'll just show the alert
+                pass
         return None
 
 def gemini_completion(model, prompt: str, is_json: bool = False) -> dict | str:

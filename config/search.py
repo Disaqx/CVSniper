@@ -19,16 +19,16 @@ version:    26.01.20.5.08
 
 # These Sentences are Searched in LinkedIn
 # Enter your search terms inside '[ ]' with quotes ' "searching title" ' for each search followed by comma ', ' Eg: ["Software Engineer", "Software Developer", "Selenium Developer"]
-search_terms = ["Software Engineer", "Software Developer", "Python Developer", "Selenium Developer", "React Developer", "Java Developer", "Front End Developer", "Full Stack Developer", "Web Developer", "Nodejs Developer"]
+search_terms = ["IT Support Specialist", "Help Desk Technician", "Technical Support Engineer", "Active Directory Specialist", "Microsoft 365 Support", "Customer Service Representative", "Customer Success", "Technical Support Representative"]
 
 # Search location, this will be filled in "City, state, or zip code" search box. If left empty as "", tool will not fill it.
-search_location = "United States"               # Some valid examples: "", "United States", "India", "Chicago, Illinois, United States", "90001, Los Angeles, California, United States", "Bengaluru, Karnataka, India", etc.
+search_location = "Bogotá, Colombia"               # Some valid examples: "", "United States", "India", "Chicago, Illinois, United States", "90001, Los Angeles, California, United States", "Bengaluru, Karnataka, India", etc.
 
 # After how many number of applications in current search should the bot switch to next search? 
-switch_number = 30                 # Only numbers greater than 0... Don't put in quotes
+switch_number = 10                 # Only numbers greater than 0... Don't put in quotes
 
 # Do you want to randomize the search order for search_terms?
-randomize_search_order = False     # True of False, Note: True or False are case-sensitive
+randomize_search_order = True     # True of False, Note: True or False are case-sensitive
 
 
 # >>>>>>>>>>> Job Search Filters <<<<<<<<<<<
@@ -48,7 +48,7 @@ This is below format: QUESTION = VALID_ANSWER
 
 '''
 
-sort_by = ""                       # "Most recent", "Most relevant" or ("" to not select) 
+sort_by = "Most recent"                       # "Most recent", "Most relevant" or ("" to not select)
 date_posted = "Past week"         # "Any time", "Past month", "Past week", "Past 24 hours" or ("" to not select)
 salary = ""                        # "$40,000+", "$60,000+", "$80,000+", "$100,000+", "$120,000+", "$140,000+", "$160,000+", "$180,000+", "$200,000+"
 
@@ -75,7 +75,7 @@ fair_chance_employer = False       # True or False, Note: True or False are case
 ## >>>>>>>>>>> RELATED SETTING <<<<<<<<<<<
 
 # Pause after applying filters to let you modify the search results and filters?
-pause_after_filters = True         # True or False, Note: True or False are case-sensitive
+pause_after_filters = False         # True or False, Note: True or False are case-sensitive
 
 ##
 
@@ -96,31 +96,8 @@ bad_words = ["US Citizen","USA Citizen","No C2C", "No Corp2Corp", ".NET", "Embed
 # Do you have an active Security Clearance? (True for Yes and False for No)
 security_clearance = False         # True or False, Note: True or False are case-sensitive
 
-# Do you have a Masters degree? (True for Yes and False for No). If True, the tool will apply to jobs containing the word 'master' in their job description and if it's experience required <= current_experience + 2 and current_experience is not set as -1. 
-did_masters = True                 # True or False, Note: True or False are case-sensitive
+# Do you have a Masters degree? (True for Yes and False for No). If True, the tool will apply to jobs containing the word 'master' in their job description and if it's experience required <= current_experience + 2 and current_experience is not set as -1.
+did_masters = False                 # True or False, Note: True or False are case-sensitive
 
 # Avoid applying to jobs if their required experience is above your current_experience. (Set value as -1 if you want to apply to all ignoring their required experience...)
-current_experience = 5             # Integers > -2 (Ex: -1, 0, 1, 2, 3, 4...)
-##
-
-
-
-
-
-
-############################################################################################################
-'''
-THANK YOU for using my tool 😊! Wishing you the best in your job hunt 🙌🏻!
-
-Sharing is caring! If you found this tool helpful, please share it with your peers 🥺. Your support keeps this project alive.
-
-Support my work on <PATREON_LINK>. Together, we can help more job seekers.
-
-As an independent developer, I pour my heart and soul into creating tools like this, driven by the genuine desire to make a positive impact.
-
-Your support, whether through donations big or small or simply spreading the word, means the world to me and helps keep this project alive and thriving.
-
-Gratefully yours 🙏🏻,
-Sai Vignesh Golla
-'''
-############################################################################################################
+current_experience = 3             # Integers > -2 (Ex: -1, 0, 1, 2, 3, 4...)

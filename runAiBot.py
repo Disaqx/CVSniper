@@ -1,26 +1,10 @@
-'''
-Author:     Sai Vignesh Golla
-LinkedIn:   https://www.linkedin.com/in/saivigneshgolla/
-
-Copyright (C) 2024 Sai Vignesh Golla
-
-License:    GNU Affero General Public License
-            https://www.gnu.org/licenses/agpl-3.0.en.html
-            
-GitHub:     https://github.com/GodsScion/Auto_job_applier_linkedIn
-
-Support me: https://github.com/sponsors/GodsScion
-
-version:    26.01.20.5.08
-'''
-
-
 # Imports
 import os
 import csv
 import re
 import time
 import pyautogui
+from urllib.parse import quote
 
 # Set CSV field size limit to prevent field size errors
 csv.field_size_limit(1000000)  # Set to 1MB instead of default 131KB
@@ -45,16 +29,21 @@ from modules.open_chrome import *
 from modules.helpers import *
 from modules.clickers_and_finders import *
 from modules.validator import validate_config
+from modules.bot_ui import ui_start, ui_update_status, ui_alert, ui_confirm, ui_pause_check
 
 if use_AI:
-    from modules.ai.openaiConnections import ai_create_openai_client, ai_extract_skills, ai_answer_question, ai_close_openai_client
-    from modules.ai.deepseekConnections import deepseek_create_client, deepseek_extract_skills, deepseek_answer_question
-    from modules.ai.geminiConnections import gemini_create_client, gemini_extract_skills, gemini_answer_question
+    from modules.ai.openaiConnections import ai_create_openai_client, ai_extract_skills, ai_answer_question, ai_evaluate_job, ai_close_openai_client
+    from modules.ai.deepseekConnections import deepseek_create_client, deepseek_extract_skills, deepseek_answer_question, deepseek_evaluate_job
+    from modules.ai.geminiConnections import gemini_create_client, gemini_extract_skills, gemini_answer_question, gemini_evaluate_job
 
 from typing import Literal
+from modules.ai.qa_database import save_to_qa_database
 
 
 pyautogui.FAILSAFE = False
+# Start the Controller UI (driver is ready after open_chrome import)
+ui_start(driver)
+ui_update_status("Initializing", "Starting CVSniper...")
 # if use_resume_generator:    from resume_generator import is_logged_in_GPT, login_GPT, open_resume_chat, create_custom_resume
 
 
@@ -102,6 +91,32 @@ about_company_for_ai = None # TODO extract about company for AI
 #>
 
 
+def is_job_relevant(title: str, work_style: str) -> bool:
+    '''
+    Returns True if the job title matches the user's configured job focus.
+    - Primary keywords: always allowed.
+    - Secondary keywords: only allowed if work_style is Remote or Hybrid.
+    - If enable_job_focus_filter is False, always returns True.
+    '''
+    try:
+        if not enable_job_focus_filter:
+            return True
+        title_low = title.lower()
+        # Check primary focus (always relevant)
+        for kw in primary_focus_keywords:
+            if kw.lower() in title_low:
+                return True
+        # Check secondary focus (only if Remote or Hybrid)
+        style_low = work_style.lower() if work_style else ""
+        if any(s in style_low for s in ["remote", "hybrid"]):
+            for kw in secondary_focus_keywords:
+                if kw.lower() in title_low:
+                    return True
+        return False
+    except Exception:
+        return True  # Fail open if config missing
+
+
 #< Login Functions
 def is_logged_in_LN() -> bool:
     '''
@@ -126,7 +141,7 @@ def login_LN() -> None:
     # Find the username and password fields and fill them with user credentials
     driver.get("https://www.linkedin.com/login")
     if username == "username@example.com" and password == "example_password":
-        pyautogui.alert("User did not configure username and password in secrets.py, hence can't login automatically! Please login manually!", "Login Manually","Okay")
+        ui_alert("Login Manually", "User did not configure username and password in secrets.py, hence can't login automatically! Please login manually!")
         print_lg("User did not configure username and password in secrets.py, hence can't login automatically! Please login manually!")
         manual_login_retry(is_logged_in_LN, 2)
         return
@@ -181,18 +196,23 @@ def get_applied_job_ids() -> set[str]:
 
 
 
-def set_search_location() -> None:
+def set_search_location(location_str: str) -> None:
     '''
-    Function to set search location
+    Function to set search location.
+    Location is already embedded in the URL, so this function only verifies
+    and adjusts the location field if needed.
     '''
-    if search_location.strip():
+    if location_str and location_str.strip():
+        print_lg(f'Search location set via URL: "{location_str.strip()}"')
+        # Give page time to load with location from URL
+        buffer(2)
         try:
-            print_lg(f'Setting search location as: "{search_location.strip()}"')
-            # Try multiple common XPaths for the location input
+            # Try to find the location input to verify it was set correctly
             xpaths = [
                 ".//input[@aria-label='City, state, or zip code' and not(@disabled)]",
                 ".//input[contains(@id, 'jobs-search-box-location')]",
-                ".//input[@placeholder='City, state, or zip code']"
+                ".//input[@placeholder='City, state, or zip code']",
+                ".//input[contains(@id, 'location')]"
             ]
             search_location_ele = False
             for xpath in xpaths:
@@ -200,28 +220,43 @@ def set_search_location() -> None:
                 if search_location_ele: break
             
             if search_location_ele:
-                text_input(actions, search_location_ele, search_location, "Search Location")
+                current_value = search_location_ele.get_attribute('value') or ''
+                if location_str.strip().lower() not in current_value.lower():
+                    # Need to update the location field
+                    search_location_ele.clear()
+                    sleep(0.5)
+                    search_location_ele.send_keys(Keys.CONTROL + "a")
+                    search_location_ele.send_keys(Keys.DELETE)
+                    sleep(0.5)
+                    search_location_ele.send_keys(location_str.strip())
+                    sleep(2)  # Wait for autocomplete dropdown
+                    # Select the first autocomplete suggestion
+                    try:
+                        autocomplete_option = WebDriverWait(driver, 3).until(
+                            EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'search-typeahead-v2')]//li[1] | //div[contains(@class, 'basic-typeahead')]//li[1] | //div[contains(@id, 'typeahead')]//li[1]"))
+                        )
+                        autocomplete_option.click()
+                        print_lg("Selected location from autocomplete dropdown.")
+                    except:
+                        # If no autocomplete dropdown, press Down+Enter to select first suggestion
+                        search_location_ele.send_keys(Keys.ARROW_DOWN)
+                        sleep(0.5)
+                        search_location_ele.send_keys(Keys.ENTER)
+                        print_lg("Selected location with keyboard navigation.")
+                    buffer(3)  # Wait for page to reload with new location
+                else:
+                    print_lg(f'Location already set to "{current_value}", skipping update.')
             else:
-                raise ElementNotInteractableException("Could not find search location input field.")
+                print_lg("Could not find location input field, but location was set via URL.")
         except Exception as e:
-            try:
-                # Fallback: try using Tab keys to reach the location field
-                pyautogui.press('tab')
-                pyautogui.press('tab')
-                pyautogui.hotkey('ctrl', 'a')
-                pyautogui.press('backspace')
-                pyautogui.write(search_location.strip())
-                pyautogui.press('enter')
-                print_lg("Used fallback keyboard navigation to set location.")
-            except Exception as e2:
-                print_lg("Failed to update search location, continuing with default location!", e2)
+            print_lg(f"Location field adjustment skipped (location set via URL): {e}")
 
 
-def apply_filters() -> None:
+def apply_filters(location_str: str) -> None:
     '''
     Function to apply job search filters
     '''
-    set_search_location()
+    set_search_location(location_str)
 
     try:
         recommended_wait = 1 if click_gap < 1 else 0
@@ -266,12 +301,12 @@ def apply_filters() -> None:
         show_results_button.click()
 
         global pause_after_filters
-        if pause_after_filters and "Turn off Pause after search" == pyautogui.confirm("These are your configured search results and filter. It is safe to change them while this dialog is open, any changes later could result in errors and skipping this search run.", "Please check your results", ["Turn off Pause after search", "Look's good, Continue"]):
+        if pause_after_filters and "Turn off Pause after search" == ui_confirm("Please check your results", "These are your configured search results and filter. It is safe to change them while this dialog is open, any changes later could result in errors and skipping this search run.", ["Turn off Pause after search", "Look's good, Continue"]):
             pause_after_filters = False
 
     except Exception as e:
         print_lg("Setting the preferences failed!")
-        pyautogui.confirm(f"Faced error while applying filters. Please make sure correct filters are selected, click on show results and click on any button of this dialog, I know it sucks. Can't turn off Pause after search when error occurs! ERROR: {e}", "Error applying filters", ["Doesn't look good, but Continue XD", "Look's good, Continue"])
+        ui_confirm("Error applying filters", f"Faced error while applying filters. Please make sure correct filters are selected, click on show results and click on any button of this dialog, I know it sucks. Can't turn off Pause after search when error occurs! ERROR: {e}", ["Doesn't look good, but Continue XD", "Look's good, Continue"])
         # print_lg(e)
 
 
@@ -456,380 +491,425 @@ def upload_resume(modal: WebElement, resume: str) -> tuple[bool, str]:
         return True, os.path.basename(default_resume_path)
     except: return False, "Previous resume"
 
+
+def resolve_value_for_category(category: str, var_name: str = None, direct_value = None):
+    if direct_value is not None:
+        return direct_value
+        
+    var_map = {
+        "visa": "require_visa",
+        "relocation": "Yes",
+        "shifts": "Yes",
+        "current_salary": "current_ctc",
+        "desired_salary": "desired_salary",
+        "experience": "years_of_experience",
+        "phone": "phone_number",
+        "address": "street",
+        "city": "current_city",
+        "state": "state",
+        "zip": "zipcode",
+        "country": "country",
+        "school": "university",
+        "gender": "gender",
+        "disability": "disability_status",
+        "veteran": "veteran_status",
+        "citizenship": "us_citizenship",
+        "notice": "notice_period",
+        "summary": "linkedin_summary",
+        "cover_letter": "cover_letter"
+    }
+    
+    target_var = var_name or var_map.get(category)
+    if not target_var:
+        return None
+        
+    if target_var in ["Yes", "No"]:
+        return target_var
+        
+    val = globals().get(target_var)
+    if val is not None:
+        return val
+        
+    return None
+
+
+def find_matching_option(options_text_list: list[str], target_answer) -> int | None:
+    if target_answer is None or str(target_answer).strip() == "":
+        return None
+        
+    target_str = str(target_answer).lower().strip()
+    
+    yes_syns = {"yes", "si", "sí", "agree", "i do", "i have", "aceptar", "tengo", "disponible", "true", "cierto"}
+    no_syns = {"no", "disagree", "i don't", "i do not", "no tengo", "rechazar", "false", "falso"}
+    decline_syns = {"decline", "prefer not to say", "not wish", "don't wish", "prefer not", "not want", "omitir", "no deseo", "no responder", "no declarar", "no decir"}
+    
+    # 1. Exact or normalized check
+    for idx, opt in enumerate(options_text_list):
+        opt_str = opt.lower().strip()
+        if target_str == opt_str:
+            return idx
+            
+    # 2. Match standard groups
+    if target_str in yes_syns:
+        for idx, opt in enumerate(options_text_list):
+            opt_str = opt.lower().strip()
+            if opt_str in yes_syns or any(ys in opt_str for ys in ["yes", "sí", "si", "tengo", "dispon", "agree"]):
+                return idx
+    elif target_str in no_syns:
+        for idx, opt in enumerate(options_text_list):
+            opt_str = opt.lower().strip()
+            if opt_str in no_syns or any(ns in opt_str for ns in ["no", "disagree"]):
+                return idx
+    elif target_str in decline_syns:
+        for idx, opt in enumerate(options_text_list):
+            opt_str = opt.lower().strip()
+            if opt_str in decline_syns or any(ds in opt_str for ds in ["decline", "not to say", "no deseo", "no responder", "omitir"]):
+                return idx
+                
+    # 3. Gender specific matches
+    if target_str in ["male", "hombre", "masculino"]:
+        for idx, opt in enumerate(options_text_list):
+            opt_str = opt.lower().strip()
+            if opt_str in ["male", "hombre", "masculino", "varon", "varón"]:
+                return idx
+    elif target_str in ["female", "mujer", "femenino"]:
+        for idx, opt in enumerate(options_text_list):
+            opt_str = opt.lower().strip()
+            if opt_str in ["female", "mujer", "femenino"]:
+                return idx
+                
+    # 4. Substring containment check
+    for idx, opt in enumerate(options_text_list):
+        opt_str = opt.lower().strip()
+        if target_str in opt_str or opt_str in target_str:
+            return idx
+            
+    # 5. Alphanumeric only check
+    target_alnum = "".join(c for c in target_str if c.isalnum())
+    for idx, opt in enumerate(options_text_list):
+        opt_alnum = "".join(c for c in opt.lower() if c.isalnum())
+        if target_alnum and opt_alnum and (target_alnum in opt_alnum or opt_alnum in target_alnum):
+            return idx
+            
+    return None
+
+
+def answer_language_question(label_org: str, question_type: str, options_text=None) -> str | None:
+    # Normalize label string to remove accents
+    import unicodedata
+    norm = "".join(c for c in unicodedata.normalize('NFD', label_org) if unicodedata.category(c) != 'Mn').lower().strip()
+    
+    # 1. Check if it matches our specific supported languages
+    is_spanish = any(w in norm for w in ["spanish", "espanol", "castellano"])
+    is_english = any(w in norm for w in ["english", "ingles"])
+    is_german = any(w in norm for w in ["german", "aleman", "deutsch"])
+    
+    # 2. Check for other explicit languages
+    other_languages = [
+        "portuguese", "portugues", "portuguesa", "brasil", "brazil", "portugal",
+        "russian", "ruso", "rusa", "russkiy", "russkii", "russkom", "русский", "русском",
+        "french", "frances", "italy", "italian", "italiano", "chinese", "chino", "china",
+        "japanese", "japones", "japan", "korean", "coreano", "korea", "dutch", "neerlandes",
+        "holandes", "arabic", "arabe", "hindi", "bengali", "punjabi", "swedish", "sueco",
+        "polish", "polaco", "turkish", "turco", "vietnamese", "vietnamita"
+    ]
+    is_other_lang = any(w in norm for w in other_languages)
+    
+    # 3. Check if it is a general language question
+    is_lang_q = any(w in norm for w in ["language", "idioma", "habla", "speak", "proficiency", "competence", "competencia", "conversational", "fluent", "level of", "nivel de", "read", "leer", "write", "escribir"])
+    
+    # If it is not a language question and does not contain any language keywords, return None
+    if not (is_spanish or is_english or is_german or is_other_lang or is_lang_q):
+        return None
+        
+    # Resolve the target language profile
+    if is_spanish:
+        if question_type in ["select", "radio", "combobox"] and options_text:
+            for opt in options_text:
+                opt_lower = opt.lower()
+                if any(w in opt_lower for w in ["native", "nativo", "fluent", "bilingual", "bilingue", "c2"]):
+                    return opt
+            yes_idx = find_matching_option(options_text, "Yes")
+            if yes_idx is not None:
+                return options_text[yes_idx]
+        return "Native"
+        
+    elif is_english:
+        if question_type in ["select", "radio", "combobox"] and options_text:
+            for opt in options_text:
+                opt_lower = opt.lower()
+                # C1 level matches advanced, fluent, proficient, c1, etc.
+                if any(w in opt_lower for w in ["advanced", "avanzado", "fluent", "proficient", "c1", "c2", "professional", "professional working"]):
+                    return opt
+            yes_idx = find_matching_option(options_text, "Yes")
+            if yes_idx is not None:
+                return options_text[yes_idx]
+        return "C1/Advanced"
+        
+    elif is_german:
+        if question_type in ["select", "radio", "combobox"] and options_text:
+            for opt in options_text:
+                opt_lower = opt.lower()
+                # A2 level matches basic, elementary, a2, beginner
+                if any(w in opt_lower for w in ["elementary", "basic", "principiante", "a1", "a2", "limited", "beginner"]):
+                    return opt
+            yes_idx = find_matching_option(options_text, "Yes")
+            if yes_idx is not None:
+                return options_text[yes_idx]
+        return "A2/Elementary"
+        
+    # If it's another language OR a general language question we don't speak:
+    else:
+        # We don't speak it!
+        if question_type in ["select", "radio", "combobox"] and options_text:
+            no_idx = find_matching_option(options_text, "No")
+            if no_idx is not None:
+                return options_text[no_idx]
+            for opt in options_text:
+                opt_lower = opt.lower()
+                if any(w in opt_lower for w in ["none", "no proficiency", "ninguno", "sin conocimiento", "don't speak", "do not speak"]):
+                    return opt
+            # Return the first option that isn't positive
+            for opt in options_text:
+                opt_lower = opt.lower()
+                if not any(w in opt_lower for w in ["yes", "si", "sí", "fluent", "native", "advanced", "intermediate"]):
+                    return opt
+            return options_text[0]
+        return "No"
+
+
+def resolve_salary_expectation(question_text: str, is_current=False, work_location: str = "") -> str:
+    question_lower = question_text.lower()
+    work_loc_lower = work_location.lower() if work_location else ""
+    
+    # Determine currency
+    is_usd = False
+    is_cop = False
+    
+    if any(w in question_lower for w in ["usd", "us dollar", "dolar", "dollar", "dollars", "dolares", "dólar", "dólares"]):
+        is_usd = True
+    elif any(w in question_lower for w in ["cop", "colombian", "colombia", "pesos", "peso"]):
+        is_cop = True
+    else:
+        # Default based on work location
+        if "colombia" in work_loc_lower:
+            is_cop = True
+        else:
+            is_usd = True # Default to USD for remote/worldwide if not specified
+            
+    if is_current:
+        monthly_cop = 4000000.0
+        monthly_usd = 1200.0
+    else:
+        monthly_cop = 4000000.0
+        monthly_usd = 1100.0
+        
+    if is_usd:
+        base_salary = monthly_usd
+    else:
+        base_salary = monthly_cop
+        
+    # Check if yearly or monthly
+    is_yearly = any(w in question_lower for w in ["year", "annual", "ano", "anual", "yearly", "annually", "/yr", "per year", "per annum"])
+    
+    if is_yearly:
+        salary = base_salary * 12
+    else:
+        salary = base_salary
+        
+    # Check scaling (million/millones/millon/etc.)
+    if any(w in question_lower for w in ["millon", "millones", "million", "millón"]):
+        salary = salary / 1000000.0
+        return f"{salary:.1f}"
+    elif "lakh" in question_lower:
+        salary = salary / 100000.0
+        return f"{salary:.1f}"
+        
+    if salary.is_integer():
+        return str(int(salary))
+    return str(salary)
+
+
+
 # Function to answer common questions for Easy Apply
 def answer_common_questions(label: str, answer: str) -> str:
-    if 'sponsorship' in label or 'visa' in label: answer = require_visa
-    elif 'relocate' in label or 'relocation' in label: answer = 'Yes'
+    import json
+    import os
+    import unicodedata
+    
+    norm_label = "".join(c for c in unicodedata.normalize('NFD', label) if unicodedata.category(c) != 'Mn').lower()
+    
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    db_path = os.path.join(script_dir, "config", "questions_db.json")
+    mappings = []
+    if os.path.exists(db_path):
+        try:
+            with open(db_path, 'r', encoding='utf-8') as db_file:
+                db_data = json.load(db_file)
+                mappings = db_data.get("mappings", [])
+        except Exception:
+            pass
+            
+    for item in mappings:
+        category = item.get("category")
+        patterns = item.get("patterns", [])
+        if category in ["visa", "relocation", "shifts"] and any(pat in norm_label for pat in patterns):
+            if "value" in item:
+                return item["value"]
+            elif item.get("var_name") == "require_visa":
+                return require_visa
+                
+    if any(w in norm_label for w in ['sponsorship', 'visa', 'patrocinio', 'visado']): 
+        answer = require_visa
+    elif any(w in norm_label for w in ['relocate', 'relocation', 'reubicacion', 'reubicar', 'traslado', 'mudarse', 'cambio de residencia']): 
+        answer = 'Yes'
     return answer
 
 
 # Function to answer the questions for Easy Apply
 def answer_questions(modal: WebElement, questions_list: set, work_location: str, job_description: str | None = None ) -> set:
+    import json
+    import os
+    import unicodedata
+    
+    def normalize_label(label_str: str) -> str:
+        if not label_str:
+            return ""
+        return "".join(c for c in unicodedata.normalize('NFD', label_str) if unicodedata.category(c) != 'Mn').lower().strip()
+
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    db_path = os.path.join(script_dir, "config", "questions_db.json")
+    mappings = []
+    if os.path.exists(db_path):
+        try:
+            with open(db_path, 'r', encoding='utf-8') as db_file:
+                db_data = json.load(db_file)
+                mappings = db_data.get("mappings", [])
+        except Exception as db_err:
+            print_lg(f"Error loading questions_db.json: {db_err}")
+
+    def match_rules(label_str: str):
+        norm = normalize_label(label_str)
+        for item in mappings:
+            patterns = item.get("patterns", [])
+            if any(pat in norm for pat in patterns):
+                return item
+        return None
+
     # Get all questions from the page
-     
     all_questions = modal.find_elements(By.XPATH, ".//div[@data-test-form-element]")
-    # all_questions = modal.find_elements(By.CLASS_NAME, "jobs-easy-apply-form-element")
-    # all_list_questions = modal.find_elements(By.XPATH, ".//div[@data-test-text-entity-list-form-component]")
-    # all_single_line_questions = modal.find_elements(By.XPATH, ".//div[@data-test-single-line-text-form-component]")
-    # all_questions = all_questions + all_list_questions + all_single_line_questions
 
     for Question in all_questions:
+        ui_pause_check()
         # Check if it's a select Question
         select = try_xp(Question, ".//select", False)
         if select:
             label_org = "Unknown"
             try:
-                label = Question.find_element(By.TAG_NAME, "label")
-                label_org = label.find_element(By.TAG_NAME, "span").text
+                label_el = Question.find_element(By.TAG_NAME, "label")
+                try: label_el = label_el.find_element(By.CLASS_NAME,'visually-hidden')
+                except: pass
+                label_org = label_el.text
+            except:
+                pass
+            ui_update_status("Answering Modal", action_text=f"Select: {label_org}")
+            answer = ""
+            label = normalize_label(label_org)
+            selected_option = ""
+            select_obj = Select(select)
+            try: selected_option = select_obj.first_selected_option.text
             except: pass
-            answer = 'Yes'
-            label = label_org.lower()
-            select = Select(select)
-            selected_option = select.first_selected_option.text
+            
             optionsText = []
             options = '"List of phone country codes"'
             if label != "phone country code":
-                optionsText = [option.text for option in select.options]
+                optionsText = [option.text for option in select_obj.options]
                 options = "".join([f' "{option}",' for option in optionsText])
             prev_answer = selected_option
-            if overwrite_previous_answers or selected_option == "Select an option":
-                ##> ------ WINDY_WINDWARD Email:karthik.sarode23@gmail.com - Added fuzzy logic to answer location based questions ------
-                if 'email' in label or 'phone' in label: 
-                    answer = prev_answer
-                elif 'gender' in label or 'sex' in label: 
-                    answer = gender
-                elif 'disability' in label: 
-                    answer = disability_status
-                elif 'proficiency' in label: 
-                    answer = 'Professional'
-                # Add location handling
-                elif any(loc_word in label for loc_word in ['location', 'city', 'state', 'country']):
-                    if 'country' in label:
-                        answer = country 
-                    elif 'state' in label:
-                        answer = state
-                    elif 'city' in label:
-                        answer = current_city if current_city else work_location
-                    else:
-                        answer = work_location
-                else: 
-                    answer = answer_common_questions(label,answer)
-                try: 
-                    select.select_by_visible_text(answer)
-                except NoSuchElementException as e:
-                    # Define similar phrases for common answers
-                    possible_answer_phrases = []
-                    if answer == 'Decline':
-                        possible_answer_phrases = ["Decline", "not wish", "don't wish", "Prefer not", "not want"]
-                    elif 'yes' in answer.lower():
-                        possible_answer_phrases = ["Yes", "Agree", "I do", "I have"]
-                    elif 'no' in answer.lower():
-                        possible_answer_phrases = ["No", "Disagree", "I don't", "I do not"]
-                    else:
-                        # Try partial matching for any answer
-                        possible_answer_phrases = [answer]
-                        # Add lowercase and uppercase variants
-                        possible_answer_phrases.append(answer.lower())
-                        possible_answer_phrases.append(answer.upper())
-                        # Try without special characters
-                        possible_answer_phrases.append(''.join(c for c in answer if c.isalnum()))
-                    ##<
-                    foundOption = False
-                    for phrase in possible_answer_phrases:
-                        for option in optionsText:
-                            # Check if phrase is in option or option is in phrase (bidirectional matching)
-                            if phrase.lower() in option.lower() or option.lower() in phrase.lower():
-                                select.select_by_visible_text(option)
-                                answer = option
-                                foundOption = True
-                                break
-                    if not foundOption:
-                        if use_AI and aiClient:
-                            try:
-                                print_lg(f"Asking AI to select an option for: {label_org}")
-                                ai_answer = None
-                                if ai_provider.lower() == "openai":
-                                    ai_answer = ai_answer_question(aiClient, label_org, options=optionsText, question_type="single_select", job_description=job_description, user_information_all=user_information_all)
-                                elif ai_provider.lower() == "deepseek":
-                                    ai_answer = deepseek_answer_question(aiClient, label_org, options=optionsText, question_type="single_select", job_description=job_description, about_company=None, user_information_all=user_information_all)
-                                elif ai_provider.lower() == "gemini":
-                                    ai_answer = gemini_answer_question(aiClient, label_org, options=optionsText, question_type="single_select", job_description=job_description, about_company=None, user_information_all=user_information_all)
-                                
-                                if ai_answer and isinstance(ai_answer, str):
-                                    ai_answer = ai_answer.strip()
-                                    for opt in optionsText:
-                                        if ai_answer.lower() in opt.lower() or opt.lower() in ai_answer.lower():
-                                            select.select_by_visible_text(opt)
-                                            answer = opt
-                                            foundOption = True
-                                            print_lg(f'AI successfully selected: "{opt}"')
-                                            break
-                            except Exception as e:
-                                print_lg("AI failed to select option", e)
-
-                        if not foundOption:
-                            print_lg(f'Failed to find an option with text "{answer}" for question labelled "{label_org}", answering randomly!')
-                            select.select_by_index(randint(1, len(select.options)-1))
-                            answer = select.first_selected_option.text
-                            randomly_answered_questions.add((f'{label_org} [ {options} ]',"select"))
-            questions_list.add((f'{label_org} [ {options} ]', answer, "select", prev_answer))
-            continue
-        
-        # Check if it's a radio Question
-        radio = try_xp(Question, './/fieldset[@data-test-form-builder-radio-button-form-component="true"]', False)
-        if radio:
-            prev_answer = None
-            label = try_xp(radio, './/span[@data-test-form-builder-radio-button-form-component__title]', False)
-            try: label = find_by_class(label, "visually-hidden", 2.0)
-            except: pass
-            label_org = label.text if label else "Unknown"
-            answer = 'Yes'
-            label = label_org.lower()
-
-            label_org += ' [ '
-            options = radio.find_elements(By.TAG_NAME, 'input')
-            options_labels = []
             
-            for option in options:
-                id = option.get_attribute("id")
-                option_label = try_xp(radio, f'.//label[@for="{id}"]', False)
-                options_labels.append( f'"{option_label.text if option_label else "Unknown"}"<{option.get_attribute("value")}>' ) # Saving option as "label <value>"
-                if option.is_selected(): prev_answer = options_labels[-1]
-                label_org += f' {options_labels[-1]},'
-
-            if overwrite_previous_answers or prev_answer is None:
-                if 'citizenship' in label or 'employment eligibility' in label: answer = us_citizenship
-                elif 'veteran' in label or 'protected' in label: answer = veteran_status
-                elif 'disability' in label or 'handicapped' in label: 
-                    answer = disability_status
-                else: answer = answer_common_questions(label,answer)
-                foundOption = try_xp(radio, f".//label[normalize-space()='{answer}']", False)
-                if foundOption: 
-                    actions.move_to_element(foundOption).click().perform()
-                else:    
-                    possible_answer_phrases = ["Decline", "not wish", "don't wish", "Prefer not", "not want"] if answer == 'Decline' else [answer]
-                    ele = options[0]
-                    answer = options_labels[0]
-                    for phrase in possible_answer_phrases:
-                        for i, option_label in enumerate(options_labels):
-                            if phrase in option_label:
-                                foundOption = options[i]
-                                ele = foundOption
-                                answer = f'Decline ({option_label})' if len(possible_answer_phrases) > 1 else option_label
-                                break
-                        if foundOption: break
-                    # if answer == 'Decline':
-                    #     answer = options_labels[0]
-                    #     for phrase in ["Prefer not", "not want", "not wish"]:
-                    #         foundOption = try_xp(radio, f".//label[normalize-space()='{phrase}']", False)
-                    #         if foundOption:
-                    #             answer = f'Decline ({phrase})'
-                    #             ele = foundOption
-                    #             break
-                    actions.move_to_element(ele).click().perform()
-                    if not foundOption: randomly_answered_questions.add((f'{label_org} ]',"radio"))
-            else: answer = prev_answer
-            questions_list.add((label_org+" ]", answer, "radio", prev_answer))
-            continue
-        
-        # Check if it's a text question
-        text = try_xp(Question, ".//input[@type='text']", False)
-        if text: 
-            do_actions = False
-            label = try_xp(Question, ".//label[@for]", False)
-            try: label = label.find_element(By.CLASS_NAME,'visually-hidden')
-            except: pass
-            label_org = label.text if label else "Unknown"
-            answer = "" # years_of_experience
-            label = label_org.lower()
-
-            prev_answer = text.get_attribute("value")
-            if not prev_answer or overwrite_previous_answers:
-                if 'experience' in label or 'years' in label: answer = years_of_experience
-                elif 'phone' in label or 'mobile' in label: answer = phone_number
-                elif 'street' in label: answer = street
-                elif 'city' in label or 'location' in label or 'address' in label:
-                    answer = current_city if current_city else work_location
-                    do_actions = True
-                elif 'signature' in label: answer = full_name # 'signature' in label or 'legal name' in label or 'your name' in label or 'full name' in label: answer = full_name     # What if question is 'name of the city or university you attend, name of referral etc?'
-                elif 'name' in label:
-                    if 'full' in label: answer = full_name
-                    elif 'first' in label and 'last' not in label: answer = first_name
-                    elif 'middle' in label and 'last' not in label: answer = middle_name
-                    elif 'last' in label and 'first' not in label: answer = last_name
-                    elif 'employer' in label: answer = recent_employer
-                    else: answer = full_name
-                elif 'notice' in label:
-                    if 'month' in label:
-                        answer = notice_period_months
-                    elif 'week' in label:
-                        answer = notice_period_weeks
-                    else: answer = notice_period
-                elif 'salary' in label or 'compensation' in label or 'ctc' in label or 'pay' in label: 
-                    if 'current' in label or 'present' in label:
-                        if 'month' in label:
-                            answer = current_ctc_monthly
-                        elif 'lakh' in label:
-                            answer = current_ctc_lakhs
-                        else:
-                            answer = current_ctc
-                    else:
-                        if 'month' in label:
-                            answer = desired_salary_monthly
-                        elif 'lakh' in label:
-                            answer = desired_salary_lakhs
-                        else:
-                            answer = desired_salary
-                elif 'linkedin' in label: answer = linkedIn
-                elif 'website' in label or 'blog' in label or 'portfolio' in label or 'link' in label: answer = website
-                elif 'scale of 1-10' in label: answer = confidence_level
-                elif 'headline' in label: answer = linkedin_headline
-                elif ('hear' in label or 'come across' in label) and 'this' in label and ('job' in label or 'position' in label): answer = "https://github.com/GodsScion/Auto_job_applier_linkedIn"
-                elif 'state' in label or 'province' in label: answer = state
-                elif 'zip' in label or 'postal' in label or 'code' in label: answer = zipcode
-                elif 'country' in label: answer = country
-                elif 'school' in label or 'university' in label or 'college' in label: answer = university
-                else: answer = answer_common_questions(label,answer)
-                ##> ------ Yang Li : MARKYangL - Feature ------
-                if answer == "":
-                    if use_AI and aiClient:
-                        try:
-                            if ai_provider.lower() == "openai":
-                                answer = ai_answer_question(aiClient, label_org, question_type="text", job_description=job_description, user_information_all=user_information_all)
-                            elif ai_provider.lower() == "deepseek":
-                                answer = deepseek_answer_question(aiClient, label_org, options=None, question_type="text", job_description=job_description, about_company=None, user_information_all=user_information_all)
-                            elif ai_provider.lower() == "gemini":
-                                answer = gemini_answer_question(aiClient, label_org, options=None, question_type="text", job_description=job_description, about_company=None, user_information_all=user_information_all)
-                            else:
-                                randomly_answered_questions.add((label_org, "text"))
-                                answer = ""
-                                # Fallback logic if AI fails or unsupported
-                                if 'salary' in label or 'pay' in label or 'rate' in label or 'compensation' in label: answer = desired_salary
-                                elif 'currency' in label: answer = "COP" if current_city == "Bogotá" else "USD"
-                                elif 'years' in label: answer = years_of_experience
-                            if answer and isinstance(answer, str) and len(answer) > 0 and answer != "0":
-                                print_lg(f'AI Answered received for question "{label_org}" \nhere is answer: "{answer}"')
-                            else:
-                                randomly_answered_questions.add((label_org, "text"))
-                                answer = ""
-                                if 'salary' in label or 'pay' in label or 'rate' in label or 'compensation' in label: answer = desired_salary
-                                elif 'currency' in label: answer = "COP" if current_city == "Bogotá" else "USD"
-                                elif 'years' in label: answer = years_of_experience
-                        except Exception as e:
-                            print_lg("Failed to get AI answer!", e)
-                            randomly_answered_questions.add((label_org, "text"))
-                            answer = ""
-                            if 'salary' in label or 'pay' in label or 'rate' in label or 'compensation' in label: answer = desired_salary
-                            elif 'currency' in label: answer = "COP" if current_city == "Bogotá" else "USD"
-                            elif 'years' in label: answer = years_of_experience
-                    else:
-                        randomly_answered_questions.add((label_org, "text"))
-                        answer = ""
-                        # Smart fallback when AI is completely disabled
-                        if 'salary' in label or 'pay' in label or 'rate' in label or 'compensation' in label or 'ctc' in label or 'expect' in label: 
-                            if 'usd' in label or 'dollar' in label: answer = str(current_ctc) # 1200 USD
-                            else: answer = str(desired_salary) # 4000000 COP
-                        elif 'currency' in label: answer = "COP"
-                        elif 'name' in label: answer = full_name
-                        elif 'number' in label or 'phone' in label: answer = phone_number
-                        else: answer = years_of_experience if 'year' in label or 'experience' in label else "0"
-                ##<
-                if not isinstance(answer, str): answer = ""
-                text.clear()
-                text.send_keys(answer)
-                if do_actions:
-                    sleep(2)
-                    actions.send_keys(Keys.ARROW_DOWN)
-                    actions.send_keys(Keys.ENTER).perform()
-            questions_list.add((label, text.get_attribute("value"), "text", prev_answer))
-            continue
-
-        # Check if it's a combobox (LinkedIn's custom dropdown)
-        combobox = try_xp(Question, ".//input[@role='combobox'] | .//button[@role='combobox']", False)
-        if combobox and not try_xp(Question, ".//select", False):
-            label = try_xp(Question, ".//label[@for]", False)
-            try: label = label.find_element(By.CLASS_NAME,'visually-hidden')
-            except: pass
-            label_org = label.text if label else "Unknown"
-            answer = "Yes"
-            label_lower = label_org.lower()
+            is_default_option = any(w in selected_option.lower() for w in ["select", "selecciona", "elegir", "choose", "unselected", "opcion", "seleccione"]) or selected_option == ""
             
             try:
-                # Click the combobox to open the dropdown
-                actions.move_to_element(combobox).click().perform()
-                sleep(1) # wait for dropdown list to render
-                
-                # Try to find the dropdown list items
-                list_items = driver.find_elements(By.XPATH, "//div[@role='listbox']//div[contains(@class, 'artdeco-dropdown__item')] | //div[@role='listbox']//li | //div[@role='listbox']//div[@role='option']")
-                
-                # Check if it's a typeahead input and no predefined list items are shown initially
-                if combobox.tag_name == "input" and not list_items:
-                    # Use basic answers for common location/phone combos
-                    if 'phone' in label_lower or 'country' in label_lower:
-                        answer = 'Colombia'
-                    elif 'city' in label_lower or 'location' in label_lower:
-                        answer = current_city if current_city else work_location
-                    else:
-                        if use_AI and aiClient:
-                            try:
-                                if ai_provider.lower() == "openai":
-                                    answer = ai_answer_question(aiClient, label_org, question_type="text", job_description=job_description, user_information_all=user_information_all)
-                                elif ai_provider.lower() == "deepseek":
-                                    answer = deepseek_answer_question(aiClient, label_org, options=None, question_type="text", job_description=job_description, about_company=None, user_information_all=user_information_all)
-                                elif ai_provider.lower() == "gemini":
-                                    answer = gemini_answer_question(aiClient, label_org, options=None, question_type="text", job_description=job_description, about_company=None, user_information_all=user_information_all)
-                            except Exception as e:
-                                print_lg("AI failed to answer combobox text input", e)
-                                
-                    if not isinstance(answer, str): answer = ""
-                    combobox.clear()
-                    combobox.send_keys(answer)
-                    sleep(2)
-                    actions.send_keys(Keys.ARROW_DOWN).send_keys(Keys.ENTER).perform()
+                if Question.find_elements(By.XPATH, ".//*[contains(@class, 'artdeco-inline-feedback--error')]"):
+                    is_default_option = True
+            except: pass
+            
+            if overwrite_previous_answers or is_default_option:
+                lang_answer = answer_language_question(label_org, "select", optionsText)
+                if lang_answer is not None:
+                    answer = lang_answer
                 else:
-                    optionsText = [item.text.strip() for item in list_items if item.text.strip()]
-                    foundOption = False
-                    
-                    if 'gender' in label_lower or 'sex' in label_lower: 
+                    db_match = match_rules(label_org)
+                if db_match:
+                    category = db_match.get("category")
+                    var_name = db_match.get("var_name")
+                    direct_value = db_match.get("value")
+                    answer = resolve_value_for_category(category, var_name, direct_value)
+                else:
+                    if any(w in label for w in ['email', 'correo']): 
+                        answer = prev_answer
+                    elif any(w in label for w in ['gender', 'sex', 'genero', 'sexo']): 
                         answer = gender
-                    elif 'disability' in label_lower: 
+                    elif any(w in label for w in ['disability', 'discapacidad', 'limitacion']): 
                         answer = disability_status
-                    elif 'proficiency' in label_lower: 
+                    elif any(w in label for w in ['proficiency', 'competencia', 'nivel', 'idioma']): 
                         answer = 'Professional'
-                    elif any(loc_word in label_lower for loc_word in ['location', 'city', 'state', 'country']):
-                        if 'country' in label_lower:
+                    elif any(loc_word in label for loc_word in ['location', 'city', 'state', 'country', 'ubicacion', 'ciudad', 'estado', 'pais', 'direccion']):
+                        if any(w in label for w in ['country', 'pais']):
                             answer = country 
-                        elif 'state' in label_lower:
+                        elif any(w in label for w in ['state', 'estado', 'departamento', 'provincia']):
                             answer = state
-                        elif 'city' in label_lower:
+                        elif any(w in label for w in ['city', 'ciudad', 'municipio']):
                             answer = current_city if current_city else work_location
                         else:
                             answer = work_location
                     else: 
-                        answer = answer_common_questions(label_lower, answer)
-
-                    possible_answer_phrases = []
-                    if answer == 'Decline':
-                        possible_answer_phrases = ["Decline", "not wish", "don't wish", "Prefer not", "not want"]
-                    elif 'yes' in answer.lower():
-                        possible_answer_phrases = ["Yes", "Agree", "I do", "I have"]
-                    elif 'no' in answer.lower():
-                        possible_answer_phrases = ["No", "Disagree", "I don't", "I do not"]
-                    else:
-                        possible_answer_phrases = [answer, answer.lower(), answer.upper(), ''.join(c for c in answer if c.isalnum())]
-
-                    for phrase in possible_answer_phrases:
-                        for idx, option in enumerate(optionsText):
-                            if phrase.lower() in option.lower() or option.lower() in phrase.lower():
-                                actions.move_to_element(list_items[idx]).click().perform()
-                                answer = option
-                                foundOption = True
-                                break
-                        if foundOption: break
-                    
-                    if not foundOption and use_AI and aiClient and optionsText:
+                        answer = answer_common_questions(label_org, answer)
+                
+                # Use our robust option matcher!
+                match_idx = find_matching_option(optionsText, answer)
+                if match_idx is not None:
+                    try:
+                        # 1. Visual clicking (mimicking human interaction)
+                        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", select)
+                        time.sleep(1)
+                        try: select.click()
+                        except: driver.execute_script("arguments[0].click();", select)
+                        time.sleep(1)
+                        
+                        opt = select_obj.options[match_idx]
+                        try: opt.click()
+                        except: driver.execute_script("arguments[0].click();", opt)
+                        time.sleep(1)
+                        
+                        # 2. Programmatic fallback and React hack
+                        try: select_obj.select_by_index(match_idx)
+                        except: pass
+                        
+                        js_script = """
+                        var select = arguments[0];
+                        var idx = arguments[1];
+                        select.selectedIndex = idx;
+                        select.value = select.options[idx].value;
+                        var nativeSelectValueSetter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, "value").set;
+                        nativeSelectValueSetter.call(select, select.options[idx].value);
+                        select.dispatchEvent(new Event('focus', { bubbles: true }));
+                        select.dispatchEvent(new Event('input', { bubbles: true }));
+                        select.dispatchEvent(new Event('change', { bubbles: true }));
+                        select.dispatchEvent(new Event('blur', { bubbles: true }));
+                        """
+                        driver.execute_script(js_script, select, match_idx)
+                    except Exception as e:
+                        print_lg(f"React hack failed: {e}")
                         try:
-                            print_lg(f"Asking AI to select an option for combobox: {label_org}")
+                            select_obj.select_by_index(match_idx)
+                        except: pass
+                    answer = optionsText[match_idx]
+                else:
+                    foundOption = False
+                    if use_AI and aiClient and optionsText:
+                        try:
+                            print_lg(f"Asking AI to select an option for: {label_org}")
                             ai_answer = None
                             if ai_provider.lower() == "openai":
                                 ai_answer = ai_answer_question(aiClient, label_org, options=optionsText, question_type="single_select", job_description=job_description, user_information_all=user_information_all)
@@ -839,42 +919,656 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                                 ai_answer = gemini_answer_question(aiClient, label_org, options=optionsText, question_type="single_select", job_description=job_description, about_company=None, user_information_all=user_information_all)
                             
                             if ai_answer and isinstance(ai_answer, str):
-                                ai_answer = ai_answer.strip()
-                                for idx, opt in enumerate(optionsText):
-                                    if ai_answer.lower() in opt.lower() or opt.lower() in ai_answer.lower():
-                                        actions.move_to_element(list_items[idx]).click().perform()
-                                        answer = opt
-                                        foundOption = True
-                                        print_lg(f'AI successfully selected combobox option: "{opt}"')
-                                        break
+                                ai_match_idx = find_matching_option(optionsText, ai_answer)
+                                if ai_match_idx is not None:
+                                    try:
+                                        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", select)
+                                        time.sleep(1)
+                                        try: select.click()
+                                        except: driver.execute_script("arguments[0].click();", select)
+                                        time.sleep(1)
+                                        
+                                        opt = select_obj.options[ai_match_idx]
+                                        try: opt.click()
+                                        except: driver.execute_script("arguments[0].click();", opt)
+                                        time.sleep(1)
+                                        
+                                        try: select_obj.select_by_index(ai_match_idx)
+                                        except: pass
+                                        
+                                        js_script = """
+                                        var select = arguments[0];
+                                        var idx = arguments[1];
+                                        select.selectedIndex = idx;
+                                        select.value = select.options[idx].value;
+                                        var nativeSelectValueSetter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, "value").set;
+                                        nativeSelectValueSetter.call(select, select.options[idx].value);
+                                        select.dispatchEvent(new Event('focus', { bubbles: true }));
+                                        select.dispatchEvent(new Event('input', { bubbles: true }));
+                                        select.dispatchEvent(new Event('change', { bubbles: true }));
+                                        select.dispatchEvent(new Event('blur', { bubbles: true }));
+                                        """
+                                        driver.execute_script(js_script, select, ai_match_idx)
+                                    except Exception as e:
+                                        print_lg(f"React hack failed: {e}")
+                                        try: select_obj.select_by_index(ai_match_idx)
+                                        except: pass
+                                    answer = optionsText[ai_match_idx]
+                                    foundOption = True
+                                    print_lg(f'AI successfully selected: "{answer}"')
                         except Exception as e:
-                            print_lg("AI failed to select combobox option", e)
+                            print_lg("AI failed to select option", e)
 
                     if not foundOption:
-                        if list_items:
-                            # Just click the first one if AI failed
-                            actions.move_to_element(list_items[0]).click().perform()
-                            answer = optionsText[0] if optionsText else "Yes"
-                        else:
-                            # Fallback to pressing Down Arrow and Enter
-                            actions.send_keys(Keys.ARROW_DOWN).send_keys(Keys.ENTER).perform()
+                        print_lg(f'Failed to find an option with text "{answer}" for question labelled "{label_org}", answering randomly!')
+                        rand_idx = randint(1, len(select_obj.options)-1)
+                        try:
+                            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", select)
+                            time.sleep(1)
+                            try: select.click()
+                            except: driver.execute_script("arguments[0].click();", select)
+                            time.sleep(1)
+                            
+                            opt = select_obj.options[rand_idx]
+                            try: opt.click()
+                            except: driver.execute_script("arguments[0].click();", opt)
+                            time.sleep(1)
+                            
+                            try: select_obj.select_by_index(rand_idx)
+                            except: pass
+                            
+                            js_script = """
+                            var select = arguments[0];
+                            var idx = arguments[1];
+                            select.selectedIndex = idx;
+                            select.value = select.options[idx].value;
+                            var nativeSelectValueSetter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, "value").set;
+                            nativeSelectValueSetter.call(select, select.options[idx].value);
+                            select.dispatchEvent(new Event('focus', { bubbles: true }));
+                            select.dispatchEvent(new Event('input', { bubbles: true }));
+                            select.dispatchEvent(new Event('change', { bubbles: true }));
+                            select.dispatchEvent(new Event('blur', { bubbles: true }));
+                            """
+                            driver.execute_script(js_script, select, rand_idx)
+                        except Exception as e:
+                            print_lg(f"React hack failed: {e}")
+                            try: select_obj.select_by_index(rand_idx)
+                            except: pass
+                        answer = optionsText[rand_idx]
+                        randomly_answered_questions.add((f'{label_org} [ {options} ]',"select"))
+            else:
+                answer = prev_answer
+                save_to_qa_database(label_org, answer)
+            ui_update_status("Answering Modal", action_text=f"Filled Select: {answer}")
+            questions_list.add((f'{label_org} [ {options} ]', answer, "select", prev_answer))
+            continue
+        
+        # Check if it's a radio Question
+        radio = try_xp(Question, './/fieldset[@data-test-form-builder-radio-button-form-component="true"]', False)
+        if radio:
+            prev_answer = None
+            label_el = try_xp(radio, './/span[@data-test-form-builder-radio-button-form-component__title]', False)
+            try: label_el = find_by_class(label_el, "visually-hidden", 2.0)
+            except: pass
+            label_org = label_el.text if label_el else "Unknown"
+            ui_update_status("Answering Modal", action_text=f"Radio: {label_org}")
+            answer = 'Yes'
+            label = normalize_label(label_org)
+
+            label_org_full = label_org + ' [ '
+            inputs = radio.find_elements(By.TAG_NAME, 'input')
+            radio_options = []
+            options_text_list = []
+            
+            for idx, inp in enumerate(inputs):
+                inp_id = inp.get_attribute("id")
+                option_label = try_xp(radio, f'.//label[@for="{inp_id}"]', False)
+                label_text = option_label.text if option_label else "Unknown"
+                options_text_list.append(label_text)
                 
+                radio_options.append({
+                    "input": inp,
+                    "label": option_label,
+                    "text": label_text
+                })
+                
+                # Check if selected
+                if inp.is_selected():
+                    prev_answer = f'"{label_text}"<{inp.get_attribute("value")}>'
+                label_org_full += f' "{label_text}"<{inp.get_attribute("value")}>,'
+            
+            label_org_full += ' ]'
+
+            if overwrite_previous_answers or prev_answer is None:
+                # Check for language question first!
+                lang_answer = answer_language_question(label_org, "radio", options_text_list)
+                if lang_answer is not None:
+                    answer = lang_answer
+                else:
+                    db_match = match_rules(label_org)
+                    if db_match:
+                        category = db_match.get("category")
+                        var_name = db_match.get("var_name")
+                        direct_value = db_match.get("value")
+                        answer = resolve_value_for_category(category, var_name, direct_value)
+                    else:
+                        if any(w in label for w in ['citizenship', 'employment eligibility', 'ciudadania', 'nacionalidad', 'permiso']): 
+                            answer = us_citizenship
+                        elif any(w in label for w in ['veteran', 'protected', 'veterano', 'protegido']): 
+                            answer = veteran_status
+                        elif any(w in label for w in ['disability', 'handicapped', 'discapacidad', 'limitacion']): 
+                            answer = disability_status
+                        else: 
+                            answer = answer_common_questions(label_org, answer)
+                
+                # Find matching label
+                match_idx = find_matching_option(options_text_list, answer)
+                label_to_click = None
+                if match_idx is not None:
+                    target_opt = radio_options[match_idx]
+                    label_to_click = target_opt["label"]
+                    answer = target_opt["text"]
+                else:
+                    if use_AI and aiClient:
+                        try:
+                            print_lg(f"Asking AI to answer Radio question: {label_org}")
+                            ai_answer = None
+                            if ai_provider.lower() == "openai":
+                                ai_answer = ai_answer_question(aiClient, label_org, options=options_text_list, question_type="single_select", job_description=job_description, user_information_all=user_information_all)
+                            elif ai_provider.lower() == "deepseek":
+                                ai_answer = deepseek_answer_question(aiClient, label_org, options=options_text_list, question_type="single_select", job_description=job_description, about_company=None, user_information_all=user_information_all)
+                            elif ai_provider.lower() == "gemini":
+                                ai_answer = gemini_answer_question(aiClient, label_org, options=options_text_list, question_type="single_select", job_description=job_description, about_company=None, user_information_all=user_information_all)
+                            
+                            if ai_answer and isinstance(ai_answer, str):
+                                ai_match_idx = find_matching_option(options_text_list, ai_answer)
+                                if ai_match_idx is not None:
+                                    label_to_click = radio_options[ai_match_idx]["label"]
+                                    answer = radio_options[ai_match_idx]["text"]
+                        except Exception as e:
+                            print_lg("AI failed to answer Radio question", e)
+                
+                if label_to_click:
+                    try:
+                        label_to_click.click()
+                    except Exception:
+                        try:
+                            actions.move_to_element(label_to_click).click().perform()
+                        except Exception:
+                            try:
+                                driver.execute_script("arguments[0].click();", label_to_click)
+                            except Exception as click_err:
+                                print_lg(f"Failed to click radio option: {answer}", click_err)
+                else:
+                    ele = radio_options[0]["label"] if radio_options else None
+                    if ele:
+                        try:
+                            ele.click()
+                        except Exception:
+                            try:
+                                actions.move_to_element(ele).click().perform()
+                            except Exception:
+                                driver.execute_script("arguments[0].click();", ele)
+                        randomly_answered_questions.add((label_org_full, "radio"))
+            else:
+                answer = prev_answer
+                save_to_qa_database(label_org, answer)
+                
+            ui_update_status("Answering Modal", action_text=f"Filled Radio: {answer}")
+            questions_list.add((label_org_full, answer, "radio", prev_answer))
+            continue
+
+        # Check if it's a text question
+        text = try_xp(Question, ".//input[@type='text']", False)
+        if text: 
+            do_actions = False
+            label_el = try_xp(Question, ".//label[@for]", False)
+            try: label_el = label_el.find_element(By.CLASS_NAME,'visually-hidden')
+            except: pass
+            label_org = label_el.text if label_el else "Unknown"
+            ui_update_status("Answering Modal", action_text=f"Text: {label_org}")
+            answer = ""
+            label = normalize_label(label_org)
+
+            has_error = False
+            error_msg = ""
+            try:
+                error_els = Question.find_elements(By.XPATH, ".//*[contains(@class, 'artdeco-inline-feedback--error')]")
+                if error_els:
+                    has_error = True
+                    error_msg = error_els[0].text
+            except: pass
+
+            prev_answer = text.get_attribute("value")
+            if not prev_answer or overwrite_previous_answers or has_error:
+                matched_val = None
+                
+                # If there is no error, try our local rules first
+                if not has_error:
+                    # Check for language question first!
+                    lang_answer = answer_language_question(label_org, "text")
+                    if lang_answer is not None:
+                        matched_val = lang_answer
+                else:
+                    # If there IS an error, we can try a quick local fallback for numeric language questions
+                    lang_answer = answer_language_question(label_org, "text")
+                    if lang_answer is not None and any(w in error_msg.lower() for w in ["número", "numero", "number", "decimal"]):
+                        print_lg(f"Quick fallback: form expects a number for language question '{label_org}'. Using 10.0.")
+                        matched_val = "10.0"
+
+                if matched_val is None and not has_error:
+                        db_match = match_rules(label_org)
+                        if db_match:
+                            category = db_match.get("category")
+                            var_name = db_match.get("var_name")
+                            direct_value = db_match.get("value_text") or db_match.get("value")
+                            
+                            if category in ["current_salary", "desired_salary"]:
+                                matched_val = resolve_salary_expectation(label_org, category == "current_salary", work_location)
+                            elif category == "notice":
+                                if any(w in label for w in ['month', 'mes']):
+                                    matched_val = notice_period_months
+                                elif any(w in label for w in ['week', 'semana']):
+                                    matched_val = notice_period_weeks
+                                else:
+                                    matched_val = notice_period
+                            else:
+                                matched_val = resolve_value_for_category(category, var_name, direct_value)
+                                if category == "city":
+                                    do_actions = True
+                
+                # If local rules worked (and no error), use it
+                if matched_val is not None:
+                    answer = matched_val
+                # Otherwise, fallback to AI (which will receive the error_message if there is one)
+                else:
+                    if use_AI and aiClient:
+                        try:
+                            if ai_provider.lower() == "openai":
+                                ai_answer = ai_answer_question(aiClient, label_org, question_type="text", job_description=job_description, user_information_all=user_information_all)
+                            elif ai_provider.lower() == "deepseek":
+                                ai_answer = deepseek_answer_question(aiClient, label_org, options=None, question_type="text", job_description=job_description, about_company=None, user_information_all=user_information_all)
+                            elif ai_provider.lower() == "gemini":
+                                ai_answer = gemini_answer_question(aiClient, label_org, options=None, question_type="text", job_description=job_description, about_company=None, user_information_all=user_information_all, error_message=error_msg if has_error else None)
+                            
+                            if ai_answer is not None and isinstance(ai_answer, str) and len(ai_answer) > 0:
+                                print_lg(f'AI Answered received for question "{label_org}" \nhere is answer: "{ai_answer}"')
+                                answer = ai_answer
+                        except Exception as e:
+                                print_lg("Failed to get AI answer!", e)
+                        
+                        if answer == "":
+                            if any(w in label for w in ['notice', 'aviso', 'preaviso', 'notificacion']):
+                                if any(w in label for w in ['month', 'mes']):
+                                    answer = notice_period_months
+                                elif any(w in label for w in ['week', 'semana']):
+                                    answer = notice_period_weeks
+                                else: 
+                                    answer = notice_period
+                            elif any(w in label for w in ['salary', 'compensation', 'ctc', 'pay', 'salario', 'salarial', 'sueldo', 'remuneracion', 'expectativa', 'expectativas', 'pretension', 'pretensiones', 'pretendido', 'pretendida', 'aspiracion', 'aspiraciones', 'tarifa', 'cobro', 'pago']): 
+                                answer = resolve_salary_expectation(label_org, any(w in label for w in ['current', 'present', 'actual', 'presente', 'ultimo', 'último']), work_location)
+                            elif any(w in label for w in ['experience', 'years', 'experiencia', 'anos', 'ano', 'tiempo']): 
+                                answer = years_of_experience
+                            elif any(w in label for w in ['phone', 'mobile', 'telefono', 'celular', 'movil']): 
+                                answer = phone_number
+                            elif any(w in label for w in ['street', 'calle']): 
+                                answer = street
+                            elif any(w in label for w in ['city', 'location', 'address', 'ciudad', 'ubicacion', 'direccion']):
+                                answer = current_city if current_city else work_location
+                                do_actions = True
+                            elif any(w in label for w in ['signature', 'firma']): 
+                                answer = full_name
+                            elif any(w in label for w in ['name', 'nombre', 'apellido']):
+                                if any(w in label for w in ['full', 'completo']): 
+                                    answer = full_name
+                                elif any(w in label for w in ['first', 'primer']) and not any(w in label for w in ['last', 'apellido']): 
+                                    answer = first_name
+                                elif any(w in label for w in ['middle', 'segundo']) and not any(w in label for w in ['last', 'apellido']): 
+                                    answer = middle_name
+                                elif any(w in label for w in ['last', 'apellido']) and not any(w in label for w in ['first', 'nombre']): 
+                                    answer = last_name
+                                elif any(w in label for w in ['employer', 'empleador']): 
+                                    answer = recent_employer
+                                else: 
+                                    answer = full_name
+                            elif 'linkedin' in label: 
+                                answer = linkedIn
+                            elif any(w in label for w in ['website', 'blog', 'portfolio', 'link', 'sitio web', 'portafolio', 'enlace']): 
+                                answer = website
+                            elif any(w in label for w in ['scale of 1-10', 'escala del 1 al 10', 'escala de 1 a 10', 'escala 1-10']): 
+                                answer = confidence_level
+                            elif any(w in label for w in ['headline', 'titular', 'encabezado']): 
+                                answer = linkedin_headline
+                            elif any(w in label for w in ['state', 'province', 'estado', 'provincia', 'departamento']): 
+                                answer = state
+                            elif any(w in label for w in ['zip', 'postal', 'code', 'codigo postal']): 
+                                answer = zipcode
+                            elif any(w in label for w in ['country', 'pais']): 
+                                answer = country
+                            elif any(w in label for w in ['school', 'university', 'college', 'universidad', 'colegio', 'escuela']): 
+                                answer = university
+                            else: 
+                                answer = answer_common_questions(label_org, answer)
+                
+                if answer == "":
+                    randomly_answered_questions.add((label_org, "text"))
+                    answer = ""
+                    db_fallback = match_rules(label_org)
+                    if db_fallback:
+                        cat = db_fallback.get("category")
+                        if cat in ["desired_salary", "current_salary"]:
+                            answer = resolve_salary_expectation(label_org, cat == "current_salary", work_location)
+                        elif cat == "experience":
+                            answer = years_of_experience
+                        elif cat == "phone":
+                            answer = phone_number
+                        randomly_answered_questions.add((label_org, "text"))
+                        answer = ""
+                        db_fallback = match_rules(label_org)
+                        if db_fallback:
+                            cat = db_fallback.get("category")
+                            if cat in ["desired_salary", "current_salary"]:
+                                answer = resolve_salary_expectation(label_org, cat == "current_salary", work_location)
+                            elif cat == "experience":
+                                answer = years_of_experience
+                            elif cat == "phone":
+                                answer = phone_number
+                            else:
+                                answer = "0"
+                        else:
+                            if any(w in label for w in ['salary', 'pay', 'rate', 'compensation', 'ctc', 'expect', 'salario', 'salarial', 'sueldo', 'remuneracion', 'expectativa', 'expectativas', 'pretension', 'pretensiones', 'pretendido', 'pretendida', 'aspiracion', 'aspiraciones', 'tarifa', 'pago']): 
+                                answer = resolve_salary_expectation(label_org, any(w in label for w in ['current', 'present', 'actual', 'presente', 'ultimo', 'último']), work_location)
+                            elif any(w in label for w in ['currency', 'moneda']): 
+                                answer = "COP" if current_city == "Bogotá" else "USD"
+                            elif any(w in label for w in ['name', 'nombre']): 
+                                answer = full_name
+                            elif any(w in label for w in ['number', 'phone', 'telefono', 'celular', 'movil']): 
+                                answer = phone_number
+                            else: 
+                                answer = years_of_experience if any(w in label for w in ['year', 'experience', 'ano', 'anos', 'experiencia', 'tiempo']) else "0"
+                
+                if not isinstance(answer, str): 
+                    answer = str(answer)
+                
+                # Check entire Question text for decimal requirements (including help texts / validation errors)
+                question_full_text = Question.text.lower()
+                if any(w in question_full_text for w in ['decimal', 'mayor que 0.0', 'mayor que 0,0', 'greater than 0.0', 'greater than 0,0', 'mayor a 0.0', 'mayor a 0,0']):
+                    try:
+                        val = float(answer)
+                        answer = f"{val:.1f}"
+                    except ValueError:
+                        pass
+
+                if do_actions:
+                    # City/location fields: strip accents so autocomplete matches correctly
+                    import unicodedata as _ud
+                    answer_no_accent = "".join(
+                        c for c in _ud.normalize('NFD', answer)
+                        if _ud.category(c) != 'Mn'
+                    )
+                    try:
+                        text.clear()
+                    except: pass
+                    text.send_keys(answer_no_accent)
+                    sleep(2)
+                    actions.send_keys(Keys.ARROW_DOWN)
+                    actions.send_keys(Keys.ENTER).perform()
+                else:
+                    try:
+                        text.clear()
+                    except: pass
+                    try:
+                        driver.execute_script("""
+                            var el = arguments[0];
+                            var val = arguments[1];
+                            var nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+                            nativeInputValueSetter.call(el, val);
+                            el.dispatchEvent(new Event('focus', { bubbles: true }));
+                            el.dispatchEvent(new Event('input', { bubbles: true }));
+                            el.dispatchEvent(new Event('change', { bubbles: true }));
+                            el.dispatchEvent(new Event('blur', { bubbles: true }));
+                        """, text, answer)
+                    except:
+                        text.send_keys(answer)
+            else:
+                answer = prev_answer
+                save_to_qa_database(label_org, answer)
+            ui_update_status("Answering Modal", action_text=f"Filled Text: {answer}")
+            questions_list.add((label, text.get_attribute("value"), "text", prev_answer))
+            continue
+
+        # Check if it's a combobox (LinkedIn's custom dropdown)
+        combobox = try_xp(Question, ".//input[@role='combobox'] | .//button[@role='combobox']", False)
+        if combobox and not try_xp(Question, ".//select", False):
+            label_el = try_xp(Question, ".//label[@for]", False)
+            try: label_el = label_el.find_element(By.CLASS_NAME,'visually-hidden')
+            except: pass
+            label_org = label_el.text if label_el else "Unknown"
+            ui_update_status("Answering Modal", action_text=f"Combobox: {label_org}")
+            answer = "Yes"
+            label_lower = normalize_label(label_org)
+            
+            try:
+                actions.move_to_element(combobox).click().perform()
+                sleep(1)
+                
+                list_items = driver.find_elements(By.XPATH, "//div[@role='listbox']//div[contains(@class, 'artdeco-dropdown__item')] | //div[@role='listbox']//li | //div[@role='listbox']//div[@role='option']")
+                
+                if combobox.tag_name == "input" and not list_items:
+                    lang_answer = answer_language_question(label_org, "combobox")
+                    if lang_answer is not None:
+                        answer = lang_answer
+                    else:
+                        db_match = match_rules(label_org)
+                        if db_match:
+                            category = db_match.get("category")
+                            var_name = db_match.get("var_name")
+                            direct_value = db_match.get("value")
+                            answer = resolve_value_for_category(category, var_name, direct_value)
+                        else:
+                            if 'phone' in label_lower or 'telefono' in label_lower or 'celular' in label_lower or 'country' in label_lower or 'pais' in label_lower:
+                                answer = 'Colombia'
+                            elif 'city' in label_lower or 'ciudad' in label_lower or 'location' in label_lower or 'ubicacion' in label_lower:
+                                answer = current_city if current_city else work_location
+                            else:
+                                if use_AI and aiClient:
+                                    try:
+                                        if ai_provider.lower() == "openai":
+                                            answer = ai_answer_question(aiClient, label_org, question_type="text", job_description=job_description, user_information_all=user_information_all)
+                                        elif ai_provider.lower() == "deepseek":
+                                            answer = deepseek_answer_question(aiClient, label_org, options=None, question_type="text", job_description=job_description, about_company=None, user_information_all=user_information_all)
+                                        elif ai_provider.lower() == "gemini":
+                                            answer = gemini_answer_question(aiClient, label_org, options=None, question_type="text", job_description=job_description, about_company=None, user_information_all=user_information_all)
+                                    except Exception as e:
+                                        print_lg("AI failed to answer combobox text input", e)
+                                        
+                    if not isinstance(answer, str): answer = ""
+                    combobox.clear()
+                    combobox.send_keys(answer)
+                    sleep(2)
+                    actions.send_keys(Keys.ARROW_DOWN).send_keys(Keys.ENTER).perform()
+                else:
+                    optionsText = [item.text.strip() for item in list_items if item.text.strip()]
+                    foundOption = False
+                    
+                    lang_answer = answer_language_question(label_org, "combobox", optionsText)
+                    if lang_answer is not None:
+                        answer = lang_answer
+                        match_idx = find_matching_option(optionsText, answer)
+                        if match_idx is not None:
+                            actions.move_to_element(list_items[match_idx]).click().perform()
+                            answer = optionsText[match_idx]
+                            foundOption = True
+                    
+                    if not foundOption:
+                        db_match = match_rules(label_org)
+                        if db_match:
+                            category = db_match.get("category")
+                            var_name = db_match.get("var_name")
+                            direct_value = db_match.get("value")
+                            answer = resolve_value_for_category(category, var_name, direct_value)
+                        else:
+                            if 'gender' in label_lower or 'sex' in label_lower or 'genero' in label_lower or 'sexo' in label_lower: 
+                                answer = gender
+                            elif 'disability' in label_lower or 'discapacidad' in label_lower: 
+                                answer = disability_status
+                            elif 'proficiency' in label_lower or 'competencia' in label_lower or 'nivel' in label_lower: 
+                                answer = 'Professional'
+                            elif any(loc_word in label_lower for loc_word in ['location', 'city', 'state', 'country', 'ubicacion', 'ciudad', 'estado', 'pais']):
+                                if any(w in label_lower for w in ['country', 'pais']):
+                                    answer = country 
+                                elif any(w in label_lower for w in ['state', 'estado', 'departamento', 'provincia']):
+                                    answer = state
+                                elif any(w in label_lower for w in ['city', 'ciudad']):
+                                    answer = current_city if current_city else work_location
+                                else:
+                                    answer = work_location
+                            else: 
+                                answer = answer_common_questions(label_org, answer)
+
+                    # Use our robust option matcher!
+                    match_idx = find_matching_option(optionsText, answer)
+                    if match_idx is not None:
+                        actions.move_to_element(list_items[match_idx]).click().perform()
+                        answer = optionsText[match_idx]
+                        foundOption = True
+                    else:
+                        if use_AI and aiClient and optionsText:
+                            try:
+                                print_lg(f"Asking AI to select an option for combobox: {label_org}")
+                                ai_answer = None
+                                if ai_provider.lower() == "openai":
+                                    ai_answer = ai_answer_question(aiClient, label_org, options=optionsText, question_type="single_select", job_description=job_description, user_information_all=user_information_all)
+                                elif ai_provider.lower() == "deepseek":
+                                    ai_answer = deepseek_answer_question(aiClient, label_org, options=optionsText, question_type="single_select", job_description=job_description, about_company=None, user_information_all=user_information_all)
+                                elif ai_provider.lower() == "gemini":
+                                    ai_answer = gemini_answer_question(aiClient, label_org, options=optionsText, question_type="single_select", job_description=job_description, about_company=None, user_information_all=user_information_all)
+                                
+                                if ai_answer and isinstance(ai_answer, str):
+                                    ai_match_idx = find_matching_option(optionsText, ai_answer)
+                                    if ai_match_idx is not None:
+                                        actions.move_to_element(list_items[ai_match_idx]).click().perform()
+                                        answer = optionsText[ai_match_idx]
+                                        foundOption = True
+                                        print_lg(f'AI successfully selected combobox option: "{answer}"')
+                            except Exception as e:
+                                print_lg("AI failed to select combobox option", e)
+
+                        if not foundOption:
+                            if list_items:
+                                actions.move_to_element(list_items[0]).click().perform()
+                                answer = optionsText[0] if optionsText else "Yes"
+                            else:
+                                actions.send_keys(Keys.ARROW_DOWN).send_keys(Keys.ENTER).perform()
+                
+                ui_update_status("Answering Modal", action_text=f"Filled Combobox: {answer}")
                 questions_list.add((f'{label_org} [Combobox]', answer, "combobox", "None"))
             except Exception as e:
                 print_lg(f"Failed to interact with combobox for {label_org}", e)
             continue
+        
         text_area = try_xp(Question, ".//textarea", False)
         if text_area:
-            label = try_xp(Question, ".//label[@for]", False)
-            label_org = label.text if label else "Unknown"
-            label = label_org.lower()
+            label_el = try_xp(Question, ".//label[@for]", False)
+            try: label_el = label_el.find_element(By.CLASS_NAME,'visually-hidden')
+            except: pass
+            label_org = label_el.text if label_el else "Unknown"
+            ui_update_status("Answering Modal", action_text=f"Textarea: {label_org}")
             answer = ""
+            label = normalize_label(label_org)
             prev_answer = text_area.get_attribute("value")
             if not prev_answer or overwrite_previous_answers:
-                if 'summary' in label: answer = linkedin_summary
-                elif 'cover' in label: answer = cover_letter
+                # 1. Check language questions
+                lang_answer = answer_language_question(label_org, "textarea")
+                if lang_answer is not None:
+                    answer = lang_answer
+                else:
+                    # 2. Check mappings/rules
+                    db_match = match_rules(label_org)
+                    matched_val = None
+                    if db_match:
+                        category = db_match.get("category")
+                        var_name = db_match.get("var_name")
+                        direct_value = db_match.get("value_text") or db_match.get("value")
+                        
+                        if category in ["current_salary", "desired_salary"]:
+                            matched_val = resolve_salary_expectation(label_org, category == "current_salary", work_location)
+                        elif category == "notice":
+                            if any(w in label for w in ['month', 'mes']):
+                                matched_val = notice_period_months
+                            elif any(w in label for w in ['week', 'semana']):
+                                matched_val = notice_period_weeks
+                            else:
+                                matched_val = notice_period
+                        else:
+                            matched_val = resolve_value_for_category(category, var_name, direct_value)
+                    
+                    if matched_val is not None:
+                        answer = matched_val
+                    else:
+                        # 3. Code-based fallback checks
+                        if any(w in label for w in ['notice', 'aviso', 'preaviso', 'notificacion']):
+                            if any(w in label for w in ['month', 'mes']):
+                                answer = notice_period_months
+                            elif any(w in label for w in ['week', 'semana']):
+                                answer = notice_period_weeks
+                            else: 
+                                answer = notice_period
+                        elif any(w in label for w in ['document', 'documento', 'cedula', 'id', 'identificacion', 'identification', 'c.c.', 'c.c', 'dni']):
+                            try:
+                                answer = identification_number
+                            except NameError:
+                                answer = "1000708811" # Safety fallback
+                        elif any(w in label for w in ['salary', 'compensation', 'ctc', 'pay', 'salario', 'salarial', 'sueldo', 'remuneracion', 'expectativa', 'expectativas', 'pretension', 'pretensiones', 'pretendido', 'pretendida', 'aspiracion', 'aspiraciones', 'tarifa', 'cobro', 'pago']): 
+                            answer = resolve_salary_expectation(label_org, any(w in label for w in ['current', 'present', 'actual', 'presente', 'ultimo', 'último']), work_location)
+                        elif any(w in label for w in ['experience', 'years', 'experiencia', 'anos', 'ano', 'tiempo']): 
+                            answer = years_of_experience
+                        elif any(w in label for w in ['phone', 'mobile', 'telefono', 'celular', 'movil']): 
+                            answer = phone_number
+                        elif any(w in label for w in ['street', 'calle']): 
+                            answer = street
+                        elif any(w in label for w in ['city', 'location', 'address', 'ciudad', 'ubicacion', 'direccion']):
+                            answer = current_city if current_city else work_location
+                        elif any(w in label for w in ['signature', 'firma']): 
+                            answer = full_name
+                        elif any(w in label for w in ['name', 'nombre', 'apellido']):
+                            if any(w in label for w in ['full', 'completo']): 
+                                answer = full_name
+                            elif any(w in label for w in ['first', 'primer']) and not any(w in label for w in ['last', 'apellido']): 
+                                answer = first_name
+                            elif any(w in label for w in ['middle', 'segundo']) and not any(w in label for w in ['last', 'apellido']): 
+                                answer = middle_name
+                            elif any(w in label for w in ['last', 'apellido']) and not any(w in label for w in ['first', 'nombre']): 
+                                answer = last_name
+                            elif any(w in label for w in ['employer', 'empleador']): 
+                                answer = recent_employer
+                            else: 
+                                answer = full_name
+                        elif 'linkedin' in label: 
+                            answer = linkedIn
+                        elif any(w in label for w in ['website', 'blog', 'portfolio', 'link', 'sitio web', 'portafolio', 'enlace']): 
+                            answer = website
+                        elif any(w in label for w in ['scale of 1-10', 'escala del 1 al 10', 'escala de 1 a 10', 'escala 1-10']): 
+                            answer = confidence_level
+                        elif any(w in label for w in ['headline', 'titular', 'encabezado']): 
+                            answer = linkedin_headline
+                        elif any(w in label for w in ['state', 'province', 'estado', 'provincia', 'departamento']): 
+                            answer = state
+                        elif any(w in label for w in ['zip', 'postal', 'code', 'codigo postal']): 
+                            answer = zipcode
+                        elif any(w in label for w in ['country', 'pais']): 
+                            answer = country
+                        elif any(w in label for w in ['school', 'university', 'college', 'universidad', 'colegio', 'escuela']): 
+                            answer = university
+                        elif any(w in label for w in ['summary', 'resumen', 'perfil', 'extracto']): 
+                            answer = linkedin_summary
+                        elif any(w in label for w in ['cover', 'carta', 'presentacion']): 
+                            answer = cover_letter
+                        else: 
+                            answer = answer_common_questions(label_org, answer)
+                
+                # 4. AI or fallback to db defaults
                 if answer == "":
-                ##> ------ Yang Li : MARKYangL - Feature ------
                     if use_AI and aiClient:
                         try:
                             if ai_provider.lower() == "openai":
@@ -883,28 +1577,100 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                                 answer = deepseek_answer_question(aiClient, label_org, options=None, question_type="textarea", job_description=job_description, about_company=None, user_information_all=user_information_all)
                             elif ai_provider.lower() == "gemini":
                                 answer = gemini_answer_question(aiClient, label_org, options=None, question_type="textarea", job_description=job_description, about_company=None, user_information_all=user_information_all)
-                            else:
-                                randomly_answered_questions.add((label_org, "textarea"))
-                                answer = ""
-                            if answer and isinstance(answer, str) and len(answer) > 0:
+                            
+                            if answer and isinstance(answer, str) and len(answer) > 0 and answer != "0":
                                 print_lg(f'AI Answered received for question "{label_org}" \nhere is answer: "{answer}"')
                             else:
                                 randomly_answered_questions.add((label_org, "textarea"))
                                 answer = ""
+                                db_fallback = match_rules(label_org)
+                                if db_fallback:
+                                    cat = db_fallback.get("category")
+                                    if cat in ["desired_salary", "current_salary"]:
+                                        answer = resolve_salary_expectation(label_org, cat == "current_salary", work_location)
+                                    elif cat == "experience":
+                                        answer = years_of_experience
+                                    elif cat == "phone":
+                                        answer = phone_number
+                                    else:
+                                        answer = "0"
+                                else:
+                                    if any(w in label for w in ['salary', 'pay', 'rate', 'compensation', 'ctc', 'salario', 'salarial', 'sueldo', 'remuneracion', 'expectativa', 'expectativas', 'pretension', 'pretensiones', 'pretendido', 'pretendida', 'aspiracion', 'aspiraciones']):
+                                        answer = resolve_salary_expectation(label_org, False, work_location)
+                                    elif any(w in label for w in ['years', 'experiencia', 'anos', 'ano', 'tiempo']): 
+                                        answer = years_of_experience
                         except Exception as e:
-                            print_lg("Failed to get AI answer!", e)
+                            print_lg("Failed to get AI answer for textarea!", e)
                             randomly_answered_questions.add((label_org, "textarea"))
                             answer = ""
+                            db_fallback = match_rules(label_org)
+                            if db_fallback:
+                                cat = db_fallback.get("category")
+                                if cat in ["desired_salary", "current_salary"]:
+                                    answer = resolve_salary_expectation(label_org, cat == "current_salary", work_location)
+                                elif cat == "experience":
+                                    answer = years_of_experience
+                                elif cat == "phone":
+                                    answer = phone_number
+                                else:
+                                    answer = "0"
                     else:
                         randomly_answered_questions.add((label_org, "textarea"))
-            text_area.clear()
-            text_area.send_keys(answer)
-            if do_actions:
-                    sleep(2)
-                    actions.send_keys(Keys.ARROW_DOWN)
-                    actions.send_keys(Keys.ENTER).perform()
+                        answer = ""
+                        db_fallback = match_rules(label_org)
+                        if db_fallback:
+                            cat = db_fallback.get("category")
+                            if cat in ["desired_salary", "current_salary"]:
+                                answer = resolve_salary_expectation(label_org, cat == "current_salary", work_location)
+                            elif cat == "experience":
+                                answer = years_of_experience
+                            elif cat == "phone":
+                                answer = phone_number
+                            else:
+                                answer = "0"
+                        else:
+                            if any(w in label for w in ['salary', 'pay', 'rate', 'compensation', 'ctc', 'expect', 'salario', 'salarial', 'sueldo', 'remuneracion', 'expectativa', 'expectativas', 'pretension', 'pretensiones', 'pretendido', 'pretendida', 'aspiracion', 'aspiraciones', 'tarifa', 'pago']):
+                                answer = resolve_salary_expectation(label_org, any(w in label for w in ['current', 'present', 'actual', 'presente', 'ultimo', 'último']), work_location)
+                            elif any(w in label for w in ['name', 'nombre']): 
+                                answer = full_name
+                            elif any(w in label for w in ['number', 'phone', 'telefono', 'celular', 'movil']): 
+                                answer = phone_number
+                            else: 
+                                answer = years_of_experience if any(w in label for w in ['year', 'experience', 'ano', 'anos', 'experiencia', 'tiempo']) else "0"
+                
+                if not isinstance(answer, str): 
+                    answer = str(answer)
+                
+                # Check entire Question text for decimal requirements (including help texts / validation errors)
+                question_full_text = Question.text.lower()
+                if any(w in question_full_text for w in ['decimal', 'mayor que 0.0', 'mayor que 0,0', 'greater than 0.0', 'greater than 0,0', 'mayor a 0.0', 'mayor a 0,0']):
+                    try:
+                        val = float(answer)
+                        answer = f"{val:.1f}"
+                    except ValueError:
+                        pass
+                        
+                try: text_area.clear()
+                except: pass
+                try:
+                    driver.execute_script("""
+                        var el = arguments[0];
+                        var val = arguments[1];
+                        var nativeTextAreaValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+                        nativeTextAreaValueSetter.call(el, val);
+                        el.dispatchEvent(new Event('focus', { bubbles: true }));
+                        el.dispatchEvent(new Event('input', { bubbles: true }));
+                        el.dispatchEvent(new Event('change', { bubbles: true }));
+                        el.dispatchEvent(new Event('blur', { bubbles: true }));
+                    """, text_area, answer)
+                except:
+                    text_area.send_keys(answer)
+            else:
+                answer = prev_answer
+                save_to_qa_database(label_org, answer)
+                
+            ui_update_status("Answering Modal", action_text=f"Filled Textarea: {answer}")
             questions_list.add((label, text_area.get_attribute("value"), "textarea", prev_answer))
-            ##<
             continue
 
         # Check if it's a checkbox question
@@ -912,6 +1678,7 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
         if checkbox:
             label = try_xp(Question, ".//span[@class='visually-hidden']", False)
             label_org = label.text if label else "Unknown"
+            ui_update_status("Answering Modal", action_text=f"Checkbox: {label_org}")
             label = label_org.lower()
             answer = try_xp(Question, ".//label[@for]", False)  # Sometimes multiple checkboxes are given for 1 question, Not accounted for that yet
             answer = answer.text if answer else "Unknown"
@@ -924,6 +1691,7 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                 except Exception as e: 
                     print_lg("Checkbox click failed!", e)
                     pass
+            ui_update_status("Answering Modal", action_text=f"Checked Checkbox: {checked}")
             questions_list.add((f'{label} ([X] {answer})', checked, "checkbox", prev_answer))
             continue
 
@@ -999,7 +1767,7 @@ def failed_job(job_id: str, job_link: str, resume: str, date_listed, error: str,
             file.close()
     except Exception as e:
         print_lg("Failed to update failed jobs list!", e)
-        pyautogui.alert("Failed to update the excel of failed jobs!\nProbably because of 1 of the following reasons:\n1. The file is currently open or in use by another program\n2. Permission denied to write to the file\n3. Failed to find the file", "Failed Logging")
+        ui_alert("Failed Logging", "Failed to update the excel of failed jobs!\nProbably because of 1 of the following reasons:\n1. The file is currently open or in use by another program\n2. Permission denied to write to the file\n3. Failed to find the file")
 
 
 def screenshot(driver: WebDriver, job_id: str, failedAt: str) -> str:
@@ -1037,7 +1805,7 @@ def submitted_jobs(job_id: str, title: str, company: str, work_location: str, wo
         csv_file.close()
     except Exception as e:
         print_lg("Failed to update submitted jobs list!", e)
-        pyautogui.alert("Failed to update the excel of applied jobs!\nProbably because of 1 of the following reasons:\n1. The file is currently open or in use by another program\n2. Permission denied to write to the file\n3. Failed to find the file", "Failed Logging")
+        ui_alert("Failed Logging", "Failed to update the excel of applied jobs!\nProbably because of 1 of the following reasons:\n1. The file is currently open or in use by another program\n2. Permission denied to write to the file\n3. Failed to find the file")
 
 
 
@@ -1051,8 +1819,40 @@ def discard_job() -> None:
 
 
 
+# Function to check if LinkedIn daily limit has been reached
+def check_daily_limit() -> bool:
+    global dailyEasyApplyLimitReached
+    try:
+        page_text = driver.find_element(By.TAG_NAME, "body").text.lower()
+        limit_phrases = [
+            "exceeded the daily application limit",
+            "limit daily submissions",
+            "apply tomorrow",
+            "límite de solicitudes",
+            "solicitar mañana",
+            "vuelve a solicitar",
+            "limitamos el número de solicitudes"
+        ]
+        if any(phrase.lower() in page_text for phrase in limit_phrases):
+            print_lg("\n###############  Daily application limit for Easy Apply is reached!  ###############\n")
+            ui_alert("Daily Limit Reached", "LinkedIn is limiting your daily submissions to prevent bots.\nThe bot will now stop. Save this job and apply tomorrow.")
+            dailyEasyApplyLimitReached = True
+            return True
+    except:
+        pass
+    return False
+
+
 # Function to apply to jobs
 def apply_to_jobs(search_terms: list[str]) -> None:
+    locations = search_location if isinstance(search_location, (list, tuple)) else [search_location]
+    for location in locations:
+        _apply_to_jobs_for_location(search_terms, location)
+        if dailyEasyApplyLimitReached: return
+
+
+# Function to apply to jobs for a specific location
+def _apply_to_jobs_for_location(search_terms: list[str], location: str) -> None:
     applied_jobs = get_applied_job_ids()
     rejected_jobs = set()
     blacklisted_companies = set()
@@ -1061,11 +1861,39 @@ def apply_to_jobs(search_terms: list[str]) -> None:
 
     if randomize_search_order:  shuffle(search_terms)
     for searchTerm in search_terms:
-        driver.get(f"https://www.linkedin.com/jobs/search/?keywords={searchTerm}")
+        ui_pause_check()
+        ui_update_status("Searching", f"'{searchTerm}' in '{location}'")
+        search_url = f"https://www.linkedin.com/jobs/search/?keywords={quote(searchTerm)}&location={quote(location.strip())}" if location and location.strip() else f"https://www.linkedin.com/jobs/search/?keywords={quote(searchTerm)}"
         print_lg("\n________________________________________________________________________________________________________________________\n")
-        print_lg(f'\n>>>> Now searching for "{searchTerm}" <<<<\n\n')
+        print_lg(f'\n>>>> Now searching for "{searchTerm}" in "{location}" <<<<\n')
 
-        apply_filters()
+        # Navigate directly to the search URL (Portmaster firewall disabled)
+        page_loaded = False
+        print_lg(f"Navigating directly to search URL...")
+        try:
+            driver.get(search_url)
+            buffer(5)
+            
+            current_url = driver.current_url
+            print_lg(f"After navigation - URL: {current_url}")
+            
+            if "search" in current_url.lower() and "keyword" in current_url.lower():
+                page_loaded = True
+                print_lg("Search navigation worked normally!")
+            else:
+                print_lg("Direct navigation failed. URL did not change to search results.")
+                
+        except Exception as e:
+            print_lg(f"Navigation failed: {e}")
+            page_loaded = False
+        
+        if not page_loaded:
+            print_lg(f"SKIPPING search term '{searchTerm}' - navigation failed.")
+            continue
+
+        apply_filters(location)
+        if check_daily_limit():
+            return
 
         current_count = 0
         try:
@@ -1081,6 +1909,7 @@ def apply_to_jobs(search_terms: list[str]) -> None:
 
             
                 for job in job_listings:
+                    ui_pause_check()
                     if keep_screen_awake: pyautogui.press('shiftright')
                     if current_count >= switch_number: break
                     print_lg("\n-@-\n")
@@ -1088,6 +1917,17 @@ def apply_to_jobs(search_terms: list[str]) -> None:
                     job_id,title,company,work_location,work_style,skip = get_job_main_details(job, blacklisted_companies, rejected_jobs)
 
                     if skip: continue
+
+                    # Job focus filter — skip if title doesn't match user's focus areas
+                    if not is_job_relevant(title, work_style):
+                        print_lg(f'Skipping "{title}" — not in focus areas (Help Desk / Tech Support / Customer Service Remote)')
+                        skip_count += 1
+                        continue
+
+                    ui_update_status("Processing Job", f"{title} at {company}")
+                    if check_daily_limit():
+                        return
+
                     # Redundant fail safe check for applied jobs!
                     try:
                         if job_id in applied_jobs or find_by_class(driver, "jobs-s-apply__application-link", 2):
@@ -1172,6 +2012,32 @@ def apply_to_jobs(search_terms: list[str]) -> None:
 
                     
                     if use_AI and description != "Unknown":
+                        ##> ------ AI Pre-screening Feature ------
+                        try:
+                            print_lg("Pre-screening job requirements with AI...")
+                            eval_result = {"meets_requirements": True, "reason": "Default"}
+                            
+                            if ai_provider.lower() == "openai":
+                                eval_result = ai_evaluate_job(aiClient, description, user_information_all)
+                            elif ai_provider.lower() == "deepseek":
+                                eval_result = deepseek_evaluate_job(aiClient, description, user_information_all)
+                            elif ai_provider.lower() == "gemini":
+                                eval_result = gemini_evaluate_job(aiClient, description, user_information_all)
+                                
+                            if isinstance(eval_result, dict) and not eval_result.get("meets_requirements", True):
+                                reason = eval_result.get("reason", "AI determined user does not meet core requirements.")
+                                message = f'\n{description}\n\nAI Pre-screening failed: {reason}. Skipping this job!\n'
+                                print_lg(message)
+                                failed_job(job_id, job_link, resume, date_listed, "AI Pre-screening Rejected", message, "Skipped", screenshot_name)
+                                rejected_jobs.add(job_id)
+                                skip_count += 1
+                                continue
+                            else:
+                                print_lg("AI Pre-screening passed. Proceeding with application...")
+                        except Exception as e:
+                            print_lg("Failed to evaluate job with AI:", e)
+                        ##<
+
                         ##> ------ Yang Li : MARKYangL - Feature ------
                         try:
                             if ai_provider.lower() == "openai":
@@ -1245,7 +2111,7 @@ def apply_to_jobs(search_terms: list[str]) -> None:
                                     if next_counter >= 15: 
                                         if pause_at_failed_question:
                                             screenshot(driver, job_id, "Needed manual intervention for failed question")
-                                            pyautogui.alert("Couldn't answer one or more questions.\nPlease click \"Continue\" once done.\nDO NOT CLICK Back, Next or Review button in LinkedIn.\n\n\n\n\nYou can turn off \"Pause at failed question\" setting in config.py", "Help Needed", "Continue")
+                                            ui_alert("Help Needed", "Couldn't answer one or more questions.\nPlease click \"Continue\" once done.\nDO NOT CLICK Back, Next or Review button in LinkedIn.\n\n\n\n\nYou can turn off \"Pause at failed question\" setting in config.py")
                                             next_counter = 1
                                             continue
                                         if questions_list: print_lg("Stuck for one or some of the following questions...", questions_list)
@@ -1268,7 +2134,7 @@ def apply_to_jobs(search_terms: list[str]) -> None:
                                 wait_span_click(driver, "Review", 1, scrollTop=True)
                                 cur_pause_before_submit = pause_before_submit
                                 if errored != "stuck" and cur_pause_before_submit:
-                                    decision = pyautogui.confirm('1. Please verify your information.\n2. If you edited something, please return to this final screen.\n3. DO NOT CLICK "Submit Application".\n\n\n\n\nYou can turn off "Pause before submit" setting in config.py\nTo TEMPORARILY disable pausing, click "Disable Pause"', "Confirm your information",["Disable Pause", "Discard Application", "Submit Application"])
+                                    decision = ui_confirm("Confirm your information", '1. Please verify your information.\n2. If you edited something, please return to this final screen.\n3. DO NOT CLICK "Submit Application".\n\n\n\n\nYou can turn off "Pause before submit" setting in config.py\nTo TEMPORARILY disable pausing, click "Disable Pause"', ["Disable Pause", "Discard Application", "Submit Application"])
                                     if decision == "Discard Application": raise Exception("Job application discarded by user!")
                                     pause_before_submit = False if "Disable Pause" == decision else True
                                     # try_xp(modal, ".//span[normalize-space(.)='Review']")
@@ -1276,7 +2142,7 @@ def apply_to_jobs(search_terms: list[str]) -> None:
                                 if wait_span_click(driver, "Submit application", 2, scrollTop=True): 
                                     date_applied = datetime.now()
                                     if not wait_span_click(driver, "Done", 2): actions.send_keys(Keys.ESCAPE).perform()
-                                elif errored != "stuck" and cur_pause_before_submit and "Yes" in pyautogui.confirm("You submitted the application, didn't you 😒?", "Failed to find Submit Application!", ["Yes", "No"]):
+                                elif errored != "stuck" and cur_pause_before_submit and "Yes" in ui_confirm("Failed to find Submit Application!", "You submitted the application, didn't you?", ["Yes", "No"]):
                                     date_applied = datetime.now()
                                     wait_span_click(driver, "Done", 2)
                                 else:
@@ -1293,6 +2159,8 @@ def apply_to_jobs(search_terms: list[str]) -> None:
                             failed_job(job_id, job_link, resume, date_listed, "Problem in Easy Applying", e, application_link, screenshot_name)
                             failed_count += 1
                             discard_job()
+                            if check_daily_limit():
+                                return
                             continue
                     else:
                         # Case 2: Apply externally
@@ -1367,10 +2235,11 @@ def main() -> None:
         validate_config()
         
         if not os.path.exists(default_resume_path):
-            pyautogui.alert(text='Your default resume "{}" is missing! Please update it\'s folder path "default_resume_path" in config.py\n\nOR\n\nAdd a resume with exact name and path (check for spelling mistakes including cases).\n\n\nFor now the bot will continue using your previous upload from LinkedIn!'.format(default_resume_path), title="Missing Resume", button="OK")
+            ui_alert("Missing Resume", 'Your default resume "{}" is missing! Please update it\'s folder path "default_resume_path" in config.py\n\nOR\n\nAdd a resume with exact name and path (check for spelling mistakes including cases).\n\n\nFor now the bot will continue using your previous upload from LinkedIn!'.format(default_resume_path))
             useNewResume = False
         
         # Login to LinkedIn
+        ui_update_status("Logging In", "Navigating to LinkedIn login page...")
         tabs_count = len(driver.window_handles)
         driver.get("https://www.linkedin.com/login")
         sleep(5)
@@ -1428,7 +2297,7 @@ def main() -> None:
         print_lg("Browser window closed or session is invalid. Exiting.", e)
     except Exception as e:
         critical_error_log("In Applier Main", e)
-        pyautogui.alert(str(e),alert_title)
+        ui_alert(alert_title, str(e))
     finally:
         summary = "Total runs: {}\nJobs Easy Applied: {}\nExternal job links collected: {}\nTotal applied or collected: {}\nFailed jobs: {}\nIrrelevant jobs skipped: {}\n".format(total_runs,easy_applied_count,external_jobs_count,easy_applied_count + external_jobs_count,failed_count,skip_count)
         print_lg(summary)
@@ -1441,31 +2310,24 @@ def main() -> None:
         print_lg("Irrelevant jobs skipped:        {}\n".format(skip_count))
         if randomly_answered_questions: print_lg("\n\nQuestions randomly answered:\n  {}  \n\n".format(";\n".join(str(question) for question in randomly_answered_questions)))
         quotes = choice([
-            "Never quit. You're one step closer than before. - Sai Vignesh Golla", 
-            "All the best with your future interviews, you've got this. - Sai Vignesh Golla", 
-            "Keep up with the progress. You got this. - Sai Vignesh Golla", 
-            "If you're tired, learn to take rest but never give up. - Sai Vignesh Golla",
-            "Success is not final, failure is not fatal, It is the courage to continue that counts. - Winston Churchill (Not a sponsor)",
-            "Believe in yourself and all that you are. Know that there is something inside you that is greater than any obstacle. - Christian D. Larson (Not a sponsor)",
-            "Every job is a self-portrait of the person who does it. Autograph your work with excellence. - Jessica Guidobono (Not a sponsor)",
-            "The only way to do great work is to love what you do. If you haven't found it yet, keep looking. Don't settle. - Steve Jobs (Not a sponsor)",
-            "Opportunities don't happen, you create them. - Chris Grosser (Not a sponsor)",
-            "The road to success and the road to failure are almost exactly the same. The difference is perseverance. - Colin R. Davis (Not a sponsor)",
-            "Obstacles are those frightful things you see when you take your eyes off your goal. - Henry Ford (Not a sponsor)",
-            "The only limit to our realization of tomorrow will be our doubts of today. - Franklin D. Roosevelt (Not a sponsor)",
+            "Success is not final, failure is not fatal, It is the courage to continue that counts. - Winston Churchill",
+            "Believe in yourself and all that you are. Know that there is something inside you that is greater than any obstacle. - Christian D. Larson",
+            "Every job is a self-portrait of the person who does it. Autograph your work with excellence. - Jessica Guidobono",
+            "The only way to do great work is to love what you do. If you haven't found it yet, keep looking. Don't settle. - Steve Jobs",
+            "Opportunities don't happen, you create them. - Chris Grosser",
+            "The road to success and the road to failure are almost exactly the same. The difference is perseverance. - Colin R. Davis",
+            "Obstacles are those frightful things you see when you take your eyes off your goal. - Henry Ford",
+            "The only limit to our realization of tomorrow will be our doubts of today. - Franklin D. Roosevelt",
             ])
-        sponsors = "Be the first to have your name here!"
         timeSaved = (easy_applied_count * 80) + (external_jobs_count * 20) + (skip_count * 10)
         timeSavedMsg = ""
         if timeSaved > 0:
             timeSaved += 60
-            timeSavedMsg = f"In this run, you saved approx {round(timeSaved/60)} mins ({timeSaved} secs), please consider supporting the project."
-        msg = f"{quotes}\n\n\n{timeSavedMsg}\nYou can also get your quote and name shown here, or prioritize your bug reports by supporting the project at:\n\nhttps://github.com/sponsors/GodsScion\n\n\nSummary:\n{summary}\n\n\nBest regards,\nSai Vignesh Golla\nhttps://www.linkedin.com/in/saivigneshgolla/\n\nTop Sponsors:\n{sponsors}"
-        pyautogui.alert(msg, "Exiting..")
+            timeSavedMsg = f"In this run, you saved approx {round(timeSaved/60)} mins ({timeSaved} secs)."
+        msg = f"{quotes}\n\n{timeSavedMsg}\n\nSummary:\n{summary}"
         print_lg(msg,"Closing the browser...")
         if tabs_count >= 10:
             msg = "NOTE: IF YOU HAVE MORE THAN 10 TABS OPENED, PLEASE CLOSE OR BOOKMARK THEM!\n\nOr it's highly likely that application will just open browser and not do anything next time!" 
-            pyautogui.alert(msg,"Info")
             print_lg("\n"+msg)
         ##> ------ Yang Li : MARKYangL - Feature ------
         if use_AI and aiClient:
@@ -1490,4 +2352,9 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print_lg("\nExiting bot cleanly...")
+        import os
+        os._exit(0)

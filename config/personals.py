@@ -19,15 +19,15 @@ version:    2024.11.28.16.00
 # >>>>>>>>>>> Easy Apply Questions & Inputs <<<<<<<<<<<
 
 # Your legal name
-first_name = "Cesar"                 # Your first name in quotes Eg: "First", "Sai"
-middle_name = ""            # Your name in quotes Eg: "Middle", "Vignesh", ""
-last_name = "Jimenez"                # Your last name in quotes Eg: "Last", "Golla"
+first_name = "Cesar"
+middle_name = ""
+last_name = "Jimenez"
 
 # Phone number (required), make sure it's valid.
-phone_number = "+573239301232"        # Enter your 10 digit number in quotes Eg: "9876543210"
+phone_number = 573239301232
 
 # What is your current city?
-current_city = "Bogotá"                  # Los Angeles, San Francisco, etc.
+current_city = "Bogotá"
 '''
 Note: If left empty as "", the bot will fill in location of jobs location.
 '''
@@ -35,22 +35,26 @@ Note: If left empty as "", the bot will fill in location of jobs location.
 # Address, not so common question but some job applications make it required!
 street = ""
 state = "Bogotá D.C."
-zipcode = "110111"
+zipcode = 110111
 country = "Colombia"
 university = "CSA (Colegio San Agustin) en Bogota"
 
 ## US Equal Opportunity questions
 # What is your ethnicity or race? If left empty as "", tool will not answer the question. However, note that some companies make it compulsory to be answered
-ethnicity = "Hispanic/Latino"              # "Decline", "Hispanic/Latino", "American Indian or Alaska Native", "Asian", "Black or African American", "Native Hawaiian or Other Pacific Islander", "White", "Other"    
+ethnicity = "Hispanic/Latino"
 
 # How do you identify yourself? If left empty as "", tool will not answer the question. However, note that some companies make compulsory to be answered
-gender = "Male"                 # "Male", "Female", "Other", "Decline" or ""
+gender = "Male"
 
 # Are you physically disabled or have a history/record of having a disability? If left empty as "", tool will not answer the question. However, note that some companies make it compulsory to be answered    
-disability_status = "No"      # "Yes", "No", "Decline"
+disability_status = "No"
 
-veteran_status = "No"         # "Yes", "No", "Decline"
+veteran_status = "No"
 ##
+
+# Identification Number
+identification_number = 1000708811
+
 
 
 '''
@@ -65,7 +69,3 @@ Some valid examples are:
 
 Invalid inputs will result in an error!
 '''
-
-
-
-

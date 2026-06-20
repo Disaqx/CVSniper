@@ -21,10 +21,10 @@ version:    2024.11.28.16.00
 # Your legal name
 first_name = "Cesar"
 middle_name = ""
-last_name = "Jimenez"
+last_name = "Puello"
 
 # Phone number (required), make sure it's valid.
-phone_number = 573239301232
+phone_number = "573134889799"
 
 # What is your current city?
 current_city = "Bogotá"

@@ -1,5 +1,8 @@
 ###################################################### CONFIGURE YOUR BOT HERE ######################################################
 
+# Idioma de la interfaz / UI Language
+ui_language = "es"   # "es" (Español) o "en" (English)
+
 # >>>>>>>>>>> LinkedIn Settings <<<<<<<<<<<
 
 # Keep the External Application tabs open?

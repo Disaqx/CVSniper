@@ -9,6 +9,7 @@ import re
 import ast
 from ctypes import c_int, c_void_p, Structure, sizeof, windll, pointer, byref
 from ctypes import wintypes
+from modules.i18n import T
 
 # Enable DPI awareness
 try:
@@ -671,10 +672,14 @@ class GlassSettings(tk.Toplevel):
         self._add_bool(p, "safe_mode", "Modo seguro (perfil invitado)", self._SETT, "safe_mode")
         self._add_bool(p, "keep_screen_awake", "Mantener pantalla activa", self._SETT, "keep_screen_awake")
 
-        _section_title(p, "🔄  Ciclos de búsqueda")
-        self._add_bool(p, "alternate_sortby", "Alternar orden de búsqueda", self._SETT, "alternate_sortby")
-        self._add_bool(p, "cycle_date_posted", "Ciclar filtro de fecha", self._SETT, "cycle_date_posted")
-        self._add_bool(p, "stop_date_cycle_at_24hr", "Parar ciclo en 24hr", self._SETT, "stop_date_cycle_at_24hr")
+        _section_title(p, "🔄  Ciclos de busqueda / Search Cycles")
+        self._add_bool(p, "alternate_sortby", "Alternar orden / Alternate sort order", self._SETT, "alternate_sortby")
+        self._add_bool(p, "cycle_date_posted", "Ciclar filtro de fecha / Cycle date filter", self._SETT, "cycle_date_posted")
+        self._add_bool(p, "stop_date_cycle_at_24hr", "Parar ciclo en 24hr / Stop cycle at 24hr", self._SETT, "stop_date_cycle_at_24hr")
+
+        _section_title(p, "🌐  Idioma de la Interfaz / UI Language")
+        _styled_label(p, T("lang_label") + ":  es = Espanol  |  en = English").pack(anchor="w", padx=14, pady=(2, 1))
+        self._add_entry(p, "ui_language", "Idioma / Language", self._SETT, "ui_language", width=6)
 
     # ── Save logic ────────────────────────────────────────────────────────────
 
@@ -1076,6 +1081,9 @@ def ui_start(driver_instance=None):
     global active_driver
     active_driver = driver_instance
     threading.Thread(target=run_tkinter_ui, daemon=True).start()
+    # Give the UI time to initialize, then show the LinkedIn reminder
+    time.sleep(1.5)
+    ui_alert(T("linkedin_title"), T("linkedin_msg"))
 
 def ui_update_status(status_text, details_text=None, action_text=None):
     status_queue.put(("status", status_text))

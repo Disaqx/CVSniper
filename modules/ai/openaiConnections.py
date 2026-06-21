@@ -165,7 +165,11 @@ def ai_completion(client: OpenAI, messages: list[dict], response_format: dict = 
     if model_supports_temperature(llm_model):
         params["temperature"] = temperature
     if response_format and llm_spec in ["openai", "openai-like"]:
-        params["response_format"] = response_format
+        # Groq doesn't support json_schema strict mode — downgrade to json_object
+        if ai_provider.lower() == "groq" and isinstance(response_format, dict) and response_format.get("type") == "json_schema":
+            params["response_format"] = {"type": "json_object"}
+        else:
+            params["response_format"] = response_format
 
     completion = client.chat.completions.create(**params)
 

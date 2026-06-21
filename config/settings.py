@@ -1,7 +1,7 @@
 ###################################################### CONFIGURE YOUR BOT HERE ######################################################
 
 # Idioma de la interfaz / UI Language
-ui_language = "es"   # "es" (Español) o "en" (English)
+ui_language = "en"
 
 # >>>>>>>>>>> LinkedIn Settings <<<<<<<<<<<
 

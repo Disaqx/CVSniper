@@ -9,7 +9,7 @@ import re
 import ast
 from ctypes import c_int, c_void_p, Structure, sizeof, windll, pointer, byref
 from ctypes import wintypes
-from modules.i18n import T
+from modules.i18n import T, get_language
 
 # Enable DPI awareness
 try:
@@ -167,7 +167,7 @@ class ResizeManager:
 
 # Custom glassmorphism alert window
 class GlassAlert(tk.Toplevel):
-    def __init__(self, parent, title, message, response_queue):
+    def __init__(self, parent, title, message, response_queue, btn_label=None):
         super().__init__(parent)
         self.response_queue = response_queue
         scaling = get_dpi_scaling()
@@ -177,7 +177,14 @@ class GlassAlert(tk.Toplevel):
         self.configure(bg="#050505")
         sw = self.winfo_screenwidth()
         sh = self.winfo_screenheight()
-        w, h = int(400 * scaling), int(200 * scaling)
+
+        # Auto-size height based on how many lines the message has
+        line_count = len(message.split("\n"))
+        base_h = 200
+        extra = max(0, line_count - 4) * 18
+        w, h = int(420 * scaling), int((base_h + extra) * scaling)
+        h = min(h, int(sh * 0.8))   # never exceed 80% of screen height
+
         x = (sw - w) // 2
         y = (sh - h) // 2
         self.geometry(f"{w}x{h}+{x}+{y}")
@@ -189,12 +196,13 @@ class GlassAlert(tk.Toplevel):
         frame.place(x=1, y=1, width=w-2, height=h-2)
         title_label = tk.Label(frame, text=title.upper(), fg="#7F5AF0", bg="#0a0a0c", font=("Segoe UI Semibold", 10), anchor="w")
         title_label.pack(fill="x", padx=15, pady=(15, 5))
-        msg_label = tk.Label(frame, text=message, fg="#E6E6E8", bg="#0a0a0c", font=("Segoe UI", 9), justify="left", wraplength=int(370 * scaling), anchor="nw")
+        msg_label = tk.Label(frame, text=message, fg="#E6E6E8", bg="#0a0a0c", font=("Segoe UI", 9), justify="left", wraplength=int(390 * scaling), anchor="nw")
         msg_label.pack(fill="both", expand=True, padx=15, pady=(5, 10))
         btn_frame = tk.Frame(frame, bg="#0a0a0c")
-        btn_frame.pack(fill="x", side="bottom", pady=15)
-        btn = tk.Button(btn_frame, text="CONTINUE", fg="#FFFFFE", bg="#7F5AF0", activeforeground="#FFFFFE", activebackground="#9270F2", bd=0, padx=15, pady=6, font=("Segoe UI Bold", 9), command=self.on_continue, cursor="hand2")
-        btn.pack(side="right", padx=15)
+        btn_frame.pack(fill="x", side="bottom", pady=(8, 14))
+        label = btn_label or T("btn_resume")
+        btn = tk.Button(btn_frame, text=label.upper(), fg="#FFFFFE", bg="#7F5AF0", activeforeground="#FFFFFE", activebackground="#9270F2", bd=0, padx=24, pady=8, font=("Segoe UI Bold", 9), command=self.on_continue, cursor="hand2")
+        btn.pack(anchor="center")
         self.bell()
 
     def on_continue(self):
@@ -214,7 +222,13 @@ class GlassConfirm(tk.Toplevel):
         self.configure(bg="#050505")
         sw = self.winfo_screenwidth()
         sh = self.winfo_screenheight()
-        w, h = int(450 * scaling), int(220 * scaling)
+
+        line_count = len(message.split("\n"))
+        base_h = 210
+        extra = max(0, line_count - 5) * 18
+        w, h = int(490 * scaling), int((base_h + extra) * scaling)
+        h = min(h, int(sh * 0.8))
+
         x = (sw - w) // 2
         y = (sh - h) // 2
         self.geometry(f"{w}x{h}+{x}+{y}")
@@ -226,16 +240,16 @@ class GlassConfirm(tk.Toplevel):
         frame.place(x=1, y=1, width=w-2, height=h-2)
         title_label = tk.Label(frame, text=title.upper(), fg="#7F5AF0", bg="#0a0a0c", font=("Segoe UI Semibold", 10), anchor="w")
         title_label.pack(fill="x", padx=15, pady=(15, 5))
-        msg_label = tk.Label(frame, text=message, fg="#E6E6E8", bg="#0a0a0c", font=("Segoe UI", 9), justify="left", wraplength=int(420 * scaling), anchor="nw")
+        msg_label = tk.Label(frame, text=message, fg="#E6E6E8", bg="#0a0a0c", font=("Segoe UI", 9), justify="left", wraplength=int(460 * scaling), anchor="nw")
         msg_label.pack(fill="both", expand=True, padx=15, pady=(5, 10))
         btn_frame = tk.Frame(frame, bg="#0a0a0c")
-        btn_frame.pack(fill="x", side="bottom", pady=15)
+        btn_frame.pack(fill="x", side="bottom", padx=10, pady=(8, 14))
         for idx, btn_text in enumerate(buttons):
             is_accent = (idx == len(buttons) - 1)
             bg_color = "#7F5AF0" if is_accent else "#2D2D30"
             active_bg = "#9270F2" if is_accent else "#3A3A3F"
-            btn = tk.Button(btn_frame, text=btn_text.upper(), fg="#FFFFFE", bg=bg_color, activeforeground="#FFFFFE", activebackground=active_bg, bd=0, padx=12, pady=5, font=("Segoe UI Bold", 8), command=lambda val=btn_text: self.on_click(val), cursor="hand2")
-            btn.pack(side="right", padx=8)
+            btn = tk.Button(btn_frame, text=btn_text.upper(), fg="#FFFFFE", bg=bg_color, activeforeground="#FFFFFE", activebackground=active_bg, bd=0, padx=14, pady=7, font=("Segoe UI Bold", 8), command=lambda val=btn_text: self.on_click(val), cursor="hand2")
+            btn.pack(side="right", padx=6)
         self.bell()
 
     def on_click(self, value):
@@ -378,6 +392,7 @@ class GlassSettings(tk.Toplevel):
     _PERS    = os.path.join(_BASE, "config", "personals.py")
     _QUEST   = os.path.join(_BASE, "config", "questions.py")
     _SETT    = os.path.join(_BASE, "config", "settings.py")
+    _SECR    = os.path.join(_BASE, "config", "secrets.py")
 
     def __init__(self, parent):
         super().__init__(parent)
@@ -412,7 +427,7 @@ class GlassSettings(tk.Toplevel):
         hdr.pack(fill="x", padx=0)
         hdr.pack_propagate(False)
 
-        tk.Label(hdr, text="  ⎔  CONFIGURACION", fg=ACCENT, bg=BG,
+        tk.Label(hdr, text=f"  ⎔  {T('cfg_title')}", fg=ACCENT, bg=BG,
                  font=("Segoe UI Bold", 10)).pack(side="left", padx=8)
 
         close_lbl = tk.Label(hdr, text="  ✕  ", fg=FG_DIM, bg=BG,
@@ -433,8 +448,10 @@ class GlassSettings(tk.Toplevel):
         tab_bar.pack(fill="x")
         tab_bar.pack_propagate(False)
 
-        tabs = [("⌕  Búsqueda", "search"), ("≡  Personal", "personal"),
-                ("✎  Respuestas", "responses"), ("⎔  Bot", "bot")]
+        tabs = [(f"⌕  {T('cfg_tab_search')}", "search"),
+                (f"≡  {T('cfg_tab_personal')}", "personal"),
+                (f"✎  {T('cfg_tab_responses')}", "responses"),
+                (f"⎔  {T('cfg_tab_bot')}", "bot")]
         for label, key in tabs:
             btn = tk.Label(tab_bar, text=label, fg=FG_DIM, bg=BG,
                            font=("Segoe UI", 9), cursor="hand2", padx=12)
@@ -456,12 +473,12 @@ class GlassSettings(tk.Toplevel):
         btn_bar.pack_propagate(False)
         tk.Frame(btn_bar, bg=BORDER, height=1).pack(fill="x", side="top")
 
-        tk.Button(btn_bar, text="CANCELAR", fg=FG_DIM, bg=BG,
+        tk.Button(btn_bar, text=T("cfg_cancel"), fg=FG_DIM, bg=BG,
                   activeforeground=FG, activebackground=BG2,
                   bd=0, padx=14, pady=5, font=("Segoe UI Bold", 8),
                   command=self.destroy, cursor="hand2").pack(side="right", padx=8, pady=7)
 
-        tk.Button(btn_bar, text="  GUARDAR  ", fg="#101012", bg=ACCENT2,
+        tk.Button(btn_bar, text=f"  {T('cfg_save')}  ", fg="#101012", bg=ACCENT2,
                   activeforeground="#101012", activebackground="#00c9aa",
                   bd=0, padx=14, pady=5, font=("Segoe UI Bold", 8),
                   command=self._save_all, cursor="hand2").pack(side="right", padx=4, pady=7)
@@ -580,6 +597,40 @@ class GlassSettings(tk.Toplevel):
         cb.pack(anchor="w", padx=14, pady=3)
         self._fields[field_key] = ("bool", var, filepath, varname)
 
+    def _add_multicheck(self, parent, field_key, label_text, filepath, varname, options, cols=3):
+        _styled_label(parent, label_text).pack(anchor="w", padx=14, pady=(6, 1))
+        container = tk.Frame(parent, bg=BG2)
+        container.pack(anchor="w", padx=14, pady=(2, 6), fill="x")
+        current_val = _read_py_var(filepath, varname) or []
+        if not isinstance(current_val, list):
+            current_val = []
+        check_vars = {}
+        for i, opt in enumerate(options):
+            var = tk.BooleanVar(value=(opt in current_val))
+            cb = _styled_check(container, opt, var)
+            cb.grid(row=i // cols, column=i % cols, sticky="w", padx=(0, 18), pady=1)
+            check_vars[opt] = var
+        self._fields[field_key] = ("multicheck", check_vars, filepath, varname)
+
+    def _add_dropdown(self, parent, field_key, label_text, filepath, varname, options):
+        _styled_label(parent, label_text).pack(anchor="w", padx=14, pady=(6, 1))
+        var = tk.StringVar()
+        val = _read_py_var(filepath, varname)
+        current = str(val) if val is not None else (options[0] if options else "")
+        if current not in options and options:
+            options = [current] + options
+        var.set(current)
+        menu = tk.OptionMenu(parent, var, *options)
+        menu.config(bg=BG, fg=FG, activebackground=ACCENT, activeforeground="#FFFFFE",
+                    font=("Segoe UI", 9), bd=0, highlightthickness=1,
+                    highlightbackground=BORDER, highlightcolor=ACCENT,
+                    relief="flat", anchor="w", width=28)
+        menu["menu"].config(bg=BG, fg=FG, activebackground=ACCENT,
+                            activeforeground="#FFFFFE", font=("Segoe UI", 9),
+                            bd=0, tearoff=0)
+        menu.pack(anchor="w", padx=14, pady=(0, 4))
+        self._fields[field_key] = ("dropdown", var, filepath, varname)
+
     # ── Build tabs ────────────────────────────────────────────────────────────
 
     def _build_all_tabs(self):
@@ -601,10 +652,16 @@ class GlassSettings(tk.Toplevel):
 
         _section_title(p, "⎔  Filtros LinkedIn")
         self._add_entry(p, "switch_number", "Cambiar búsqueda cada N aplicaciones", self._SEARCH, "switch_number", width=10)
-        self._add_entry(p, "date_posted", "Fecha publicado (Any time, Past week, Past 24 hours...)", self._SEARCH, "date_posted")
-        self._add_entry(p, "sort_by", "Ordenar por (Most recent / Most relevant)", self._SEARCH, "sort_by")
-        self._add_list(p, "on_site", "Modalidad (On-site, Remote, Hybrid)", self._SEARCH, "on_site", height=2)
-        self._add_list(p, "experience_level", "Nivel de experiencia", self._SEARCH, "experience_level", height=2)
+        self._add_dropdown(p, "date_posted", "Fecha publicada", self._SEARCH, "date_posted",
+                           ["Past week", "Past 24 hours", "Past month", "Any time"])
+        self._add_dropdown(p, "sort_by", "Ordenar por", self._SEARCH, "sort_by",
+                           ["Most recent", "Most relevant"])
+        self._add_multicheck(p, "on_site", "Modalidad de trabajo", self._SEARCH, "on_site",
+                             ["On-site", "Hybrid", "Remote"])
+        self._add_multicheck(p, "experience_level", "Nivel de experiencia", self._SEARCH, "experience_level",
+                             ["Internship", "Entry level", "Associate", "Mid-Senior level", "Director", "Executive"], cols=3)
+        self._add_multicheck(p, "job_type", "Tipo de empleo", self._SEARCH, "job_type",
+                             ["Full-time", "Part-time", "Contract", "Temporary", "Internship", "Volunteer"], cols=3)
         self._add_bool(p, "easy_apply_only", "Solo Easy Apply", self._SEARCH, "easy_apply_only")
         self._add_bool(p, "randomize_search_order", "Aleatorizar orden de búsqueda", self._SEARCH, "randomize_search_order")
 
@@ -627,11 +684,16 @@ class GlassSettings(tk.Toplevel):
         self._add_entry(p, "university", "Universidad (university)", self._PERS, "university")
         self._add_entry(p, "identification_number", "Número de identificación", self._PERS, "identification_number")
 
-        _section_title(p, "⊜  Equal Opportunity")
-        self._add_entry(p, "gender", "Género (Male/Female/Other/Decline)", self._PERS, "gender")
+        _section_title(p, "⊜  Igualdad de Oportunidades")
+        self._add_dropdown(p, "gender", "Género", self._PERS, "gender",
+                           ["Decline to self identify", "Male", "Female", "Other", "Non-binary"])
         self._add_entry(p, "ethnicity", "Etnia", self._PERS, "ethnicity")
-        self._add_entry(p, "disability_status", "Discapacidad (Yes/No/Decline)", self._PERS, "disability_status")
-        self._add_entry(p, "veteran_status", "Veterano (Yes/No/Decline)", self._PERS, "veteran_status")
+        self._add_dropdown(p, "disability_status", "Discapacidad", self._PERS, "disability_status",
+                           ["No", "Yes", "Decline to self identify"])
+        self._add_dropdown(p, "veteran_status", "Veterano", self._PERS, "veteran_status",
+                           ["No", "I am not a protected veteran",
+                            "I identify as one or more of the classifications of a protected veteran",
+                            "Decline to self identify"])
 
     def _build_tab_responses(self, p):
         _section_title(p, "✎  Experiencia & Salario")
@@ -639,7 +701,8 @@ class GlassSettings(tk.Toplevel):
         self._add_entry(p, "desired_salary", "Salario deseado (número)", self._QUEST, "desired_salary", width=16)
         self._add_entry(p, "current_ctc", "CTC actual (número)", self._QUEST, "current_ctc", width=16)
         self._add_entry(p, "notice_period", "Período de aviso en días", self._QUEST, "notice_period", width=10)
-        self._add_entry(p, "require_visa", "¿Requiere visa? (Yes/No)", self._QUEST, "require_visa")
+        self._add_dropdown(p, "require_visa", "¿Requiere visa de trabajo?", self._QUEST, "require_visa",
+                           ["No", "Yes"])
         self._add_entry(p, "recent_employer", "Empleador más reciente", self._QUEST, "recent_employer")
         self._add_entry(p, "confidence_level", "Nivel de confianza 1-10", self._QUEST, "confidence_level", width=10)
         self._add_entry(p, "us_citizenship", "Ciudadanía US", self._QUEST, "us_citizenship")
@@ -672,18 +735,28 @@ class GlassSettings(tk.Toplevel):
         self._add_bool(p, "safe_mode", "Modo seguro (perfil invitado)", self._SETT, "safe_mode")
         self._add_bool(p, "keep_screen_awake", "Mantener pantalla activa", self._SETT, "keep_screen_awake")
 
-        _section_title(p, "🔄  Ciclos de busqueda / Search Cycles")
-        self._add_bool(p, "alternate_sortby", "Alternar orden / Alternate sort order", self._SETT, "alternate_sortby")
-        self._add_bool(p, "cycle_date_posted", "Ciclar filtro de fecha / Cycle date filter", self._SETT, "cycle_date_posted")
-        self._add_bool(p, "stop_date_cycle_at_24hr", "Parar ciclo en 24hr / Stop cycle at 24hr", self._SETT, "stop_date_cycle_at_24hr")
+        _section_title(p, "🔄  Ciclos de Búsqueda")
+        self._add_bool(p, "alternate_sortby", "Alternar orden de resultados", self._SETT, "alternate_sortby")
+        self._add_bool(p, "cycle_date_posted", "Ciclar filtro de fecha automáticamente", self._SETT, "cycle_date_posted")
+        self._add_bool(p, "stop_date_cycle_at_24hr", "Parar ciclo al llegar a 24h", self._SETT, "stop_date_cycle_at_24hr")
 
-        _section_title(p, "🌐  Idioma de la Interfaz / UI Language")
-        _styled_label(p, T("lang_label") + ":  es = Espanol  |  en = English").pack(anchor="w", padx=14, pady=(2, 1))
-        self._add_entry(p, "ui_language", "Idioma / Language", self._SETT, "ui_language", width=6)
+        _section_title(p, "🌐  " + T("lang_label"))
+        self._add_dropdown(p, "ui_language", T("lang_label"), self._SETT, "ui_language",
+                           ["es", "en"])
+
+        _section_title(p, "🤖  Inteligencia Artificial")
+        _styled_label(p, "Proveedor:  groq (gratis) | gemini | openai | deepseek", small=True).pack(anchor="w", padx=14, pady=(2, 1))
+        self._add_entry(p, "ai_provider", "Proveedor de IA (ai_provider)", self._SECR, "ai_provider", width=16)
+        self._add_entry(p, "llm_api_key", "API Key (groq.com → API Keys → Create key)", self._SECR, "llm_api_key", width=38)
+        self._add_entry(p, "llm_model", "Modelo (llama-3.1-8b-instant para Groq)", self._SECR, "llm_model", width=30)
+        self._add_entry(p, "llm_api_url", "URL de API (solo para openai/ollama)", self._SECR, "llm_api_url", width=38)
+        self._add_bool(p, "use_AI", "Activar IA (use_AI)", self._SECR, "use_AI")
 
     # ── Save logic ────────────────────────────────────────────────────────────
 
     def _save_all(self):
+        from modules.i18n import get_language
+        _lang_before = get_language()
         errors = []
         for field_key, field_data in self._fields.items():
             ftype = field_data[0]
@@ -708,6 +781,10 @@ class GlassSettings(tk.Toplevel):
                     val = lines
                 elif ftype == "bool":
                     val = widget.get()
+                elif ftype == "multicheck":
+                    val = [opt for opt, bv in widget.items() if bv.get()]
+                elif ftype == "dropdown":
+                    val = widget.get()
                 else:
                     continue
 
@@ -718,9 +795,15 @@ class GlassSettings(tk.Toplevel):
                 errors.append(f"{varname}: {e}")
 
         if errors:
-            self._show_result(f"⚠ Errores en: {', '.join(errors)}", error=True)
+            self._show_result(f"⚠ {T('cfg_saved_err')}{', '.join(errors)}", error=True)
         else:
-            self._show_result("✓ Configuración guardada correctamente")
+            self._show_result(f"✓ {T('cfg_saved_ok')}")
+            # If language changed, rebuild the settings panel in the new language
+            from modules.i18n import get_language, _lang_cache
+            _lang_cache.clear()  # force re-read after write
+            if get_language() != _lang_before:
+                parent = self.master
+                self.after(120, lambda: (self.destroy(), GlassSettings(parent)))
 
     def _show_result(self, msg, error=False):
         color = "#E74C3C" if error else ACCENT2
@@ -813,8 +896,10 @@ class BotUIApp:
         self.console_box = tk.Text(self.console_frame, bg="#050507", fg="#94A1B2",
                                    font=("Consolas", 8), bd=0,
                                    highlightthickness=0, state="disabled",
-                                   wrap="word", cursor="arrow")
+                                   wrap="word", cursor="xterm")
         self.console_box.pack(fill="both", expand=True, padx=6, pady=4)
+        self.console_box.bind("<Button-1>", lambda e: self.console_box.focus_set())
+        self.console_box.bind("<Control-c>", self._copy_console_selection)
 
         self.console_box.tag_configure("status", foreground="#7F5AF0")
         self.console_box.tag_configure("info", foreground="#94A1B2")
@@ -831,7 +916,7 @@ class BotUIApp:
                                      min_h=int(180 * self.scaling))
 
         # Pause Button
-        self.pause_btn = tk.Button(self.btn_frame, text="PAUSE",
+        self.pause_btn = tk.Button(self.btn_frame, text=T("btn_pause"),
                                    fg="#FFFFFE", bg="#2D2D30",
                                    activeforeground="#FFFFFE",
                                    activebackground="#3A3A3F",
@@ -853,7 +938,7 @@ class BotUIApp:
         self.career_ops_btn.pack(side="left", fill="x", expand=True, padx=(4, 4))
 
         # Optimize CV Button
-        self.optimize_btn = tk.Button(self.btn_frame, text="OPTIMIZAR CV",
+        self.optimize_btn = tk.Button(self.btn_frame, text=T("btn_optimize_cv"),
                                       fg="#FFFFFE", bg="#2D2D30",
                                       activeforeground="#FFFFFE",
                                       activebackground="#3A3A3F",
@@ -864,7 +949,7 @@ class BotUIApp:
         self.optimize_btn.pack(side="left", fill="x", expand=True, padx=(0, 4))
 
         # Stop Button
-        self.stop_btn = tk.Button(self.btn_frame, text="STOP",
+        self.stop_btn = tk.Button(self.btn_frame, text=T("btn_stop"),
                                   fg="#FFFFFE", bg="#E74C3C",
                                   activeforeground="#FFFFFE",
                                   activebackground="#C0392B",
@@ -884,6 +969,8 @@ class BotUIApp:
         self.last_log_content = {}
         self.last_pause_state = False
         self._settings_win = None
+        self._stop_confirm = False
+        self._current_lang = get_language()
         self.add_log("System", "CVSniper Control initialized.", "system")
 
         self.poll_updates()
@@ -898,40 +985,43 @@ class BotUIApp:
         threading.Thread(target=self._optimize_cv_flow, daemon=True).start()
 
     def _optimize_cv_flow(self):
-        choice = ui_confirm("Optimizador de CV", "¿Deseas optimizar un CV existente o empezar de cero usando tus datos de configuración?", ["EXISTENTE", "DE CERO"])
+        _existing = T("cv_opt_btn_existing")
+        _scratch  = T("cv_opt_btn_scratch")
+        _yes      = T("cv_port_btn_yes")
+        choice = ui_confirm(T("cv_opt_title"), T("cv_opt_question"), [_existing, _scratch])
         if not choice:
             return
-        if choice == "EXISTENTE":
-            file_path = filedialog.askopenfilename(title="Seleccionar CV Viejo", filetypes=[("Archivos PDF", "*.pdf")])
+        if choice == _existing:
+            file_path = filedialog.askopenfilename(title=T("cv_select_old"), filetypes=[("Archivos PDF", "*.pdf")])
             if not file_path:
                 return
-            inc_port = ui_confirm("Portfolio", "¿Deseas incluir la página del Portfolio visual al final del CV?", ["SI", "NO"])
-            self.add_log("System", "Optimizando CV con Inteligencia Artificial...", "system")
+            inc_port = ui_confirm(T("cv_port_title"), T("cv_port_question"), [T("cv_port_btn_yes"), T("cv_port_btn_no")])
+            self.add_log("System", T("cv_log_optimizing"), "system")
             try:
                 from modules.ai.openaiConnections import ai_optimize_existing_cv
-                success = ai_optimize_existing_cv(file_path, include_portfolio=(inc_port=="SI"))
+                success = ai_optimize_existing_cv(file_path, include_portfolio=(inc_port == _yes))
             except Exception as ex:
-                self.add_log("System", f"Excepción: {ex}", "status")
+                self.add_log("System", f"Exception: {ex}", "status")
                 success = False
             if success:
-                self.add_log("System", "CV Optimizado guardado en 'all resumes/'.", "status")
-                ui_alert("¡Éxito!", "Se generó exitosamente tu CV optimizado y llamativo.")
+                self.add_log("System", T("cv_log_saved_opt"), "status")
+                ui_alert(T("cv_success_title"), T("cv_success_opt"))
             else:
-                self.add_log("System", "Error al optimizar CV. Revisa la consola para más detalles.", "status")
-        elif choice == "DE CERO":
-            inc_port = ui_confirm("Portfolio", "¿Deseas incluir la página del Portfolio visual al final del CV?", ["SI", "NO"])
-            self.add_log("System", "Generando CV llamativo con tus datos de configuración...", "system")
+                self.add_log("System", T("cv_log_err_opt"), "status")
+        elif choice == _scratch:
+            inc_port = ui_confirm(T("cv_port_title"), T("cv_port_question"), [T("cv_port_btn_yes"), T("cv_port_btn_no")])
+            self.add_log("System", T("cv_log_generating"), "system")
             try:
                 from modules.ai.openaiConnections import ai_generate_cv_from_config
-                success = ai_generate_cv_from_config(include_portfolio=(inc_port=="SI"))
+                success = ai_generate_cv_from_config(include_portfolio=(inc_port == _yes))
             except Exception as ex:
-                self.add_log("System", f"Excepción: {ex}", "status")
+                self.add_log("System", f"Exception: {ex}", "status")
                 success = False
             if success:
-                self.add_log("System", "CV Generado guardado en 'all resumes/'.", "status")
-                ui_alert("¡Éxito!", "Se generó exitosamente tu CV llamativo a partir de tu información básica.")
+                self.add_log("System", T("cv_log_saved_gen"), "status")
+                ui_alert(T("cv_success_title"), T("cv_success_gen"))
             else:
-                self.add_log("System", "Error al generar CV desde cero. Revisa la consola.", "status")
+                self.add_log("System", T("cv_log_err_gen"), "status")
 
     def toggle_pause(self):
         global is_paused
@@ -958,13 +1048,14 @@ class BotUIApp:
             self.add_log("System", "Modo Career-Ops desactivado. LinkedIn Easy Apply estándar activo.", "system")
 
     def trigger_stop(self):
-        if self.stop_btn.cget("text") == "STOP":
-            self.stop_btn.config(text="CONFIRM?", bg="#FF6B35")
-            self.add_log("System", "Click CONFIRM? again to stop the bot.", "system")
+        if not self._stop_confirm:
+            self._stop_confirm = True
+            self.stop_btn.config(text=T("btn_confirm"), bg="#FF6B35")
+            self.add_log("System", T("msg_confirm_stop"), "system")
             self.root.after(3000, self._reset_stop_btn)
             return
-        self.add_log("System", "Stopping bot...", "system")
-        self.stop_btn.config(text="STOPPING...", bg="#8B0000", state="disabled")
+        self.add_log("System", T("msg_stopping"), "system")
+        self.stop_btn.config(text=T("btn_stopping"), bg="#8B0000", state="disabled")
         self.dot_canvas.itemconfig(self.status_dot, fill="#E74C3C")
         self.root.update()
 
@@ -980,8 +1071,9 @@ class BotUIApp:
         threading.Thread(target=_kill, daemon=True).start()
 
     def _reset_stop_btn(self):
-        if self.stop_btn.cget("text") == "CONFIRM?":
-            self.stop_btn.config(text="STOP", bg="#E74C3C")
+        if self._stop_confirm:
+            self._stop_confirm = False
+            self.stop_btn.config(text=T("btn_stop"), bg="#E74C3C")
 
     def add_log(self, prefix, text, tag="info"):
         if not text:
@@ -997,6 +1089,23 @@ class BotUIApp:
             self.console_box.delete("1.0", f"{num_lines - 100}.0")
         self.console_box.see("end")
         self.console_box.configure(state="disabled")
+
+    def _copy_console_selection(self, event=None):
+        try:
+            selected = self.console_box.get(tk.SEL_FIRST, tk.SEL_LAST)
+            self.root.clipboard_clear()
+            self.root.clipboard_append(selected)
+        except tk.TclError:
+            pass
+        return "break"
+
+    def _refresh_ui_texts(self):
+        """Refresh all main-window widget texts when language changes."""
+        self.optimize_btn.config(text=T("btn_optimize_cv"))
+        if not self._stop_confirm and self.stop_btn.cget("state") != "disabled":
+            self.stop_btn.config(text=T("btn_stop"))
+        if not career_ops_mode:
+            self.career_ops_btn.config(text=T("btn_career_ops"))
 
     def poll_updates(self):
         global is_paused, is_stopped, current_ui_status, current_ui_details, current_ui_action
@@ -1039,20 +1148,26 @@ class BotUIApp:
             elif act == "stop":
                 is_stopped = True
 
-        # 4. Handle pause/resume state updates visually
+        # 4. Detect language change and refresh all widget texts
+        _lang_now = get_language()
+        if _lang_now != self._current_lang:
+            self._current_lang = _lang_now
+            self._refresh_ui_texts()
+
+        # 5. Handle pause/resume state updates visually
         if is_paused != self.last_pause_state:
             self.last_pause_state = is_paused
             if is_paused:
-                self.add_log("System", "Bot pausado.", "system")
+                self.add_log("System", T("log_paused"), "system")
             else:
-                self.add_log("System", "Bot reanudado.", "system")
+                self.add_log("System", T("log_resumed"), "system")
 
         if is_paused:
-            self.pause_btn.config(text="RESUME", bg="#00E8C6", fg="#101012",
+            self.pause_btn.config(text=T("btn_resume"), bg="#00E8C6", fg="#101012",
                                   activebackground="#00C9AA")
             self.dot_canvas.itemconfig(self.status_dot, fill="#F1C40F")
         else:
-            self.pause_btn.config(text="PAUSE", bg="#2D2D30", fg="#FFFFFE",
+            self.pause_btn.config(text=T("btn_pause"), bg="#2D2D30", fg="#FFFFFE",
                                   activebackground="#3A3A3F")
             if is_stopped:
                 self.dot_canvas.itemconfig(self.status_dot, fill="#E74C3C")
@@ -1136,27 +1251,57 @@ def is_career_ops_mode():
     global career_ops_mode
     return career_ops_mode
 
+_PLACEHOLDER_KEYS = {"YOUR_GROQ_API_KEY_HERE", "YOUR_API_KEY_HERE", "", "not-needed", "sk-xxx"}
+
+def _is_api_key_missing() -> bool:
+    """Returns True if use_AI is True but llm_api_key is still a placeholder."""
+    _BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    _SECR = os.path.join(_BASE, "config", "secrets.py")
+    use_ai = _read_py_var(_SECR, "use_AI")
+    if not use_ai:
+        return False
+    provider = str(_read_py_var(_SECR, "ai_provider") or "").lower()
+    if provider == "gemini":
+        return False  # Gemini key is stored elsewhere
+    key = str(_read_py_var(_SECR, "llm_api_key") or "").strip()
+    return key in _PLACEHOLDER_KEYS
+
+
 def ui_enforce_configuration():
-    """Checks if basic config is present, blocks and opens settings if not."""
+    """Checks if basic config is present. On first run, offers CV auto-setup wizard."""
     global is_paused
     from modules.bot_ui import _read_py_var
     _BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     _PERS = os.path.join(_BASE, "config", "personals.py")
-    
+
     first_name = _read_py_var(_PERS, "first_name")
-    
-    if not first_name or str(first_name).strip() == "":
-        ui_update_status("Configuración requerida", "Por favor completa tus datos en la configuración.")
+    missing_name = not first_name or str(first_name).strip() == ""
+    missing_key  = _is_api_key_missing()
+
+    if missing_name or missing_key:
+        ui_update_status(T("status_config_req"), T("msg_config_req"))
         is_paused = True
-        ui_alert("Configuración Inicial Requerida", "Es la primera vez que ejecutas el bot o faltan tus datos personales. Se abrirá la rueda de configuración. ¡Llénala y guarda los cambios para continuar!")
-        # Put an action to the queue to open settings on the UI thread
+
+        # ── First run: offer CV auto-configuration wizard ──────────────────
+        if missing_name:
+            try:
+                from modules.cv_wizard import run_cv_wizard
+                run_cv_wizard()
+            except Exception as _wiz_err:
+                print(f"[Setup] CV wizard error: {_wiz_err}")
+
+        # ── If API key still missing after wizard, guide user ──────────────
+        if _is_api_key_missing():
+            ui_alert(T("alert_api_key_title"), T("alert_api_key_msg"))
+
         action_queue.put("open_settings")
-        
+
         while is_paused:
             time.sleep(0.5)
-            # Re-check inside loop just in case they saved
             new_first_name = _read_py_var(_PERS, "first_name")
-            if new_first_name and str(new_first_name).strip() != "":
+            name_ok = bool(new_first_name and str(new_first_name).strip())
+            key_ok  = not _is_api_key_missing()
+            if name_ok and key_ok:
                 is_paused = False
-                ui_update_status("Status: Configurado", "Bot listo para continuar.")
+                ui_update_status(T("status_configured"), T("msg_bot_ready"))
                 break

@@ -13,40 +13,68 @@ password = ""       # Tu contrasena / Your password
 
 
 ## Inteligencia Artificial / Artificial Intelligence
-use_AI = False      # True o False / True or False
+use_AI = True       # True o False / True or False
 '''
-Set True if you want to use AI features.
-Options:
-  - Local LLM (Ollama, LM Studio, llama.cpp, Jan)
-  - OpenAI API key
-  - Gemini API key
-  - DeepSeek API key
+Manten esto en True para que el bot responda preguntas de los formularios con IA.
+Keep this True so the bot answers form questions using AI.
 '''
 
 # Proveedor de IA / AI Provider
-ai_provider = "gemini"   # "openai", "deepseek", "gemini"
+ai_provider = "groq"   # "openai", "deepseek", "gemini", "groq"
+'''
+Opciones / Options:
+  "groq"     → GRATIS. Crea cuenta en https://console.groq.com → API Keys → Create key.
+               Pega la key en llm_api_key. Es la opcion recomendada para empezar.
+               FREE. Create account at https://console.groq.com → API Keys → Create key.
+  "gemini"   → Google Gemini. Gratis con limites. https://aistudio.google.com/apikey
+  "openai"   → OpenAI (GPT) o cualquier API compatible con OpenAI (Ollama, LM Studio).
+  "deepseek" → DeepSeek. Muy barato.
+'''
 
-# URL de la API del LLM (no necesario para Gemini)
-# LLM API URL (not needed for Gemini)
-llm_api_url = "https://api.openai.com/v1/"
+# URL de la API del LLM (solo para openai / only for openai provider)
+# LLM API URL (not needed for Gemini or Groq)
+llm_api_url = "https://api.groq.com/openai/v1"
+'''
+Ejemplos / Examples:
+  Groq:    "https://api.groq.com/openai/v1"
+  OpenAI:  "https://api.openai.com/v1/"
+  Ollama:  "http://localhost:11434/v1"
+  DeepSeek: "https://api.deepseek.com"
+'''
 
 # Tu API Key / Your API Key
-llm_api_key = "YOUR_API_KEY_HERE"
+llm_api_key = "YOUR_GROQ_API_KEY_HERE"
 '''
-Note: Leave as "" or "not-needed" if using a local LLM without auth.
+Groq:    Gratis en https://console.groq.com → API Keys → Create key
+OpenAI:  De pago en https://platform.openai.com/api-keys
+Gemini:  Gratis en https://aistudio.google.com/apikey
+DeepSeek: Muy barato en https://platform.deepseek.com/api_keys
+Ollama local: poner "not-needed"
 '''
 
 # Nombre del modelo / Model name
-llm_model = "gemini-2.5-flash"
+llm_model = "llama-3.1-8b-instant"
 '''
-Examples:
-  OpenAI:  "gpt-4o", "gpt-4o-mini"
-  Gemini:  "gemini-2.5-flash", "gemini-2.0-flash"
-  DeepSeek: "deepseek-chat"
-  Local:   "llama-3.2-3b-instruct", "qwen3:latest"
+Groq (gratis / free):
+  "llama-3.1-8b-instant"    → rapido, respuestas en <1s (recomendado / recommended)
+  "llama-3.3-70b-versatile" → mejor calidad, mas lento
+  "gemma2-9b-it"            → alternativa
+Gemini (gratis con limites):
+  "gemini-2.5-flash", "gemini-2.0-flash"
+OpenAI (de pago):
+  "gpt-4o-mini", "gpt-4o"
+DeepSeek:
+  "deepseek-chat"
+Ollama local:
+  "llama3.2", "phi3.5", "mistral"
 '''
 
-llm_spec = "openai"   # "openai", "openai-like", "gemini"
+llm_spec = "openai-like"   # "openai", "openai-like", "gemini"
+'''
+Groq / Ollama / DeepSeek / APIs compatibles: usar "openai-like"
+OpenAI oficial: usar "openai"
+Gemini: no importa, se ignora
+'''
 
 # Mostrar alertas de error de IA / Show AI error alerts
 showAiErrorAlerts = True

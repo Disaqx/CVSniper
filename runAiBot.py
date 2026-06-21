@@ -9,7 +9,7 @@ from urllib.parse import quote
 
 # ── Auto-copy config templates if personal config files are missing ──────────
 _CONFIG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config")
-for _cfg_name in ["personals", "secrets", "questions", "resume"]:
+for _cfg_name in ["personals", "secrets", "questions", "resume", "search"]:
     _real = os.path.join(_CONFIG_DIR, f"{_cfg_name}.py")
     _tmpl = os.path.join(_CONFIG_DIR, f"{_cfg_name}.default.py")
     if not os.path.exists(_real) and os.path.exists(_tmpl):
@@ -804,13 +804,43 @@ def resolve_salary_expectation(question_text: str, is_current=False, work_locati
 
 
 # Function to answer common questions for Easy Apply
+_SENSITIVE_KEYWORDS = [
+    # Criminal / legal
+    'criminal', 'felony', 'felon', 'misdemeanor', 'misdemeanour', 'convicted', 'conviction',
+    'arrested', 'arrest', 'criminal record', 'criminal charge', 'criminal act',
+    'criminal offense', 'criminal offence', 'background disclosure', 'criminal history',
+    'criminal background', 'penal', 'acto criminal', 'antecedentes penales', 'delito',
+    'condena', 'arrestado', 'crimen', 'historial criminal',
+    # Previous employment at this company
+    'previously employed by us', 'former employee of', 'worked for us before',
+    'previously worked here', 'have you worked here', 'been employed by this company',
+    'empleado anteriormente aqui', 'trabajado aqui antes', 'ex empleado de',
+    # Previous applications
+    'previously applied', 'applied here before', 'applied to this company before',
+    'interviewed here before', 'previous application', 'aplicado anteriormente',
+    'aplicado antes a esta empresa', 'entrevistado aqui antes',
+    # Other negative disclosures
+    'drug use', 'drug test', 'substance abuse', 'terminated for cause', 'dismissed for cause',
+    'misconduct', 'uso de drogas', 'despedido por causa', 'mala conducta',
+]
+
+def is_sensitive_question(label: str) -> bool:
+    """Returns True if the question involves criminal history, prior employment, or other sensitive disclosures that should always be answered 'No'."""
+    import unicodedata
+    norm = "".join(c for c in unicodedata.normalize('NFD', label) if unicodedata.category(c) != 'Mn').lower()
+    return any(w in norm for w in _SENSITIVE_KEYWORDS)
+
+
 def answer_common_questions(label: str, answer: str) -> str:
     import json
     import os
     import unicodedata
-    
+
     norm_label = "".join(c for c in unicodedata.normalize('NFD', label) if unicodedata.category(c) != 'Mn').lower()
-    
+
+    if any(w in norm_label for w in _SENSITIVE_KEYWORDS):
+        return 'No'
+
     script_dir = os.path.dirname(os.path.abspath(__file__))
     db_path = os.path.join(script_dir, "config", "questions_db.json")
     mappings = []
@@ -821,7 +851,7 @@ def answer_common_questions(label: str, answer: str) -> str:
                 mappings = db_data.get("mappings", [])
         except Exception:
             pass
-            
+
     for item in mappings:
         category = item.get("category")
         patterns = item.get("patterns", [])
@@ -830,10 +860,10 @@ def answer_common_questions(label: str, answer: str) -> str:
                 return item["value"]
             elif item.get("var_name") == "require_visa":
                 return require_visa
-                
-    if any(w in norm_label for w in ['sponsorship', 'visa', 'patrocinio', 'visado']): 
+
+    if any(w in norm_label for w in ['sponsorship', 'visa', 'patrocinio', 'visado']):
         answer = require_visa
-    elif any(w in norm_label for w in ['relocate', 'relocation', 'reubicacion', 'reubicar', 'traslado', 'mudarse', 'cambio de residencia']): 
+    elif any(w in norm_label for w in ['relocate', 'relocation', 'reubicacion', 'reubicar', 'traslado', 'mudarse', 'cambio de residencia']):
         answer = 'Yes'
     return answer
 
@@ -912,6 +942,8 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                 lang_answer = answer_language_question(label_org, "select", optionsText)
                 if lang_answer is not None:
                     answer = lang_answer
+                elif is_sensitive_question(label_org):
+                    answer = 'No'
                 else:
                     db_match = match_rules(label_org)
                 if db_match:
@@ -920,24 +952,24 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                     direct_value = db_match.get("value")
                     answer = resolve_value_for_category(category, var_name, direct_value)
                 else:
-                    if any(w in label for w in ['email', 'correo']): 
+                    if any(w in label for w in ['email', 'correo']):
                         answer = prev_answer
-                    elif any(w in label for w in ['gender', 'sex', 'genero', 'sexo']): 
+                    elif any(w in label for w in ['gender', 'sex', 'genero', 'sexo']):
                         answer = gender
-                    elif any(w in label for w in ['disability', 'discapacidad', 'limitacion']): 
+                    elif any(w in label for w in ['disability', 'discapacidad', 'limitacion']):
                         answer = disability_status
-                    elif any(w in label for w in ['proficiency', 'competencia', 'nivel', 'idioma']): 
+                    elif any(w in label for w in ['proficiency', 'competencia', 'nivel', 'idioma']):
                         answer = 'Professional'
                     elif any(loc_word in label for loc_word in ['location', 'city', 'state', 'country', 'ubicacion', 'ciudad', 'estado', 'pais', 'direccion']):
                         if any(w in label for w in ['country', 'pais']):
-                            answer = country 
+                            answer = country
                         elif any(w in label for w in ['state', 'estado', 'departamento', 'provincia']):
                             answer = state
                         elif any(w in label for w in ['city', 'ciudad', 'municipio']):
                             answer = current_city if current_city else work_location
                         else:
                             answer = work_location
-                    else: 
+                    else:
                         answer = answer_common_questions(label_org, answer)
                 
                 # Use our robust option matcher!
@@ -987,7 +1019,7 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                         try:
                             print_lg(f"Asking AI to select an option for: {label_org}")
                             ai_answer = None
-                            if ai_provider.lower() == "openai":
+                            if ai_provider.lower() in ("openai", "groq"):
                                 ai_answer = ai_answer_question(aiClient, label_org, options=optionsText, question_type="single_select", job_description=job_description, user_information_all=user_information_all)
                             elif ai_provider.lower() == "deepseek":
                                 ai_answer = deepseek_answer_question(aiClient, label_org, options=optionsText, question_type="single_select", job_description=job_description, about_company=None, user_information_all=user_information_all)
@@ -1120,6 +1152,8 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                 lang_answer = answer_language_question(label_org, "radio", options_text_list)
                 if lang_answer is not None:
                     answer = lang_answer
+                elif is_sensitive_question(label_org):
+                    answer = 'No'
                 else:
                     db_match = match_rules(label_org)
                     if db_match:
@@ -1128,13 +1162,13 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                         direct_value = db_match.get("value")
                         answer = resolve_value_for_category(category, var_name, direct_value)
                     else:
-                        if any(w in label for w in ['citizenship', 'employment eligibility', 'ciudadania', 'nacionalidad', 'permiso']): 
+                        if any(w in label for w in ['citizenship', 'employment eligibility', 'ciudadania', 'nacionalidad', 'permiso']):
                             answer = us_citizenship
-                        elif any(w in label for w in ['veteran', 'protected', 'veterano', 'protegido']): 
+                        elif any(w in label for w in ['veteran', 'protected', 'veterano', 'protegido']):
                             answer = veteran_status
-                        elif any(w in label for w in ['disability', 'handicapped', 'discapacidad', 'limitacion']): 
+                        elif any(w in label for w in ['disability', 'handicapped', 'discapacidad', 'limitacion']):
                             answer = disability_status
-                        else: 
+                        else:
                             answer = answer_common_questions(label_org, answer)
                 
                 # Find matching label
@@ -1151,7 +1185,7 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                         try:
                             print_lg(f"Asking AI to answer Radio question: {label_org}")
                             ai_answer = None
-                            if ai_provider.lower() == "openai":
+                            if ai_provider.lower() in ("openai", "groq"):
                                 ai_answer = ai_answer_question(aiClient, label_org, options=options_text_list, question_type="single_select", job_description=job_description, user_information_all=user_information_all)
                             elif ai_provider.lower() == "deepseek":
                                 ai_answer = deepseek_answer_question(aiClient, label_org, options=options_text_list, question_type="single_select", job_description=job_description, about_company=None, user_information_all=user_information_all)
@@ -1264,7 +1298,7 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                         if is_career_ops_mode():
                             raise CareerOpsActivatedException()
                         try:
-                            if ai_provider.lower() == "openai":
+                            if ai_provider.lower() in ("openai", "groq"):
                                 ai_answer = ai_answer_question(aiClient, label_org, question_type="text", job_description=job_description, user_information_all=user_information_all)
                             elif ai_provider.lower() == "deepseek":
                                 ai_answer = deepseek_answer_question(aiClient, label_org, options=None, question_type="text", job_description=job_description, about_company=None, user_information_all=user_information_all)
@@ -1455,7 +1489,7 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                                     if is_career_ops_mode():
                                         raise CareerOpsActivatedException()
                                     try:
-                                        if ai_provider.lower() == "openai":
+                                        if ai_provider.lower() in ("openai", "groq"):
                                             answer = ai_answer_question(aiClient, label_org, question_type="text", job_description=job_description, user_information_all=user_information_all)
                                         elif ai_provider.lower() == "deepseek":
                                             answer = deepseek_answer_question(aiClient, label_org, options=None, question_type="text", job_description=job_description, about_company=None, user_information_all=user_information_all)
@@ -1521,7 +1555,7 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                             try:
                                 print_lg(f"Asking AI to select an option for combobox: {label_org}")
                                 ai_answer = None
-                                if ai_provider.lower() == "openai":
+                                if ai_provider.lower() in ("openai", "groq"):
                                     ai_answer = ai_answer_question(aiClient, label_org, options=optionsText, question_type="single_select", job_description=job_description, user_information_all=user_information_all)
                                 elif ai_provider.lower() == "deepseek":
                                     ai_answer = deepseek_answer_question(aiClient, label_org, options=optionsText, question_type="single_select", job_description=job_description, about_company=None, user_information_all=user_information_all)
@@ -1657,7 +1691,7 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                         if is_career_ops_mode():
                             raise CareerOpsActivatedException()
                         try:
-                            if ai_provider.lower() == "openai":
+                            if ai_provider.lower() in ("openai", "groq"):
                                 answer = ai_answer_question(aiClient, label_org, question_type="textarea", job_description=job_description, user_information_all=user_information_all)
                             elif ai_provider.lower() == "deepseek":
                                 answer = deepseek_answer_question(aiClient, label_org, options=None, question_type="textarea", job_description=job_description, about_company=None, user_information_all=user_information_all)
@@ -1989,6 +2023,7 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str) -> None:
         current_count = 0
         try:
             while current_count < switch_number:
+                ui_pause_check()
                 # Wait until job listings are loaded
                 wait.until(EC.presence_of_all_elements_located((By.XPATH, "//li[@data-occludable-job-id]")))
 
@@ -2105,6 +2140,7 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str) -> None:
 
 
                     description, experience_required, skip, reason, message = get_job_description()
+                    ui_pause_check()
                     if skip:
                         print_lg(message)
                         if is_career_ops_mode():
@@ -2125,7 +2161,7 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str) -> None:
                             print_lg("Pre-screening job requirements with AI...")
                             eval_result = {"meets_requirements": True, "reason": "Default"}
                             
-                            if ai_provider.lower() == "openai":
+                            if ai_provider.lower() in ("openai", "groq"):
                                 eval_result = ai_evaluate_job(aiClient, description, user_information_all)
                             elif ai_provider.lower() == "deepseek":
                                 eval_result = deepseek_evaluate_job(aiClient, description, user_information_all)
@@ -2156,7 +2192,7 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str) -> None:
 
                         ##> ------ Yang Li : MARKYangL - Feature ------
                         try:
-                            if ai_provider.lower() == "openai":
+                            if ai_provider.lower() in ("openai", "groq"):
                                 skills = ai_extract_skills(aiClient, description)
                             elif ai_provider.lower() == "deepseek":
                                 skills = deepseek_extract_skills(aiClient, description)
@@ -2170,6 +2206,7 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str) -> None:
                             skills = "Error extracting skills"
                         ##<
 
+                    ui_pause_check()
 
                     if is_career_ops_mode():
                         print_lg(f"[Career-Ops Mode] Skipping auto-apply for '{title} | {company}' and collecting for manual review.")
@@ -2671,7 +2708,7 @@ def main() -> None:
         #     except Exception as e:
         #         print_lg("Opening OpenAI chatGPT tab failed!")
         if use_AI:
-            if ai_provider == "openai":
+            if ai_provider in ("openai", "groq"):
                 aiClient = ai_create_openai_client()
             ##> ------ Yang Li : MARKYangL - Feature ------
             # Create DeepSeek client
@@ -2744,7 +2781,7 @@ def main() -> None:
         ##> ------ Yang Li : MARKYangL - Feature ------
         if use_AI and aiClient:
             try:
-                if ai_provider.lower() == "openai":
+                if ai_provider.lower() in ("openai", "groq"):
                     ai_close_openai_client(aiClient)
                 elif ai_provider.lower() == "deepseek":
                     ai_close_openai_client(aiClient)

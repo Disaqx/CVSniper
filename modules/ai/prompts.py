@@ -123,9 +123,15 @@ Respond concisely based on the type of question:
 
 CRITICAL INSTRUCTIONS ON ANSWERING STRATEGY:
 - Answer truthfully according to the user's information.
-- If the question asks if the user has a specific technical skill, certification, or years of experience that is NOT explicitly supported by the user's CV, you MUST answer "No" or "0". Do not lie, exaggerate, or hallucinate experience. 
+- If the question asks if the user has a specific technical skill, certification, or years of experience that is NOT explicitly supported by the user's CV, you MUST answer "No" or "0". Do not lie, exaggerate, or hallucinate experience.
 - If the user is a student, their years of professional experience in specialized fields (like cybersecurity) is "0" unless stated otherwise.
 - If the question asks about a generic soft-skill or an evident requirement (e.g., "Are you willing to work hybrid?", "Do you speak fluent English?", "Are you authorized to work in this country?"), default to the positive answer (e.g., "Yes") unless the CV contradicts it.
+- SENSITIVE QUESTIONS — ALWAYS answer "No" for these categories unless the user's information EXPLICITLY states otherwise:
+  * Criminal history: felony, misdemeanor, conviction, arrested, criminal charges, crime, criminal record, background check disclosure
+  * Previous employment at THIS specific company: "Have you worked here before?", "Are you a former employee?", "Previously employed by us?" — ONLY answer "Yes" if that exact company is in the user's work history
+  * Previous applications: "Have you applied here before?", "Have you interviewed with us?" — default "No"
+  * Lawsuits or legal disputes involving the company
+  * Any question framed as a negative disclosure (drug use, misconduct, termination for cause)
 
 **User Information:** 
 {}
@@ -139,16 +145,24 @@ CRITICAL INSTRUCTIONS ON ANSWERING STRATEGY:
 # Structure of messages = `[{"role": "user", "content": evaluate_job_prompt}]`
 
 evaluate_job_prompt = """
-You are an extremely strict career assistant evaluating if a job is a good match for the user before applying.
+You are a pragmatic career assistant deciding if a job is worth applying to.
 Your task is to analyze the user's profile/CV and the job description.
 
-CRITICAL INSTRUCTIONS:
-- You must ONLY return a valid JSON object in the exact format shown below - no additional text, explanations, or commentary.
-- BE EXTREMELY STRICT. If the job requires 3+ years of experience and the user is a student or entry-level, "meets_requirements" MUST be false.
-- If the job asks for specialized technical skills, certifications, or senior leadership that the user clearly lacks, "meets_requirements" MUST be false.
-- Do NOT be generous. It is better to skip a job than to apply for a role the user is grossly underqualified for.
-- Only if the user meets the core experience requirements and technical criteria, set "meets_requirements" to true.
-- Assign a "score" from 1 to 10 based on how well the candidate's skills and experience match the requirements (10 being perfect match).
+INSTRUCTIONS:
+- Return ONLY a valid JSON object in the exact format shown below — no extra text.
+- GOAL: Cast a wide net. Job descriptions are wish lists. Candidates rarely meet 100% of requirements and still get hired.
+- Set "meets_requirements" to FALSE only when the candidate is CLEARLY disqualified:
+  * Experience gap is large: role requires 5+ years and candidate has under 2 years
+  * Completely different domain (e.g., nurse applying for software architect)
+  * Hard legal/location requirement the candidate cannot meet (e.g., must be on-site in a country they are not in)
+  * Role is senior/director/executive level and candidate is junior
+- Set "meets_requirements" to TRUE when:
+  * The candidate works in the same field or a closely adjacent one
+  * The candidate meets at least 60% of core requirements
+  * Missing items are specific tools or certifications — these are learnable and not disqualifiers
+  * Experience years are close (within 1-2 years of the requirement)
+- Do NOT reject because the candidate lacks 1-2 specific tools (e.g., a specific MDM platform, a specific ticketing system). If they have the fundamentals, they can learn the tool.
+- Assign a "score" from 1 to 10 based on overall match quality (7+ = strong match, 5-6 = reasonable match, below 5 = poor match).
 
 Output Format:
 {{

@@ -4,6 +4,9 @@ All UI strings in both Spanish (es) and English (en).
 Add new keys here as the app grows.
 '''
 
+import os
+import ast
+
 TRANSLATIONS = {
     "es": {
         # Main UI panel
@@ -66,8 +69,62 @@ TRANSLATIONS = {
         "career_ops_msg":       "El Modo Career-Ops esta activo:\n\n- Omitiendo postulaciones automaticas (Easy Apply).\n- Buscando y evaluando todas las vacantes usando IA.\n- Al encontrar 5 coincidencias, te preguntara si deseas abrirlas para postular manualmente.\n- Podras confirmar si ya aplicaste para continuar con el siguiente ciclo.",
         "career_ops_off":       "Modo Career-Ops desactivado. Regresando a Easy Apply automatico.",
 
+        # Stop/confirm flow
+        "btn_confirm":          "CONFIRMAR?",
+        "btn_stopping":         "DETENIENDO...",
+        "msg_confirm_stop":     "Haz clic en CONFIRMAR nuevamente para detener el bot.",
+        "msg_stopping":         "Deteniendo bot...",
+
+        # Console log messages
+        "log_paused":           "Bot pausado.",
+        "log_resumed":          "Bot reanudado.",
+
         # Language setting
-        "lang_label":           "Idioma de la Interfaz / UI Language",
+        "lang_label":           "Idioma de la Interfaz",
+
+        # Configuration enforcement
+        "status_config_req":    "Configuracion requerida",
+        "msg_config_req":       "Por favor completa tus datos en la configuracion.",
+        "status_configured":    "Configurado",
+        "msg_bot_ready":        "Bot listo para continuar.",
+        "alert_api_key_title":  "Falta API Key de IA",
+        "alert_api_key_msg":    "La IA esta activada pero falta la API Key.\n\nEn los ajustes (boton ⚙) → tab Bot → seccion IA:\n→ Pega tu API Key de Groq (gratis en console.groq.com)\n\nGuarda los cambios para continuar.",
+
+        # CV Wizard
+        "wiz_api_key_title":    "Configurar API Key primero",
+        "wiz_api_key_msg":      "Para la configuracion automatica con IA necesitas\nuna API Key de Groq (100% gratis):\n\n  1. Ve a console.groq.com\n  2. Inicia sesion → API Keys → Create key\n  3. En los ajustes (⚙) → tab Bot → IA Settings\n     pega tu key y guarda\n  4. Reinicia el bot para usar la configuracion automatica\n\nO configura manualmente en los ajustes.",
+        "wiz_title":            "Configuracion Automatica",
+        "wiz_msg":              "Bienvenido a CVSniper!\n\nPuedo leer tu hoja de vida (CV en PDF) y configurar\nel bot automaticamente:\n\n  • Tu nombre, ciudad, telefono\n  • Terminos de busqueda segun tu perfil\n  • Informacion para responder formularios\n  • Ruta de tu CV guardada\n\nSi no tienes tu CV a mano, puedes configurar manualmente.",
+        "wiz_btn_upload":       "SUBIR MI CV",
+        "wiz_btn_manual":       "CONFIGURAR MANUALMENTE",
+        "wiz_pdf_dialog":       "Selecciona tu CV (PDF)",
+        "wiz_status":           "Analizando CV",
+        "wiz_detail_pdf":       "Extrayendo texto del PDF...",
+        "wiz_detail_ai":        "Consultando IA para extraer tus datos...",
+        "wiz_err_pdf_title":    "Error de lectura",
+        "wiz_err_pdf_msg":      "No se pudo extraer texto del PDF.\n\nAsegurate de que el PDF no sea una imagen escaneada.\nPodras configurar manualmente en los ajustes.",
+        "wiz_err_ai_title":     "Error de IA",
+        "wiz_err_ai_msg":       "No se pudo procesar el CV con IA.\n\nVerifica tu API Key en los ajustes (⚙ → Bot → IA Settings)\ny vuelve a iniciar el bot.",
+        "wiz_done_title":       "Configuracion Completada!",
+        "wiz_done_name":        "Nombre",
+        "wiz_done_city":        "Ciudad",
+        "wiz_done_exp":         "Experiencia",
+        "wiz_done_terms":       "Busquedas",
+        "wiz_done_suffix_exp":  "anios",
+        "wiz_done_suffix_terms": "terminos configurados",
+        "wiz_done_footer":      "Revisa y completa tus datos en los ajustes (boton ⚙).\nPresta atencion al tab Respuestas y al tab Busqueda.",
+
+        # CV Optimizer (optimize_cv_flow)
+        "cv_opt_btn_existing":  "EXISTENTE",
+        "cv_opt_btn_scratch":   "DE CERO",
+        "cv_port_btn_yes":      "SI",
+        "cv_port_btn_no":       "NO",
+        "cv_log_optimizing":    "Optimizando CV con Inteligencia Artificial...",
+        "cv_log_generating":    "Generando CV llamativo con tus datos de configuracion...",
+        "cv_log_saved_opt":     "CV Optimizado guardado en 'all resumes/'.",
+        "cv_log_saved_gen":     "CV Generado guardado en 'all resumes/'.",
+        "cv_log_err_opt":       "Error al optimizar CV. Revisa la consola para mas detalles.",
+        "cv_log_err_gen":       "Error al generar CV desde cero. Revisa la consola.",
     },
     "en": {
         # Main UI panel
@@ -130,24 +187,85 @@ TRANSLATIONS = {
         "career_ops_msg":       "Career-Ops Mode is active:\n\n- Skipping automatic applications (Easy Apply).\n- Searching and evaluating all vacancies using AI.\n- When 5 matches are found, it will ask if you want to open them for manual application.\n- You can confirm if you already applied to continue with the next cycle.",
         "career_ops_off":       "Career-Ops Mode deactivated. Returning to automatic Easy Apply.",
 
+        # Stop/confirm flow
+        "btn_confirm":          "CONFIRM?",
+        "btn_stopping":         "STOPPING...",
+        "msg_confirm_stop":     "Click CONFIRM? again to stop the bot.",
+        "msg_stopping":         "Stopping bot...",
+
+        # Console log messages
+        "log_paused":           "Bot paused.",
+        "log_resumed":          "Bot resumed.",
+
         # Language setting
-        "lang_label":           "Idioma de la Interfaz / UI Language",
+        "lang_label":           "Interface Language",
+
+        # Configuration enforcement
+        "status_config_req":    "Configuration required",
+        "msg_config_req":       "Please complete your data in the configuration panel.",
+        "status_configured":    "Configured",
+        "msg_bot_ready":        "Bot ready to continue.",
+        "alert_api_key_title":  "Missing AI API Key",
+        "alert_api_key_msg":    "AI is enabled but the API Key is missing.\n\nIn settings (⚙ button) → Bot tab → IA section:\n→ Paste your Groq API Key (free at console.groq.com)\n\nSave changes to continue.",
+
+        # CV Wizard
+        "wiz_api_key_title":    "Set up API Key first",
+        "wiz_api_key_msg":      "To use the automatic AI configuration you need\na Groq API Key (100% free):\n\n  1. Go to console.groq.com\n  2. Sign in → API Keys → Create key\n  3. In settings (⚙) → Bot tab → IA Settings\n     paste your key and save\n  4. Restart the bot to use automatic configuration\n\nOr configure manually in settings.",
+        "wiz_title":            "Automatic Setup",
+        "wiz_msg":              "Welcome to CVSniper!\n\nI can read your resume (PDF) and configure\nthe bot automatically:\n\n  • Your name, city, phone\n  • Job search terms based on your profile\n  • Information to answer application forms\n  • Your resume path saved\n\nIf you don't have your resume handy, you can configure manually.",
+        "wiz_btn_upload":       "UPLOAD MY RESUME",
+        "wiz_btn_manual":       "CONFIGURE MANUALLY",
+        "wiz_pdf_dialog":       "Select your Resume (PDF)",
+        "wiz_status":           "Analyzing Resume",
+        "wiz_detail_pdf":       "Extracting text from PDF...",
+        "wiz_detail_ai":        "Consulting AI to extract your data...",
+        "wiz_err_pdf_title":    "Read Error",
+        "wiz_err_pdf_msg":      "Could not extract text from the PDF.\n\nMake sure the PDF is not a scanned image.\nYou can configure manually in settings.",
+        "wiz_err_ai_title":     "AI Error",
+        "wiz_err_ai_msg":       "Could not process the resume with AI.\n\nCheck your API Key in settings (⚙ → Bot → IA Settings)\nand restart the bot.",
+        "wiz_done_title":       "Setup Complete!",
+        "wiz_done_name":        "Name",
+        "wiz_done_city":        "City",
+        "wiz_done_exp":         "Experience",
+        "wiz_done_terms":       "Searches",
+        "wiz_done_suffix_exp":  "years",
+        "wiz_done_suffix_terms": "terms configured",
+        "wiz_done_footer":      "Review and complete your data in settings (⚙ button).\nPay attention to the Responses and Search tabs.",
+
+        # CV Optimizer (optimize_cv_flow)
+        "cv_opt_btn_existing":  "EXISTING",
+        "cv_opt_btn_scratch":   "FROM SCRATCH",
+        "cv_port_btn_yes":      "YES",
+        "cv_port_btn_no":       "NO",
+        "cv_log_optimizing":    "Optimizing CV with Artificial Intelligence...",
+        "cv_log_generating":    "Generating attractive CV from your configuration data...",
+        "cv_log_saved_opt":     "Optimized CV saved to 'all resumes/'.",
+        "cv_log_saved_gen":     "Generated CV saved to 'all resumes/'.",
+        "cv_log_err_opt":       "Error optimizing CV. Check the console for details.",
+        "cv_log_err_gen":       "Error generating CV from scratch. Check the console.",
     }
 }
 
+_settings_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config", "settings.py")
+_lang_cache: dict = {}   # {"lang": "es", "mtime": 0.0}
+
 def get_language() -> str:
-    """Reads ui_language from config/settings.py. Defaults to 'es'."""
+    """Reads ui_language from settings.py, cached by file mtime."""
     try:
-        import ast, os
-        settings_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config", "settings.py")
-        with open(settings_path, "r", encoding="utf-8") as f:
+        mtime = os.path.getmtime(_settings_path)
+        if _lang_cache.get("mtime") == mtime:
+            return _lang_cache.get("lang", "es")
+        with open(_settings_path, "r", encoding="utf-8") as f:
             source = f.read()
         tree = ast.parse(source)
         for node in ast.walk(tree):
             if isinstance(node, ast.Assign):
                 for t in node.targets:
                     if isinstance(t, ast.Name) and t.id == "ui_language":
-                        return ast.literal_eval(node.value)
+                        lang = ast.literal_eval(node.value)
+                        _lang_cache["lang"] = lang
+                        _lang_cache["mtime"] = mtime
+                        return lang
     except Exception:
         pass
     return "es"

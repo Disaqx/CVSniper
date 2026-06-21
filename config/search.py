@@ -144,7 +144,29 @@ primary_focus_keywords = [
     'support technician',
     'support analyst',
     'technical specialist',
-    'service desk'
+    'service desk',
+    'soporte tecnico',
+    'soporte técnico',
+    'especialista de soporte',
+    'especialista ti',
+    'especialista en ti',
+    'analista de soporte',
+    'analista ti',
+    'analista en ti',
+    'coordinador de ti',
+    'coordinador ti',
+    'mesa de servicio',
+    'mesa de ayuda',
+    'soporte it',
+    'tecnico de soporte',
+    'técnico de soporte',
+    'gestor de servicio',
+    'lider tecnico',
+    'líder técnico',
+    'administrador de sistemas',
+    'administrador ti',
+    'soporte de sistemas',
+    'especialista en soporte'
 ]
 
 # Secondary focus: bot will apply ONLY if work_style is Remote or Hybrid

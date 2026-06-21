@@ -9,7 +9,7 @@ from urllib.parse import quote
 
 # ── Auto-copy config templates if personal config files are missing ──────────
 _CONFIG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config")
-for _cfg_name in ["personals", "secrets", "questions", "resume", "search"]:
+for _cfg_name in ["personals", "secrets", "questions", "resume", "search", "settings"]:
     _real = os.path.join(_CONFIG_DIR, f"{_cfg_name}.py")
     _tmpl = os.path.join(_CONFIG_DIR, f"{_cfg_name}.default.py")
     if not os.path.exists(_real) and os.path.exists(_tmpl):

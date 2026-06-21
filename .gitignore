@@ -12,6 +12,8 @@ config/personals.py
 config/secrets.py
 config/questions.py
 config/resume.py
+config/search.py
+config/settings.py
 REVISED_CV.md
 qa_database.json
 config/questions_db.json

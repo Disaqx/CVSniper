@@ -39,6 +39,7 @@ def createChromeSession(isRetry: bool = False):
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
+    options.add_argument("--disable-quic")  # Fix ERR_QUIC_PROTOCOL_ERROR
 
     print_lg("IF YOU HAVE MORE THAN 10 TABS OPENED, PLEASE CLOSE OR BOOKMARK THEM! Or it's highly likely that application will just open browser and not do anything!")
     profile_dir = find_default_profile_directory()
@@ -51,7 +52,41 @@ def createChromeSession(isRetry: bool = False):
         options.add_argument(f"--user-data-dir={get_default_temp_profile()}")
     if stealth_mode:
         print_lg("Downloading Chrome Driver... This may take some time. Undetected mode requires download every run!")
-        driver = uc.Chrome(options=options, version_main=148, use_subprocess=True)
+        # Auto-detect Chrome version instead of hardcoding
+        chrome_version = None
+        try:
+            import subprocess
+            result = subprocess.run(
+                ['reg', 'query', r'HKEY_CURRENT_USER\Software\Google\Chrome\BLBeacon', '/v', 'version'],
+                capture_output=True, text=True, timeout=5
+            )
+            if result.returncode == 0:
+                for line in result.stdout.strip().split('\n'):
+                    if 'version' in line.lower():
+                        chrome_version = int(line.strip().split()[-1].split('.')[0])
+                        break
+        except Exception:
+            pass
+        if not chrome_version:
+            try:
+                import subprocess
+                result = subprocess.run(
+                    ['reg', 'query', r'HKLM\SOFTWARE\Google\Chrome\BLBeacon', '/v', 'version'],
+                    capture_output=True, text=True, timeout=5
+                )
+                if result.returncode == 0:
+                    for line in result.stdout.strip().split('\n'):
+                        if 'version' in line.lower():
+                            chrome_version = int(line.strip().split()[-1].split('.')[0])
+                            break
+            except Exception:
+                pass
+        if chrome_version:
+            print_lg(f"Detected Chrome version: {chrome_version}")
+        else:
+            chrome_version = None  # Let undetected_chromedriver auto-detect
+            print_lg("Could not detect Chrome version, letting undetected_chromedriver auto-detect...")
+        driver = uc.Chrome(options=options, version_main=chrome_version)
     else: driver = webdriver.Chrome(options=options)
     driver.maximize_window()
     wait = WebDriverWait(driver, 5)

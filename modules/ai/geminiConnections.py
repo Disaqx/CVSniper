@@ -69,50 +69,44 @@ def gemini_completion(model, prompt: str, is_json: bool = False) -> dict | str:
         raise ValueError("Gemini client is not available!")
 
     try:
-        # The Gemini API has a 'safety_settings' parameter to control content filtering.
-        # For a job application helper, it's generally safe to set these to a less restrictive level
-        # to avoid blocking legitimate content from resumes or job descriptions.
         safety_settings = [
-            {
-                "category": "HARM_CATEGORY_HARASSMENT",
-                "threshold": "BLOCK_NONE",
-            },
-            {
-                "category": "HARM_CATEGORY_HATE_SPEECH",
-                "threshold": "BLOCK_NONE",
-            },
-            {
-                "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                "threshold": "BLOCK_NONE",
-            },
-            {
-                "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
-                "threshold": "BLOCK_NONE",
-            },
+            {"category": "HARM_CATEGORY_HARASSMENT",        "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_HATE_SPEECH",       "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
         ]
 
+        # Disable extended thinking to get faster responses and avoid hanging
+        generation_config = genai.types.GenerationConfig(
+            temperature=0.3,
+            max_output_tokens=1024,
+        )
+
         print_lg(f"Calling Gemini API for completion...")
-        response = model.generate_content(prompt, safety_settings=safety_settings)
+        response = model.generate_content(
+            prompt,
+            safety_settings=safety_settings,
+            generation_config=generation_config,
+            request_options={"timeout": 45},   # 45s timeout — prevents infinite hang
+        )
         
-        # The response might be blocked. Check for that.
         if not response.parts:
-             raise ValueError("The response from the Gemini API was empty. This might be due to the safety filters blocking the prompt or the response. The prompt was:\n" + prompt)
+            raise ValueError("The response from the Gemini API was empty (safety filter or empty content).")
 
         result = response.text
 
         if is_json:
-            # Clean the response to remove Markdown formatting
             if result.startswith("```json"):
                 result = result[7:]
             if result.endswith("```"):
                 result = result[:-3]
-            
             return convert_to_json(result)
         
         return result
     except Exception as e:
         critical_error_log(f"Error occurred while getting Gemini completion!", e)
         return {"error": str(e)}
+
 
 def gemini_extract_skills(model, job_description: str) -> list[str] | None:
     """
@@ -129,19 +123,33 @@ def gemini_extract_skills(model, job_description: str) -> list[str] | None:
         critical_error_log("Error occurred while extracting skills with Gemini!", e)
         return {"error": str(e)}
 
+from modules.ai.qa_database import get_answer_from_database, save_to_qa_database
+
 def gemini_answer_question(
     model,
     question: str, options: list[str] | None = None, 
     question_type: Literal['text', 'textarea', 'single_select', 'multiple_select'] = 'text', 
-    job_description: str = None, about_company: str = None, user_information_all: str = None
+    job_description: str = None, about_company: str = None, user_information_all: str = None,
+    error_message: str = None
 ) -> str:
     """
     Answers a question using the Gemini API.
     """
     try:
+        # Check QA Database first. If there's an error_message, don't use cache!
+        if not error_message:
+            cached_answer = get_answer_from_database(question)
+            if cached_answer:
+                print_lg(f"Found answer in QA Database: {cached_answer}")
+                return cached_answer
+            
         print_lg(f"Answering question using Gemini AI: {question}")
         user_info = user_information_all or ""
-        prompt = ai_answer_prompt.format(user_info, question)
+        
+        prompt = ""
+        if error_message:
+            prompt += f"IMPORTANT: The previous answer to this question resulted in a validation error: '{error_message}'. Please provide a NEW answer that fixes this error.\n\n"
+        prompt += ai_answer_prompt.format(user_info, question)
 
         if options and (question_type in ['single_select', 'multiple_select']):
             options_str = "OPTIONS:\n" + "\n".join([f"- {option}" for option in options])
@@ -157,7 +165,28 @@ def gemini_answer_question(
         if about_company:
             prompt += f"\n\nABOUT COMPANY:\n{about_company}"
 
-        return gemini_completion(model, prompt)
+        answer = gemini_completion(model, prompt)
+        
+        # Save valid answers to QA Database
+        if isinstance(answer, str) and not answer.startswith("{'error'"):
+            save_to_qa_database(question, answer)
+            
+        return answer
     except Exception as e:
         critical_error_log("Error occurred while answering question with Gemini!", e)
         return {"error": str(e)}
+
+def gemini_evaluate_job(model, job_description: str, user_information_all: str) -> dict:
+    """
+    Evaluates if the user meets the core requirements of the job.
+    Returns a dict with 'meets_requirements' (bool) and 'reason' (str).
+    """
+    try:
+        print_lg("Evaluating if job matches user's CV using Gemini AI...")
+        user_info = user_information_all or ""
+        prompt = evaluate_job_prompt.format(user_info, job_description)
+        return gemini_completion(model, prompt, is_json=True)
+    except Exception as e:
+        critical_error_log("Error occurred while evaluating job with Gemini!", e)
+        return {"error": str(e)}
+

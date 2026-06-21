@@ -176,31 +176,37 @@ def deepseek_extract_skills(client: OpenAI, job_description: str, stream: bool =
         critical_error_log("Error occurred while extracting skills with DeepSeek!", e)
         return {"error": str(e)}
 
+from modules.ai.qa_database import get_answer_from_database, save_to_qa_database
+
 def deepseek_answer_question(
-    client: OpenAI, 
+    client: OpenAI,
     question: str, options: list[str] | None = None, 
     question_type: Literal['text', 'textarea', 'single_select', 'multiple_select'] = 'text', 
     job_description: str = None, about_company: str = None, user_information_all: str = None,
+    error_message: str = None,
     stream: bool = stream_output
-) -> dict | ValueError:
+) -> str | dict | ValueError:
     '''
     Function to answer a question using DeepSeek AI.
-    * Takes in `client` of type `OpenAI` - The DeepSeek client
-    * Takes in `question` of type `str` - The question to answer
-    * Takes in `options` of type `list[str] | None` - Options for select questions
-    * Takes in `question_type` - Type of question (text, textarea, single_select, multiple_select)
-    * Takes in optional context parameters - job_description, about_company, user_information_all
-    * Takes in `stream` of type `bool` - Whether to stream the output
-    * Returns the AI's answer
     '''
     try:
+        # Check QA Database first
+        if not error_message:
+            cached_answer = get_answer_from_database(question)
+            if cached_answer:
+                print_lg(f"Found answer in QA Database: {cached_answer}")
+                return cached_answer
+            
         print_lg(f"Answering question using DeepSeek AI: {question}")
         
         # Prepare user information
         user_info = user_information_all or ""
         
         # Prepare prompt based on question type
-        prompt = ai_answer_prompt.format(user_info, question)
+        prompt = ""
+        if error_message:
+            prompt += f"IMPORTANT: The previous answer to this question resulted in a validation error: '{error_message}'. Please provide a NEW answer that fixes this error.\n\n"
+        prompt += ai_answer_prompt.format(user_info, question)
         
         # Add options to the prompt if available
         if options and (question_type in ['single_select', 'multiple_select']):
@@ -229,8 +235,26 @@ def deepseek_answer_question(
             stream=stream
         )
         
+        # Save valid answers to QA Database
+        if isinstance(result, str) and not result.startswith("{'error'"):
+            save_to_qa_database(question, result)
+            
         return result
     except Exception as e:
         critical_error_log("Error occurred while answering question with DeepSeek!", e)
+        return {"error": str(e)}
+
+def deepseek_evaluate_job(client: OpenAI, job_description: str, user_information_all: str) -> dict:
+    """
+    Evaluates if the user meets the core requirements of the job.
+    """
+    try:
+        print_lg("Evaluating if job matches user's CV using DeepSeek AI...")
+        user_info = user_information_all or ""
+        prompt = evaluate_job_prompt.format(user_info, job_description)
+        messages = [{"role": "user", "content": prompt}]
+        return deepseek_completion(client, messages, response_format={"type": "json_object"})
+    except Exception as e:
+        critical_error_log("Error occurred while evaluating job with DeepSeek!", e)
         return {"error": str(e)}
 ##< 

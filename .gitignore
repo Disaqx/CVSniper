@@ -8,7 +8,14 @@ logs
 
 old
 
-secrets.py
 config/personals.py
+config/secrets.py
+config/questions.py
+config/resume.py
+REVISED_CV.md
+qa_database.json
+config/questions_db.json
+config/user_config.json
 .venv
 apikeys.py
+scratch/

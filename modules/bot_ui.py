@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, scrolledtext
+from tkinter import ttk, scrolledtext, filedialog
 import threading
 import queue
 import ctypes
@@ -27,6 +27,7 @@ alert_queue = queue.Queue()
 # UI State variables — shared between UI thread and bot thread
 is_paused = False
 is_stopped = False
+career_ops_mode = False
 active_driver = None
 current_ui_status = "Status: Idle"
 current_ui_details = ""
@@ -498,15 +499,52 @@ class GlassSettings(tk.Toplevel):
 
         inner.bind("<Configure>", _on_configure)
         canvas.bind("<Configure>", _on_canvas_configure)
-        canvas.bind_all("<MouseWheel>", lambda e: canvas.yview_scroll(int(-1*(e.delta/120)), "units"))
+        
+        def _on_mousewheel(event):
+            w = event.widget
+            while w:
+                if isinstance(w, tk.Canvas):
+                    w.yview_scroll(int(-1 * (event.delta / 120)), "units")
+                    break
+                parent = w.winfo_parent()
+                if not parent:
+                    break
+                try:
+                    w = w.nametowidget(parent)
+                except Exception:
+                    break
+                    
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
         return inner
 
     # ── Row builders ─────────────────────────────────────────────────────────
 
-    def _add_entry(self, parent, field_key, label_text, filepath, varname, width=36):
+    def _browse_file(self, entry_widget):
+        file_path = filedialog.askopenfilename(
+            title="Seleccionar CV (PDF)",
+            filetypes=[("Archivos PDF", "*.pdf"), ("Todos los archivos", "*.*")]
+        )
+        if file_path:
+            file_path = os.path.normpath(file_path)
+            entry_widget.delete(0, tk.END)
+            entry_widget.insert(0, file_path)
+
+    def _add_entry(self, parent, field_key, label_text, filepath, varname, width=36, browse=False):
         _styled_label(parent, label_text).pack(anchor="w", padx=14, pady=(6, 1))
-        e = _styled_entry(parent, width=width)
-        e.pack(anchor="w", padx=14, pady=(0, 2))
+        if browse:
+            row = tk.Frame(parent, bg=BG2)
+            row.pack(anchor="w", padx=14, pady=(0, 2), fill="x")
+            e = _styled_entry(row, width=width - 8)
+            e.pack(side="left", fill="x", expand=True)
+            btn = tk.Button(row, text="EXAMINAR", fg="#FFFFFE", bg="#2D2D30",
+                            activeforeground="#FFFFFE", activebackground="#3A3A3F",
+                            bd=0, padx=8, pady=2, font=("Segoe UI Bold", 7),
+                            command=lambda: self._browse_file(e), cursor="hand2")
+            btn.pack(side="left", padx=(6, 0))
+        else:
+            e = _styled_entry(parent, width=width)
+            e.pack(anchor="w", padx=14, pady=(0, 2))
+            
         val = _read_py_var(filepath, varname)
         if val is not None:
             e.insert(0, str(val))
@@ -614,7 +652,7 @@ class GlassSettings(tk.Toplevel):
         self._add_text(p, "linkedin_summary", "Resumen de LinkedIn", self._QUEST, "linkedin_summary", height=5)
         self._add_text(p, "cover_letter", "Carta de presentación", self._QUEST, "cover_letter", height=8)
         self._add_text(p, "user_information_all", "Información completa para IA", self._QUEST, "user_information_all", height=8)
-        self._add_entry(p, "default_resume_path", "Ruta del CV (PDF)", self._QUEST, "default_resume_path")
+        self._add_entry(p, "default_resume_path", "Ruta del CV (PDF)", self._QUEST, "default_resume_path", browse=True)
 
     def _build_tab_bot(self, p):
         _section_title(p, "⎔  Comportamiento del Bot")
@@ -650,10 +688,13 @@ class GlassSettings(tk.Toplevel):
             try:
                 if ftype == "entry":
                     raw = widget.get().strip()
-                    # Try to parse as number or bool
-                    try:
-                        val = ast.literal_eval(raw)
-                    except Exception:
+                    numeric_fields = {'switch_number', 'current_experience', 'desired_salary', 'notice_period', 'current_ctc', 'click_gap'}
+                    if varname in numeric_fields:
+                        try:
+                            val = ast.literal_eval(raw)
+                        except Exception:
+                            val = raw
+                    else:
                         val = raw
                 elif ftype == "text":
                     val = widget.get("1.0", "end-1c").strip()
@@ -793,7 +834,18 @@ class BotUIApp:
                                    font=("Segoe UI Bold", 8),
                                    command=self.toggle_pause,
                                    cursor="hand2")
-        self.pause_btn.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        self.pause_btn.pack(side="left", fill="x", expand=True, padx=(0, 4))
+
+        # Career-Ops Button
+        self.career_ops_btn = tk.Button(self.btn_frame, text="CAREER-OPS",
+                                        fg="#FFFFFE", bg="#2D2D30",
+                                        activeforeground="#FFFFFE",
+                                        activebackground="#3A3A3F",
+                                        bd=0, padx=8, pady=4,
+                                        font=("Segoe UI Bold", 8),
+                                        command=self.toggle_career_ops,
+                                        cursor="hand2")
+        self.career_ops_btn.pack(side="left", fill="x", expand=True, padx=(4, 4))
 
         # Stop Button
         self.stop_btn = tk.Button(self.btn_frame, text="STOP",
@@ -804,7 +856,7 @@ class BotUIApp:
                                   font=("Segoe UI Bold", 8),
                                   command=self.trigger_stop,
                                   cursor="hand2")
-        self.stop_btn.pack(side="left", fill="x", expand=True, padx=(5, 0))
+        self.stop_btn.pack(side="left", fill="x", expand=True, padx=(4, 0))
 
         root.geometry(f"{self.w}x{self.h}+{self.x}+{self.y}")
         root.deiconify()
@@ -829,6 +881,26 @@ class BotUIApp:
     def toggle_pause(self):
         global is_paused
         is_paused = not is_paused
+
+    def toggle_career_ops(self):
+        global career_ops_mode
+        career_ops_mode = not career_ops_mode
+        if career_ops_mode:
+            self.career_ops_btn.config(bg="#7F5AF0", fg="#FFFFFE", activebackground="#9270F2")
+            self.title_label.config(text="CVSNIPER - CAREER-OPS", fg="#00E8C6")
+            self.add_log("System", "Modo Career-Ops activado. Se omitirá Easy Apply; todos los matches se abrirán manualmente.", "system")
+            alert_msg = (
+                "El Modo Career-Ops está activo:\n\n"
+                "- Omitiendo postulaciones automáticas (Easy Apply).\n"
+                "- Buscando y evaluando todas las vacantes usando IA.\n"
+                "- Al encontrar 5 coincidencias, te preguntará si deseas abrirlas para postular manualmente.\n"
+                "- Podrás confirmar si ya aplicaste para continuar con el siguiente ciclo."
+            )
+            GlassAlert(self.root, "Modo Career-Ops", alert_msg, queue.Queue())
+        else:
+            self.career_ops_btn.config(bg="#2D2D30", fg="#FFFFFE", activebackground="#3A3A3F")
+            self.title_label.config(text="CVSNIPER CONTROL", fg="#E6E6E8")
+            self.add_log("System", "Modo Career-Ops desactivado. LinkedIn Easy Apply estándar activo.", "system")
 
     def trigger_stop(self):
         if self.stop_btn.cget("text") == "STOP":
@@ -996,3 +1068,8 @@ def ui_pause_check():
             except:
                 pass
             os._exit(0)
+
+
+def is_career_ops_mode():
+    global career_ops_mode
+    return career_ops_mode

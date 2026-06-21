@@ -214,33 +214,44 @@ def ai_extract_skills(client: OpenAI, job_description: str, stream: bool = strea
 
 
 ##> ------ Dheeraj Deshwal : dheeraj9811 Email:dheeraj20194@iiitd.ac.in/dheerajdeshwal9811@gmail.com - Feature ------
-def ai_answer_question(
-    client: OpenAI, 
-    question: str, options: list[str] | None = None, question_type: Literal['text', 'textarea', 'single_select', 'multiple_select'] = 'text', 
-    job_description: str = None, about_company: str = None, user_information_all: str = None,
-    stream: bool = stream_output
-) -> dict | ValueError:
-    """
-    Function to generate AI-based answers for questions in a form.
-    
-    Parameters:
-    - `client`: OpenAI client instance.
-    - `question`: The question being answered.
-    - `options`: List of options (for `single_select` or `multiple_select` questions).
-    - `question_type`: Type of question (text, textarea, single_select, multiple_select) It is restricted to one of four possible values.
-    - `job_description`: Optional job description for context.
-    - `about_company`: Optional company details for context.
-    - `user_information_all`: information about you, AI cna use to answer question eg: Resume-like user information.
-    - `stream`: Whether to use streaming AI completion.
-    
-    Returns:
-    - `str`: The AI-generated answer.
-    """
+from modules.ai.qa_database import get_answer_from_database, save_to_qa_database
 
-    print_lg("-- ANSWERING QUESTION using AI")
+def ai_answer_question(
+    client: OpenAI,
+    question: str, options: list[str] | None = None, 
+    question_type: Literal['text', 'textarea', 'single_select', 'multiple_select'] = 'text', 
+    job_description: str = None, about_company: str = None, user_information_all: str = None,
+    error_message: str = None,
+    stream: bool = stream_output
+) -> str | dict | ValueError:
+    """
+    Answers a question using the OpenAI API.
+    """
     try:
-        prompt = ai_answer_prompt.format(user_information_all or "N/A", question)
-         # Append optional details if provided
+        # Check QA Database first
+        if not error_message:
+            cached_answer = get_answer_from_database(question)
+            if cached_answer:
+                print_lg(f"Found answer in QA Database: {cached_answer}")
+                return cached_answer
+                
+        print_lg(f"Answering question using AI: {question}")
+        user_info = user_information_all or ""
+        
+        prompt = ""
+        if error_message:
+            prompt += f"IMPORTANT: The previous answer to this question resulted in a validation error: '{error_message}'. Please provide a NEW answer that fixes this error.\n\n"
+        prompt += ai_answer_prompt.format(user_info, question)
+        
+        # Append optional details if provided
+        if options and (question_type in ['single_select', 'multiple_select']):
+            options_str = "OPTIONS:\n" + "\n".join([f"- {option}" for option in options])
+            prompt += f"\n\n{options_str}"
+            if question_type == 'single_select':
+                prompt += "\n\nPlease select exactly ONE option from the list above."
+            else:
+                prompt += "\n\nYou may select MULTIPLE options from the list above if appropriate."
+                
         if job_description and job_description != "Unknown":
             prompt += f"\nJob Description:\n{job_description}"
         if about_company and about_company != "Unknown":
@@ -248,12 +259,30 @@ def ai_answer_question(
 
         messages = [{"role": "user", "content": prompt}]
         print_lg("Prompt we are passing to AI: ", prompt)
-        response =  ai_completion(client, messages, stream=stream)
-        # print_lg("Response from AI: ", response)
+        response = ai_completion(client, messages, stream=stream)
+        
+        # Save valid answers to QA Database
+        if isinstance(response, str) and not response.startswith("{'error'"):
+            save_to_qa_database(question, response)
+            
         return response
     except Exception as e:
         ai_error_alert(f"Error occurred while answering question. {apiCheckInstructions}", e)
-##<
+        return {"error": str(e)}
+
+def ai_evaluate_job(client: OpenAI, job_description: str, user_information_all: str) -> dict:
+    """
+    Evaluates if the user meets the core requirements of the job.
+    """
+    try:
+        print_lg("Evaluating if job matches user's CV using OpenAI...")
+        user_info = user_information_all or ""
+        prompt = evaluate_job_prompt.format(user_info, job_description)
+        messages = [{"role": "user", "content": prompt}]
+        return ai_completion(client, messages, response_format={"type": "json_object"})
+    except Exception as e:
+        ai_error_alert(f"Error occurred while evaluating job. {apiCheckInstructions}", e)
+        return {"error": str(e)}
 
 
 def ai_gen_experience(

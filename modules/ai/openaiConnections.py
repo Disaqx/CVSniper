@@ -346,4 +346,161 @@ def ai_check_job_relevance(
     stream: bool = stream_output
 ) -> dict:
     pass
+
+def ai_optimize_existing_cv(file_path: str, include_portfolio: bool = False) -> bool:
+    try:
+        import fitz
+        import traceback
+        from modules.helpers import convert_to_json
+        from generate_cv_fullportfolio import generate_full_portfolio, default_projects, images_dir_default
+        from config.secrets import ai_provider as _ai_provider
+        
+        doc = fitz.open(file_path)
+        text = ""
+        for page in doc:
+            text += page.get_text("text") + "\n"
+        doc.close()
+        print(f"[CV Optimizer] Extracted {len(text)} chars from PDF")
+
+        prompt = f"""\
+Act as an expert resume writer. Optimize the CV text below: be impactful, metric-driven, and modern.
+Return ONLY a JSON object (no markdown) with this exact structure:
+{{
+    "name": "Full Name",
+    "title": "Professional Title",
+    "contact": ["Email: x@y.com", "Phone: +123"],
+    "sections": [
+        {{
+            "title": "EXPERIENCE",
+            "subsections": [
+                {{
+                    "title": "Job Title at Company",
+                    "date": "Jan 2020 - Present",
+                    "bullets": ["Achievement 1", "Achievement 2"]
+                }}
+            ],
+            "bullets": []
+        }},
+        {{
+            "title": "SKILLS",
+            "subsections": [],
+            "bullets": ["Skill A", "Skill B"]
+        }}
+    ]
+}}
+
+RAW CV TEXT:
+{text}"""
+
+        response_text = None
+
+        if _ai_provider.lower() == "gemini":
+            from modules.ai.geminiConnections import gemini_create_client, gemini_completion
+            client = gemini_create_client()
+            if not client:
+                print("[CV Optimizer] ERROR: Gemini client is None.")
+                return False
+            response_text = gemini_completion(client, prompt, is_json=True)
+        else:
+            client = ai_create_openai_client()
+            if not client:
+                print("[CV Optimizer] ERROR: OpenAI/DeepSeek client is None. Check API key.")
+                return False
+            messages = [{"role": "user", "content": prompt}]
+            response_text = ai_completion(client, messages, response_format={"type": "json_object"})
+
+        if isinstance(response_text, str):
+            import json
+            # Strip markdown code fences if present
+            clean = response_text.strip().strip('`')
+            if clean.startswith('json'):
+                clean = clean[4:].strip()
+            cv_data = json.loads(clean)
+        else:
+            cv_data = response_text
+
+        print(f"[CV Optimizer] Raw AI response keys: {list(cv_data.keys()) if isinstance(cv_data, dict) else type(cv_data)}")
+
+        # Normalize: Gemini sometimes returns different key names
+        def _normalize_cv(raw: dict) -> dict:
+            # If data is nested inside a wrapper key, unwrap it
+            for wrapper_key in ("cv", "resume", "candidate", "data", "result"):
+                if wrapper_key in raw and isinstance(raw[wrapper_key], dict):
+                    raw = raw[wrapper_key]
+                    break
+            # Map common name aliases
+            if "name" not in raw:
+                for alias in ("full_name", "candidate_name", "applicant_name", "firstName"):
+                    if alias in raw:
+                        raw["name"] = raw[alias]
+                        break
+                else:
+                    raw["name"] = "Candidate"
+            if "title" not in raw:
+                for alias in ("professional_title", "job_title", "headline", "position"):
+                    if alias in raw:
+                        raw["title"] = raw[alias]
+                        break
+                else:
+                    raw["title"] = ""
+            if "contact" not in raw:
+                for alias in ("contact_info", "contacts", "contact_details"):
+                    if alias in raw:
+                        raw["contact"] = raw[alias]
+                        break
+                else:
+                    raw["contact"] = []
+            if "sections" not in raw:
+                for alias in ("experience", "experiences", "resume_sections"):
+                    if alias in raw and isinstance(raw[alias], list):
+                        raw["sections"] = raw[alias]
+                        break
+                else:
+                    raw["sections"] = []
+            return raw
+
+        cv_data = _normalize_cv(cv_data)
+        print(f"[CV Optimizer] Normalized: name={cv_data.get('name')}, sections={len(cv_data.get('sections', []))}")
+
+        import os
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        safe_name = cv_data.get("name", "Optimized").replace(" ", "_")
+        output_path = os.path.join(base_dir, "all resumes", f"{safe_name}_CV_Optimized.pdf")
+
+        generate_full_portfolio(cv_data, output_path, include_portfolio=include_portfolio, projects=default_projects, images_dir=images_dir_default)
+        print(f"[CV Optimizer] SUCCESS: Saved to {output_path}")
+        return True
+    except Exception as e:
+        import traceback
+        print(f"[CV Optimizer] EXCEPTION in ai_optimize_existing_cv:")
+        traceback.print_exc()
+        return False
+
+def ai_generate_cv_from_config(include_portfolio: bool = False) -> bool:
+    try:
+        from generate_cv_fullportfolio import generate_cv_from_basic_info, default_projects, images_dir_default
+        import os
+        from modules.bot_ui import _read_py_var
+
+        _BASE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        _PERS = os.path.join(_BASE, "config", "personals.py")
+        _QUEST = os.path.join(_BASE, "config", "questions.py")
+
+        fn = _read_py_var(_PERS, "first_name") or "John"
+        ln = _read_py_var(_PERS, "last_name") or "Doe"
+        ph = _read_py_var(_PERS, "phone_number") or ""
+        city = _read_py_var(_PERS, "current_city") or ""
+        st = _read_py_var(_PERS, "state") or ""
+        title = _read_py_var(_QUEST, "linkedin_headline") or "Professional"
+
+        output_path = os.path.join(_BASE, "all resumes", f"{fn}_{ln}_CV_Generado.pdf")
+
+        generate_cv_from_basic_info(fn, ln, ph, f"{city}, {st}", title, output_path, include_portfolio=include_portfolio, projects=default_projects, images_dir=images_dir_default)
+        print(f"[CV Optimizer] SUCCESS: Saved to {output_path}")
+        return True
+    except Exception as e:
+        import traceback
+        print(f"[CV Optimizer] EXCEPTION in ai_generate_cv_from_config:")
+        traceback.print_exc()
+        return False
 #>

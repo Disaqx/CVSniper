@@ -847,6 +847,17 @@ class BotUIApp:
                                         cursor="hand2")
         self.career_ops_btn.pack(side="left", fill="x", expand=True, padx=(4, 4))
 
+        # Optimize CV Button
+        self.optimize_btn = tk.Button(self.btn_frame, text="OPTIMIZAR CV",
+                                      fg="#FFFFFE", bg="#2D2D30",
+                                      activeforeground="#FFFFFE",
+                                      activebackground="#3A3A3F",
+                                      bd=0, padx=8, pady=4,
+                                      font=("Segoe UI Bold", 8),
+                                      command=self._trigger_optimize_cv,
+                                      cursor="hand2")
+        self.optimize_btn.pack(side="left", fill="x", expand=True, padx=(0, 4))
+
         # Stop Button
         self.stop_btn = tk.Button(self.btn_frame, text="STOP",
                                   fg="#FFFFFE", bg="#E74C3C",
@@ -877,6 +888,45 @@ class BotUIApp:
             self._settings_win.lift()
             return
         self._settings_win = GlassSettings(self.root)
+
+    def _trigger_optimize_cv(self):
+        threading.Thread(target=self._optimize_cv_flow, daemon=True).start()
+
+    def _optimize_cv_flow(self):
+        choice = ui_confirm("Optimizador de CV", "¿Deseas optimizar un CV existente o empezar de cero usando tus datos de configuración?", ["EXISTENTE", "DE CERO"])
+        if not choice:
+            return
+        if choice == "EXISTENTE":
+            file_path = filedialog.askopenfilename(title="Seleccionar CV Viejo", filetypes=[("Archivos PDF", "*.pdf")])
+            if not file_path:
+                return
+            inc_port = ui_confirm("Portfolio", "¿Deseas incluir la página del Portfolio visual al final del CV?", ["SI", "NO"])
+            self.add_log("System", "Optimizando CV con Inteligencia Artificial...", "system")
+            try:
+                from modules.ai.openaiConnections import ai_optimize_existing_cv
+                success = ai_optimize_existing_cv(file_path, include_portfolio=(inc_port=="SI"))
+            except Exception as ex:
+                self.add_log("System", f"Excepción: {ex}", "status")
+                success = False
+            if success:
+                self.add_log("System", "CV Optimizado guardado en 'all resumes/'.", "status")
+                ui_alert("¡Éxito!", "Se generó exitosamente tu CV optimizado y llamativo.")
+            else:
+                self.add_log("System", "Error al optimizar CV. Revisa la consola para más detalles.", "status")
+        elif choice == "DE CERO":
+            inc_port = ui_confirm("Portfolio", "¿Deseas incluir la página del Portfolio visual al final del CV?", ["SI", "NO"])
+            self.add_log("System", "Generando CV llamativo con tus datos de configuración...", "system")
+            try:
+                from modules.ai.openaiConnections import ai_generate_cv_from_config
+                success = ai_generate_cv_from_config(include_portfolio=(inc_port=="SI"))
+            except Exception as ex:
+                self.add_log("System", f"Excepción: {ex}", "status")
+                success = False
+            if success:
+                self.add_log("System", "CV Generado guardado en 'all resumes/'.", "status")
+                ui_alert("¡Éxito!", "Se generó exitosamente tu CV llamativo a partir de tu información básica.")
+            else:
+                self.add_log("System", "Error al generar CV desde cero. Revisa la consola.", "status")
 
     def toggle_pause(self):
         global is_paused
@@ -975,7 +1025,11 @@ class BotUIApp:
         # 3. Process pending actions from the action_queue
         while not action_queue.empty():
             act = action_queue.get()
-            if act == "pause":
+            if isinstance(act, tuple) and act[0] == "open_settings":
+                self._open_settings()
+            elif act == "open_settings":
+                self._open_settings()
+            elif act == "pause":
                 is_paused = not is_paused
             elif act == "stop":
                 is_stopped = True
@@ -1073,3 +1127,28 @@ def ui_pause_check():
 def is_career_ops_mode():
     global career_ops_mode
     return career_ops_mode
+
+def ui_enforce_configuration():
+    """Checks if basic config is present, blocks and opens settings if not."""
+    global is_paused
+    from modules.bot_ui import _read_py_var
+    _BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    _PERS = os.path.join(_BASE, "config", "personals.py")
+    
+    first_name = _read_py_var(_PERS, "first_name")
+    
+    if not first_name or str(first_name).strip() == "":
+        ui_update_status("Configuración requerida", "Por favor completa tus datos en la configuración.")
+        is_paused = True
+        ui_alert("Configuración Inicial Requerida", "Es la primera vez que ejecutas el bot o faltan tus datos personales. Se abrirá la rueda de configuración. ¡Llénala y guarda los cambios para continuar!")
+        # Put an action to the queue to open settings on the UI thread
+        action_queue.put("open_settings")
+        
+        while is_paused:
+            time.sleep(0.5)
+            # Re-check inside loop just in case they saved
+            new_first_name = _read_py_var(_PERS, "first_name")
+            if new_first_name and str(new_first_name).strip() != "":
+                is_paused = False
+                ui_update_status("Status: Configurado", "Bot listo para continuar.")
+                break

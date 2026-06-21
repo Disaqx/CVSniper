@@ -76,3 +76,7 @@ def get_from_qa_database(question: str) -> str | None:
     key = question.strip().lower()
     entry = db.get(key)
     return entry["answer"] if entry else None
+
+
+# Aliases for backwards compatibility
+get_answer_from_database = get_from_qa_database

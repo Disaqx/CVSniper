@@ -79,7 +79,7 @@ def gemini_completion(model, prompt: str, is_json: bool = False) -> dict | str:
         # Disable extended thinking to get faster responses and avoid hanging
         generation_config = genai.types.GenerationConfig(
             temperature=0.3,
-            max_output_tokens=1024,
+            max_output_tokens=8192,
         )
 
         print_lg(f"Calling Gemini API for completion...")

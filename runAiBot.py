@@ -29,7 +29,7 @@ from modules.open_chrome import *
 from modules.helpers import *
 from modules.clickers_and_finders import *
 from modules.validator import validate_config
-from modules.bot_ui import ui_start, ui_update_status, ui_alert, ui_confirm, ui_pause_check, is_career_ops_mode
+from modules.bot_ui import ui_start, ui_update_status, ui_alert, ui_confirm, ui_pause_check, is_career_ops_mode, ui_enforce_configuration
 
 if use_AI:
     from modules.ai.openaiConnections import ai_create_openai_client, ai_extract_skills, ai_answer_question, ai_evaluate_job, ai_close_openai_client
@@ -43,6 +43,7 @@ from modules.ai.qa_database import save_to_qa_database
 pyautogui.FAILSAFE = False
 # Start the Controller UI (driver is ready after open_chrome import)
 ui_start(driver)
+ui_enforce_configuration()
 ui_update_status("Initializing", "Starting CVSniper...")
 # if use_resume_generator:    from resume_generator import is_logged_in_GPT, login_GPT, open_resume_chat, create_custom_resume
 

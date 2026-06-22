@@ -65,7 +65,7 @@ pause
 """
 
 # Script PowerShell que hace el trabajo real
-SETUP_PS1 = f"""# SETUP.ps1 - Instala CVSniper con Python embebido
+SETUP_PS1 = f"""# SETUP.ps1 - Instala CVSniper (Python completo, incluye tkinter)
 # No requiere Python instalado en el sistema
 
 $ErrorActionPreference = "Stop"
@@ -73,57 +73,49 @@ $Root      = $PSScriptRoot
 $PyVersion = "{PYTHON_VERSION}"
 $PyDir     = "$Root\\python"
 $PyExe     = "$PyDir\\python.exe"
-$PyZip     = "$Root\\python_embed.zip"
 
 function Write-Step($n, $msg) {{
     Write-Host ""
     Write-Host "[$n/3] $msg" -ForegroundColor Cyan
 }}
 
-# ── Paso 1: Python embebido ────────────────────────────────────────────────────
-Write-Step 1 "Configurando Python $PyVersion embebido..."
+# ── Paso 1: Python completo (incluye tkinter) ─────────────────────────────────
+Write-Step 1 "Instalando Python $PyVersion..."
 
 if (Test-Path $PyExe) {{
-    Write-Host "  Python ya esta configurado, saltando descarga." -ForegroundColor Green
+    Write-Host "  Python ya esta instalado, saltando descarga." -ForegroundColor Green
 }} else {{
-    $url = "https://www.python.org/ftp/python/$PyVersion/python-$PyVersion-embed-amd64.zip"
-    Write-Host "  Descargando Python desde python.org..."
+    $installer = "$Root\\python_setup.exe"
+    $url = "https://www.python.org/ftp/python/$PyVersion/python-$PyVersion-amd64.exe"
+    Write-Host "  Descargando instalador de Python (~25 MB)..."
     try {{
-        Invoke-WebRequest -Uri $url -OutFile $PyZip -UseBasicParsing
+        Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
     }} catch {{
         Write-Host "[ERROR] No se pudo descargar Python. Verifica tu conexion a internet." -ForegroundColor Red
         exit 1
     }}
 
-    Write-Host "  Extrayendo Python..."
-    Expand-Archive -Path $PyZip -DestinationPath $PyDir -Force
-    Remove-Item $PyZip -ErrorAction SilentlyContinue
+    Write-Host "  Instalando Python en la carpeta del app (sin afectar el sistema)..."
+    $installArgs = @(
+        "/quiet",
+        "InstallAllUsers=0",
+        "TargetDir=`"$PyDir`"",
+        "Include_tcltk=1",
+        "Include_pip=1",
+        "Include_test=0",
+        "Include_doc=0",
+        "PrependPath=0",
+        "Shortcuts=0"
+    )
+    $proc = Start-Process -FilePath $installer -ArgumentList $installArgs -Wait -PassThru
+    Remove-Item $installer -ErrorAction SilentlyContinue
 
-    # Habilitar site-packages (necesario para pip)
-    $pthFile = Get-ChildItem $PyDir -Filter "python*._pth" | Select-Object -First 1
-    if ($pthFile) {{
-        $content = Get-Content $pthFile.FullName -Raw
-        $content = $content -replace '#import site', 'import site'
-        Set-Content $pthFile.FullName $content -NoNewline
-        Write-Host "  site-packages habilitado." -ForegroundColor Green
-    }}
-
-    # Instalar pip
-    Write-Host "  Instalando pip..."
-    $getPip = "$Root\\get-pip.py"
-    try {{
-        Invoke-WebRequest -Uri "https://bootstrap.pypa.io/get-pip.py" -OutFile $getPip -UseBasicParsing
-    }} catch {{
-        Write-Host "[ERROR] No se pudo descargar pip." -ForegroundColor Red
+    if ($proc.ExitCode -ne 0) {{
+        Write-Host "[ERROR] Fallo la instalacion de Python (codigo $($proc.ExitCode))." -ForegroundColor Red
+        Write-Host "Intenta correr SETUP.bat como Administrador." -ForegroundColor Yellow
         exit 1
     }}
-    & $PyExe $getPip --no-warn-script-location --quiet
-    Remove-Item $getPip -ErrorAction SilentlyContinue
-
-    # setuptools y wheel son necesarios para compilar paquetes desde fuente
-    Write-Host "  Instalando setuptools y wheel..."
-    & $PyExe -m pip install setuptools wheel --no-warn-script-location --quiet
-    Write-Host "  pip + setuptools listos." -ForegroundColor Green
+    Write-Host "  Python instalado con tkinter." -ForegroundColor Green
 }}
 
 # ── Paso 2: Dependencias ───────────────────────────────────────────────────────

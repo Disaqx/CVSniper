@@ -12,6 +12,22 @@ from ctypes import c_int, c_void_p, Structure, sizeof, windll, pointer, byref
 from ctypes import wintypes
 from modules.i18n import T, get_language
 
+def _fix_window_rendering(widget):
+    """Remove WS_EX_LAYERED from a Tkinter window handle.
+    Tkinter can set this flag internally for overrideredirect windows on Windows,
+    causing them to appear as black/transparent squares in screen captures and streams.
+    """
+    try:
+        GWL_EXSTYLE  = -20
+        WS_EX_LAYERED = 0x00080000
+        widget.update_idletasks()
+        hwnd = widget.winfo_id()
+        style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+        if style & WS_EX_LAYERED:
+            ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style & ~WS_EX_LAYERED)
+    except Exception:
+        pass
+
 # ── Flask Dashboard ────────────────────────────────────────────────────────────
 FLASK_PORT = 5000
 FLASK_URL  = f"http://127.0.0.1:{FLASK_PORT}"
@@ -224,7 +240,7 @@ class GlassAlert(tk.Toplevel):
         scaling = get_dpi_scaling()
         self.overrideredirect(True)
         self.attributes("-topmost", True)
-
+        _fix_window_rendering(self)
         self.configure(bg="#050505")
         sw = self.winfo_screenwidth()
         sh = self.winfo_screenheight()
@@ -269,7 +285,7 @@ class GlassConfirm(tk.Toplevel):
         scaling = get_dpi_scaling()
         self.overrideredirect(True)
         self.attributes("-topmost", True)
-
+        _fix_window_rendering(self)
         self.configure(bg="#050505")
         sw = self.winfo_screenwidth()
         sh = self.winfo_screenheight()
@@ -449,7 +465,7 @@ class GlassSettings(tk.Toplevel):
         super().__init__(parent)
         self.overrideredirect(True)
         self.attributes("-topmost", True)
-
+        _fix_window_rendering(self)
         self.configure(bg="#050505")
         self.resizable(True, True)
 
@@ -884,7 +900,7 @@ class BotUIApp:
         root.withdraw()
         root.overrideredirect(True)
         root.attributes("-topmost", True)
-
+        _fix_window_rendering(root)
         root.configure(bg="#050505")
 
         sw = root.winfo_screenwidth()

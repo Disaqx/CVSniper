@@ -191,16 +191,28 @@ if (Test-Path $ChromeExe) {{
 }}
 
 # ── Crear START_CVSniper.bat con rutas absolutas ──────────────────────────────
-# Usamos rutas absolutas para evitar problemas con cd o PYTHONPATH relativos
-$startLines = @(
-    "@echo off",
-    "title CVSniper",
-    "cd /d `"$Root`"",
-    "set PYTHONPATH=$Root",
-    "`"$PyExe`" `"$Root\\runAiBot.py`"",
-    "pause"
-)
-$startLines -join "`r`n" | Set-Content "$Root\\START_CVSniper.bat" -Encoding ascii
+$startContent = "@echo off`r`n"
+$startContent += "title CVSniper`r`n"
+$startContent += "cd /d `"$Root`"`r`n"
+$startContent += "set PYTHONPATH=$Root`r`n"
+$startContent += "`r`n"
+$startContent += ":: Usar Python embebido si existe, si no usar Python del sistema`r`n"
+$startContent += "if exist `"$PyExe`" (`r`n"
+$startContent += "    `"$PyExe`" `"$Root\runAiBot.py`"`r`n"
+$startContent += ") else (`r`n"
+$startContent += "    python --version >nul 2>&1`r`n"
+$startContent += "    if %errorlevel% equ 0 (`r`n"
+$startContent += "        python `"$Root\runAiBot.py`"`r`n"
+$startContent += "    ) else (`r`n"
+$startContent += "        echo.`r`n"
+$startContent += "        echo [ERROR] Python no encontrado. Corre SETUP.bat primero.`r`n"
+$startContent += "        echo.`r`n"
+$startContent += "        pause`r`n"
+$startContent += "        exit /b 1`r`n"
+$startContent += "    )`r`n"
+$startContent += ")`r`n"
+$startContent += "pause`r`n"
+[System.IO.File]::WriteAllText("$Root\\START_CVSniper.bat", $startContent, [System.Text.Encoding]::ASCII)
 
 # ── Resultado ─────────────────────────────────────────────────────────────────
 Write-Host ""
@@ -217,18 +229,25 @@ Write-Host ""
 START_BAT = r"""@echo off
 title CVSniper
 cd /d "%~dp0"
-
-if not exist "python\python.exe" (
-    echo.
-    echo [ERROR] Python no esta instalado todavia.
-    echo Corre SETUP.bat primero y luego vuelve a abrir este archivo.
-    echo.
-    pause
-    exit /b 1
-)
-
 set PYTHONPATH=%~dp0
-python\python.exe runAiBot.py
+
+:: Usar Python embebido si existe, si no usar Python del sistema
+if exist "python\python.exe" (
+    python\python.exe runAiBot.py
+) else (
+    python --version >nul 2>&1
+    if %errorlevel% equ 0 (
+        python runAiBot.py
+    ) else (
+        echo.
+        echo [ERROR] Python no encontrado.
+        echo Corre SETUP.bat para instalarlo automaticamente.
+        echo O instala Python desde https://www.python.org/downloads/
+        echo.
+        pause
+        exit /b 1
+    )
+)
 pause
 """
 

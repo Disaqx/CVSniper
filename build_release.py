@@ -119,7 +119,11 @@ if (Test-Path $PyExe) {{
     }}
     & $PyExe $getPip --no-warn-script-location --quiet
     Remove-Item $getPip -ErrorAction SilentlyContinue
-    Write-Host "  pip instalado." -ForegroundColor Green
+
+    # setuptools y wheel son necesarios para compilar paquetes desde fuente
+    Write-Host "  Instalando setuptools y wheel..."
+    & $PyExe -m pip install setuptools wheel --no-warn-script-location --quiet
+    Write-Host "  pip + setuptools listos." -ForegroundColor Green
 }}
 
 # ── Paso 2: Dependencias ───────────────────────────────────────────────────────

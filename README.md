@@ -1,4 +1,4 @@
-# 🎯 CVSniper — Bot Automático de Aplicaciones en LinkedIn
+# CVSniper — Bot Automático de Aplicaciones en LinkedIn
 
 CVSniper automatiza el proceso de aplicar a empleos en LinkedIn usando Selenium para controlar el navegador e IA (OpenAI, DeepSeek o Gemini) para responder preguntas de formularios y filtrar vacantes según tu perfil.
 
@@ -6,7 +6,7 @@ CVSniper automatiza el proceso de aplicar a empleos en LinkedIn usando Selenium 
 
 ---
 
-## 📋 Tabla de Contenidos
+## Tabla de Contenidos
 
 1. [Requisitos](#requisitos)
 2. [Instalación](#instalación)
@@ -22,7 +22,7 @@ CVSniper automatiza el proceso de aplicar a empleos en LinkedIn usando Selenium 
 
 ---
 
-## ✅ Requisitos
+## Requisitos
 
 - Python 3.10 o superior
 - Google Chrome instalado
@@ -34,7 +34,7 @@ CVSniper automatiza el proceso de aplicar a empleos en LinkedIn usando Selenium 
 
 ---
 
-## 🚀 Instalación
+## Instalación
 
 **1. Clona el repositorio:**
 ```bash
@@ -65,7 +65,7 @@ python runAiBot.py
 
 ---
 
-## 🖥️ Primer inicio — configuración desde la UI
+## Primer inicio — configuración desde la UI
 
 Al ejecutar el bot por primera vez (sin configuración previa), el proceso es completamente guiado:
 
@@ -87,11 +87,11 @@ El panel de configuración se abre automáticamente con cuatro secciones:
 ### Paso 3 — El bot arranca solo
 Una vez que el nombre y la clave API están configurados, el bot detecta el cambio automáticamente, cierra el panel y empieza a buscar empleos sin que tengas que hacer nada más.
 
-> **Para volver a la configuración en cualquier momento:** haz clic en el botón **⚙ Configuración** de la ventana de control flotante.
+> **Para volver a la configuración en cualquier momento:** haz clic en el botón **Configuración** de la ventana de control flotante.
 
 ---
 
-## 📖 Referencia de campos de configuración
+## Referencia de campos de configuración
 
 Esta sección es una referencia de todos los campos que aparecen en el panel de configuración de la UI. No necesitas editar ningún archivo Python.
 
@@ -123,7 +123,7 @@ Esta sección es una referencia de todos los campos que aparecen en el panel de 
 | `llm_api_key` | Clave API del proveedor elegido |
 | `llm_model` | Modelo a usar (ej: `gemini-2.5-flash`, `gpt-4o`, `deepseek-chat`) |
 
-**¿Dónde obtener la clave API?**
+**Donde obtener la clave API:**
 
 | Proveedor | Enlace |
 |---|---|
@@ -162,45 +162,45 @@ Esta sección es una referencia de todos los campos que aparecen en el panel de 
 
 ---
 
-## 📁 Estructura del Proyecto
+## Estructura del Proyecto
 
 ```
 CVSniper/
 │
-├── runAiBot.py                  ← Punto de entrada — ejecuta esto
+├── runAiBot.py                  <- Punto de entrada — ejecuta esto
 │
-├── config/                      ← Archivos generados automáticamente al primer inicio
-│   ├── personals.py             ← Datos personales (gestionados por la UI)
-│   ├── secrets.py               ← Credenciales e IA (gestionados por la UI)
-│   ├── search.py                ← Preferencias de búsqueda (gestionadas por la UI)
-│   ├── settings.py              ← Comportamiento del bot (gestionado por la UI)
-│   └── questions.py             ← CV y respuestas comunes (gestionados por la UI)
+├── config/                      <- Archivos generados automáticamente al primer inicio
+│   ├── personals.py             <- Datos personales (gestionados por la UI)
+│   ├── secrets.py               <- Credenciales e IA (gestionados por la UI)
+│   ├── search.py                <- Preferencias de búsqueda (gestionadas por la UI)
+│   ├── settings.py              <- Comportamiento del bot (gestionado por la UI)
+│   └── questions.py             <- CV y respuestas comunes (gestionados por la UI)
 │
-├── modules/                     ← Lógica interna
-│   ├── bot_ui.py                ← Ventana flotante de control + panel de configuración
-│   ├── cv_wizard.py             ← Wizard de configuración automática desde CV
-│   ├── helpers.py               ← Funciones utilitarias (logs, JSON, directorios)
-│   ├── open_chrome.py           ← Inicialización de Chrome con Selenium
-│   ├── clickers_and_finders.py  ← Interacciones con el DOM de LinkedIn
-│   ├── validator.py             ← Valida los archivos de configuración al inicio
+├── modules/                     <- Lógica interna
+│   ├── bot_ui.py                <- Ventana flotante de control + panel de configuración
+│   ├── cv_wizard.py             <- Wizard de configuración automática desde CV
+│   ├── helpers.py               <- Funciones utilitarias (logs, JSON, directorios)
+│   ├── open_chrome.py           <- Inicialización de Chrome con Selenium
+│   ├── clickers_and_finders.py  <- Interacciones con el DOM de LinkedIn
+│   ├── validator.py             <- Valida los archivos de configuración al inicio
 │   │
-│   └── ai/                      ← Módulos de inteligencia artificial
-│       ├── openaiConnections.py ← Integración con OpenAI (GPT)
-│       ├── deepseekConnections.py ← Integración con DeepSeek
-│       ├── geminiConnections.py ← Integración con Google Gemini
-│       ├── prompts.py           ← Plantillas de prompts enviados a la IA
-│       └── qa_database.py       ← Caché local de preguntas y respuestas
+│   └── ai/                      <- Módulos de inteligencia artificial
+│       ├── openaiConnections.py    <- Integración con OpenAI (GPT)
+│       ├── deepseekConnections.py  <- Integración con DeepSeek
+│       ├── geminiConnections.py    <- Integración con Google Gemini
+│       ├── prompts.py              <- Plantillas de prompts enviados a la IA
+│       └── qa_database.py          <- Caché local de preguntas y respuestas
 │
-├── all resumes/                 ← Coloca aquí tu CV en PDF
-├── all excels/                  ← Salidas: historial CSV, base de datos QA
-├── logs/                        ← Logs detallados de cada sesión
-├── templates/                   ← Panel web de configuración (index.html)
-└── setup/                       ← Scripts de instalación por sistema operativo
+├── all resumes/                 <- Coloca aquí tu CV en PDF
+├── all excels/                  <- Salidas: historial CSV, base de datos QA
+├── logs/                        <- Logs detallados de cada sesión
+├── templates/                   <- Panel web de configuración (index.html)
+└── setup/                       <- Scripts de instalación por sistema operativo
 ```
 
 ---
 
-## 🔄 Flujo de Ejecución
+## Flujo de Ejecución
 
 Cuando corres `python runAiBot.py` el bot sigue este proceso:
 
@@ -215,18 +215,18 @@ Cuando corres `python runAiBot.py` el bot sigue este proceso:
    ├─ Navega a linkedin.com/feed
    └─ Inicia sesión con las credenciales configuradas
 
-3. BÚSQUEDA DE EMPLEOS
+3. BUSQUEDA DE EMPLEOS
    └─ Para cada término en search_terms:
        ├─ Aplica los filtros configurados
        └─ Itera sobre los resultados página por página
 
-4. EVALUACIÓN DE CADA EMPLEO
+4. EVALUACION DE CADA EMPLEO
    ├─ ¿Ya fue aplicado antes?         → Saltar
    ├─ ¿Contiene bad_words?            → Saltar
    ├─ ¿Título fuera del focus_filter? → Saltar
    └─ IA evalúa si el perfil cumple   → Continuar o saltar
 
-5. APLICACIÓN (Easy Apply)
+5. APLICACION (Easy Apply)
    ├─ Clic en "Easy Apply"
    ├─ Paso 1: datos personales de la configuración
    ├─ Paso 2: preguntas conocidas de la configuración
@@ -241,7 +241,7 @@ Cuando corres `python runAiBot.py` el bot sigue este proceso:
 
 ---
 
-## 🤖 Módulos de IA
+## Módulos de IA
 
 El bot soporta tres proveedores de IA intercambiables. Se selecciona desde el panel de configuración en el campo `ai_provider`.
 
@@ -256,12 +256,12 @@ Todas las respuestas generadas por la IA se guardan en `all excels/qa_database.j
 
 ---
 
-## 🖥️ Interfaz de Control
+## Interfaz de Control
 
 Al ejecutar el bot aparece una ventana flotante en la esquina de la pantalla con:
 
 - **Panel de logs** con lo que hace el bot en tiempo real
-- Botón **⚙ Configuración** — abre el panel web con todos los ajustes
+- Botón **Configuración** — abre el panel web con todos los ajustes
 - Botón **OPTIMIZAR CV** — lanza el wizard de optimización del CV con IA
 - Botón **PAUSE** — pausa el bot entre acciones de forma segura
 - Botón **STOP** — detiene la ejecución completamente
@@ -274,7 +274,7 @@ Atajos de teclado:
 
 ---
 
-## 📊 Archivos de Salida
+## Archivos de Salida
 
 Todos los archivos se generan automáticamente en `all excels/`:
 
@@ -286,7 +286,7 @@ Todos los archivos se generan automáticamente en `all excels/`:
 
 ---
 
-## 🐛 Errores Comunes
+## Errores Comunes
 
 | Error | Causa | Solución |
 |---|---|---|
@@ -298,7 +298,7 @@ Todos los archivos se generan automáticamente en `all excels/`:
 
 ---
 
-## 🔒 Seguridad
+## Seguridad
 
 - **Nunca subas tus archivos de configuración a GitHub.** Los archivos `config/secrets.py` y `config/personals.py` están en `.gitignore` por defecto.
 - Cada colaborador del proyecto configura sus propios datos localmente desde la UI.
@@ -306,7 +306,7 @@ Todos los archivos se generan automáticamente en `all excels/`:
 
 ---
 
-## 📌 Notas Finales
+## Notas Finales
 
 - El bot está diseñado exclusivamente para **Easy Apply** de LinkedIn. Empleos con formulario externo se registran pero no se completan automáticamente.
 - Usa `pause_before_submit = True` en la configuración al principio para revisar cada aplicación antes de enviarla.
@@ -314,7 +314,7 @@ Todos los archivos se generan automáticamente en `all excels/`:
 
 ---
 
-## 🆕 Novedades
+## Novedades
 
 ### Formularios — campos condicionales "If YES" resueltos
 Algunos formularios de Easy Apply muestran campos de texto adicionales que solo aparecen cuando el usuario selecciona "Yes" en un radio previo (ej: *"If your answer is YES, please provide the name of the referring staff member"*). El bot ahora los maneja automáticamente:

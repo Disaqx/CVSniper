@@ -20,4 +20,13 @@ config/questions_db.json
 config/user_config.json
 .venv
 apikeys.py
-scratch/
+scratch/
+
+# Release build output
+CVSniper_Release/
+CVSniper_Release.zip
+
+# Carpetas duplicadas / Duplicate nested folders
+modules/modules/
+setup/setup/
+templates/templates/

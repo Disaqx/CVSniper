@@ -29,6 +29,7 @@ IGNORE = {
     "CVSniper_Release", "CVSniper_Release.zip",
     "build_release.py", "release.ps1", "release_notes.md",
     ".claude", "CVSniper", "REVISED_CV.md", "qa_database.json",
+    ".setup_done",
 }
 
 CONFIG_IGNORE = {
@@ -190,11 +191,11 @@ $startContent += "set PYTHONPATH=$Root`r`n"
 $startContent += "`r`n"
 $startContent += ":: Usar Python embebido si existe, si no usar Python del sistema`r`n"
 $startContent += "if exist `"$PyExe`" (`r`n"
-$startContent += "    `"$PyExe`" `"$Root\runAiBot.py`"`r`n"
+$startContent += "    `"$PyExe`" `"$Root\\runAiBot.py`"`r`n"
 $startContent += ") else (`r`n"
 $startContent += "    python --version >nul 2>&1`r`n"
 $startContent += "    if %errorlevel% equ 0 (`r`n"
-$startContent += "        python `"$Root\runAiBot.py`"`r`n"
+$startContent += "        python `"$Root\\runAiBot.py`"`r`n"
 $startContent += "    ) else (`r`n"
 $startContent += "        echo.`r`n"
 $startContent += "        echo [ERROR] Python no encontrado. Corre SETUP.bat primero.`r`n"
@@ -205,6 +206,31 @@ $startContent += "    )`r`n"
 $startContent += ")`r`n"
 $startContent += "pause`r`n"
 [System.IO.File]::WriteAllText("$Root\\START_CVSniper.bat", $startContent, [System.Text.Encoding]::ASCII)
+
+# ── Verificacion final ────────────────────────────────────────────────────────
+Write-Host ""
+Write-Host "[Verificando instalacion...]" -ForegroundColor Cyan
+$criticalModules = @("tkinter", "flask", "selenium", "pyautogui", "openai")
+$failed = @()
+foreach ($mod in $criticalModules) {{
+    $result = & $PyExe -c "import $mod" 2>&1
+    if ($LASTEXITCODE -ne 0) {{
+        $failed += $mod
+        Write-Host "  [FALLO] $mod" -ForegroundColor Red
+    }} else {{
+        Write-Host "  [OK] $mod" -ForegroundColor Green
+    }}
+}}
+
+if ($failed.Count -gt 0) {{
+    Write-Host ""
+    Write-Host "[ERROR] Los siguientes modulos no se instalaron: $($failed -join ', ')" -ForegroundColor Red
+    Write-Host "Intenta correr SETUP.bat de nuevo. Si persiste, borra la carpeta python/ primero." -ForegroundColor Yellow
+    exit 1
+}}
+
+# Marcar setup como completo
+"OK" | Set-Content "$Root\\.setup_done" -Encoding ascii
 
 # ── Resultado ─────────────────────────────────────────────────────────────────
 Write-Host ""
@@ -221,6 +247,16 @@ Write-Host ""
 START_BAT = r"""@echo off
 title CVSniper
 cd /d "%~dp0"
+
+if not exist ".setup_done" (
+    echo.
+    echo [AVISO] El setup no se ha completado todavia.
+    echo Corre SETUP.bat primero y espera que termine.
+    echo.
+    pause
+    exit /b 1
+)
+
 set PYTHONPATH=%~dp0
 
 :: Usar Python embebido si existe, si no usar Python del sistema
@@ -232,9 +268,7 @@ if exist "python\python.exe" (
         python runAiBot.py
     ) else (
         echo.
-        echo [ERROR] Python no encontrado.
-        echo Corre SETUP.bat para instalarlo automaticamente.
-        echo O instala Python desde https://www.python.org/downloads/
+        echo [ERROR] Python no encontrado. Corre SETUP.bat primero.
         echo.
         pause
         exit /b 1

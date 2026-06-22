@@ -190,16 +190,17 @@ if (Test-Path $ChromeExe) {{
     }}
 }}
 
-# ── Crear START_CVSniper.bat usando Python embebido ───────────────────────────
-$startBat = @'
-@echo off
-title CVSniper
-cd /d "%~dp0"
-set PYTHONPATH=%~dp0
-python\\python.exe runAiBot.py
-pause
-'@
-Set-Content "$Root\\START_CVSniper.bat" $startBat -Encoding ascii
+# ── Crear START_CVSniper.bat con rutas absolutas ──────────────────────────────
+# Usamos rutas absolutas para evitar problemas con cd o PYTHONPATH relativos
+$startLines = @(
+    "@echo off",
+    "title CVSniper",
+    "cd /d `"$Root`"",
+    "set PYTHONPATH=$Root",
+    "`"$PyExe`" `"$Root\\runAiBot.py`"",
+    "pause"
+)
+$startLines -join "`r`n" | Set-Content "$Root\\START_CVSniper.bat" -Encoding ascii
 
 # ── Resultado ─────────────────────────────────────────────────────────────────
 Write-Host ""
@@ -212,10 +213,20 @@ Write-Host "   Doble click en START_CVSniper.bat" -ForegroundColor Cyan
 Write-Host ""
 """
 
-# Creado por SETUP.ps1 con la ruta correcta al Python embebido
+# Placeholder inicial — SETUP.ps1 lo sobreescribe con rutas absolutas
 START_BAT = r"""@echo off
 title CVSniper
 cd /d "%~dp0"
+
+if not exist "python\python.exe" (
+    echo.
+    echo [ERROR] Python no esta instalado todavia.
+    echo Corre SETUP.bat primero y luego vuelve a abrir este archivo.
+    echo.
+    pause
+    exit /b 1
+)
+
 set PYTHONPATH=%~dp0
 python\python.exe runAiBot.py
 pause

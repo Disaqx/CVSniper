@@ -67,15 +67,16 @@ Write-Host "[4/4] Publicando release en GitHub..."
 
 ### Instalacion rapida en Windows
 1. Descarga CVSniper_Release.zip y descomprime
-2. Doble click en INSTALL_dependencies.bat
-3. Doble click en SETUP_ChromeDriver.bat como Administrador
-4. Doble click en START_CVSniper.bat
-5. Configura tu perfil en el panel web que se abre automaticamente
+2. Doble click en SETUP.bat (descarga Python y todo lo necesario automaticamente)
+3. Doble click en START_CVSniper.bat
+4. Configura tu perfil en el panel web que se abre automaticamente
 
 ### Requisitos
 - Windows 10/11
-- Python 3.10 o superior desde https://www.python.org/downloads/ marcando "Add Python to PATH"
 - Google Chrome instalado
+- Conexion a internet durante el primer setup (descarga Python y dependencias)
+
+No necesitas instalar Python. El instalador lo configura automaticamente dentro de la carpeta del app.
 
 ### IA gratuita recomendada
 Usa Groq: crea una cuenta gratis en https://console.groq.com, genera una API Key y pegala en el panel web.

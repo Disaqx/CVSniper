@@ -66,74 +66,94 @@ pause
 """
 
 # Script PowerShell que hace el trabajo real
-SETUP_PS1 = f"""# SETUP.ps1 - Instala CVSniper (Python completo, incluye tkinter)
-# No requiere Python instalado en el sistema
+SETUP_PS1 = f"""# SETUP.ps1 - Instala CVSniper usando un entorno virtual de Python
+# Si Python ya esta instalado en el sistema, lo usa directamente.
+# Si no, descarga e instala Python 3.12 automaticamente.
 
 $ErrorActionPreference = "Stop"
-$Root      = $PSScriptRoot
-$PyVersion = "{PYTHON_VERSION}"
-$PyExe     = $null
+$Root    = $PSScriptRoot
+$VenvDir = "$Root\\venv"
+$PyExe   = "$VenvDir\\Scripts\\python.exe"
 
 function Write-Step($n, $msg) {{
     Write-Host ""
     Write-Host "[$n/3] $msg" -ForegroundColor Cyan
 }}
 
-function Find-Python {{
-    # 1) py launcher (lo mas confiable en Windows)
+# Busca cualquier Python 3.10+ en el sistema
+function Find-SystemPython {{
+    # py launcher — prueba versiones modernas
+    foreach ($v in @("3.13", "3.12", "3.11", "3.10")) {{
+        try {{
+            $p = & py "-$v" -c "import sys; print(sys.executable)" 2>$null
+            if ($p -and (Test-Path $p)) {{ return $p }}
+        }} catch {{}}
+    }}
+    # Comando python en PATH
     try {{
-        $p = & py -3.12 -c "import sys; print(sys.executable)" 2>$null
-        if ($p -and (Test-Path $p)) {{ return $p }}
+        $cmd = Get-Command python -ErrorAction SilentlyContinue
+        if ($cmd) {{
+            $ver = & python -c "import sys; v=sys.version_info; print(v.major*100+v.minor)" 2>$null
+            if ([int]$ver -ge 310) {{ return $cmd.Source }}
+        }}
     }} catch {{}}
-    # 2) Ubicaciones tipicas del instalador de usuario
-    $candidates = @(
-        "$env:LOCALAPPDATA\\Programs\\Python\\Python312\\python.exe",
-        "$env:ProgramFiles\\Python312\\python.exe",
-        "C:\\Python312\\python.exe"
-    )
-    foreach ($c in $candidates) {{
-        if (Test-Path $c) {{ return $c }}
+    # Ubicaciones tipicas de instalacion
+    foreach ($v in @("313","312","311","310")) {{
+        foreach ($base in @($env:LOCALAPPDATA, $env:ProgramFiles)) {{
+            $p = "$base\\Programs\\Python\\Python$v\\python.exe"
+            if (Test-Path $p) {{ return $p }}
+        }}
     }}
     return $null
 }}
 
-# ── Paso 1: Python completo (incluye tkinter) ─────────────────────────────────
-Write-Step 1 "Buscando / instalando Python $PyVersion..."
+# ── Paso 1: Entorno virtual ────────────────────────────────────────────────────
+Write-Step 1 "Configurando entorno de Python..."
 
-$PyExe = Find-Python
-
-if ($PyExe) {{
-    Write-Host "  Python ya esta instalado: $PyExe" -ForegroundColor Green
+if (Test-Path $PyExe) {{
+    Write-Host "  Entorno virtual ya existe, saltando." -ForegroundColor Green
 }} else {{
-    $installer = "$Root\\python_setup.exe"
-    $url = "https://www.python.org/ftp/python/$PyVersion/python-$PyVersion-amd64.exe"
-    Write-Host "  Descargando instalador de Python (~25 MB)..."
-    try {{
-        Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
-    }} catch {{
-        Write-Host "[ERROR] No se pudo descargar Python. Verifica tu conexion a internet." -ForegroundColor Red
-        exit 1
+    $SysPy = Find-SystemPython
+
+    if (-not $SysPy) {{
+        Write-Host "  Python no encontrado. Descargando Python 3.12..." -ForegroundColor Yellow
+        $installer = "$Root\\python_setup.exe"
+        $url = "https://www.python.org/ftp/python/{PYTHON_VERSION}/python-{PYTHON_VERSION}-amd64.exe"
+        try {{
+            Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
+        }} catch {{
+            Write-Host "[ERROR] No se pudo descargar Python. Verifica tu internet." -ForegroundColor Red
+            exit 1
+        }}
+        Write-Host "  Instalando Python 3.12 (puede tardar un minuto)..."
+        $proc = Start-Process -FilePath $installer `
+            -ArgumentList "/quiet InstallAllUsers=0 Include_tcltk=1 Include_pip=1 Include_test=0 Include_doc=0 PrependPath=0 Shortcuts=0" `
+            -Wait -PassThru
+        Remove-Item $installer -ErrorAction SilentlyContinue
+        $SysPy = Find-SystemPython
     }}
 
-    Write-Host "  Instalando Python (puede tardar un minuto)..."
-    # Sin TargetDir — instala al path por defecto del usuario (AppData\\Local\\Programs\\Python)
-    $installArgs = "/quiet InstallAllUsers=0 Include_tcltk=1 Include_pip=1 Include_test=0 Include_doc=0 PrependPath=0 Shortcuts=0"
-    $proc = Start-Process -FilePath $installer -ArgumentList $installArgs -Wait -PassThru
-    Remove-Item $installer -ErrorAction SilentlyContinue
-
-    $PyExe = Find-Python
-    if (-not $PyExe) {{
-        Write-Host "[ERROR] Python no se pudo instalar automaticamente." -ForegroundColor Red
-        Write-Host "Instala Python 3.12 manualmente desde https://www.python.org/downloads/" -ForegroundColor Yellow
+    if (-not $SysPy) {{
+        Write-Host ""
+        Write-Host "[ERROR] Python no encontrado. Instala Python 3.10 o superior desde:" -ForegroundColor Red
+        Write-Host "  https://www.python.org/downloads/" -ForegroundColor Yellow
         Write-Host "Luego vuelve a correr SETUP.bat." -ForegroundColor Yellow
         pause
         exit 1
     }}
-    Write-Host "  Python instalado: $PyExe" -ForegroundColor Green
+
+    Write-Host "  Python del sistema: $SysPy" -ForegroundColor Green
+    Write-Host "  Creando entorno virtual (tkinter incluido automaticamente)..."
+    & $SysPy -m venv "$VenvDir"
+    if (-not (Test-Path $PyExe)) {{
+        Write-Host "[ERROR] No se pudo crear el entorno virtual." -ForegroundColor Red
+        exit 1
+    }}
+    Write-Host "  Entorno virtual listo." -ForegroundColor Green
 }}
 
 # ── Paso 2: Dependencias ───────────────────────────────────────────────────────
-Write-Step 2 "Instalando dependencias de Python..."
+Write-Step 2 "Instalando dependencias..."
 
 $maxRetries = 3
 $attempt    = 0
@@ -155,8 +175,8 @@ while (-not $success -and $attempt -lt $maxRetries) {{
 
 if (-not $success) {{
     Write-Host ""
-    Write-Host "[ERROR] Fallo la instalacion de dependencias despues de $maxRetries intentos." -ForegroundColor Red
-    Write-Host "Verifica tu conexion a internet y vuelve a correr SETUP.bat." -ForegroundColor Yellow
+    Write-Host "[ERROR] Fallo la instalacion de dependencias." -ForegroundColor Red
+    Write-Host "Verifica tu internet y vuelve a correr SETUP.bat." -ForegroundColor Yellow
     exit 1
 }}
 Write-Host "  Dependencias instaladas." -ForegroundColor Green
@@ -164,59 +184,39 @@ Write-Host "  Dependencias instaladas." -ForegroundColor Green
 # ── Paso 3: ChromeDriver ───────────────────────────────────────────────────────
 Write-Step 3 "Configurando ChromeDriver..."
 
-$ChromeDir    = "$Root\\chrome_driver"
-$ChromeExe    = "$ChromeDir\\chromedriver.exe"
+$ChromeDir = "$Root\\chrome_driver"
+$ChromeExe = "$ChromeDir\\chromedriver.exe"
 
 if (Test-Path $ChromeExe) {{
     Write-Host "  ChromeDriver ya instalado, saltando." -ForegroundColor Green
 }} else {{
     New-Item -ItemType Directory -Force -Path $ChromeDir | Out-Null
     try {{
-        Write-Host "  Obteniendo version de ChromeDriver compatible..."
         $versionsUrl = "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions.json"
         $versionsJson = Invoke-WebRequest -Uri $versionsUrl -UseBasicParsing | ConvertFrom-Json
         $cdVersion = $versionsJson.channels.Stable.version
-
-        $cdUrl  = "https://storage.googleapis.com/chrome-for-testing-public/$cdVersion/win64/chromedriver-win64.zip"
-        $cdZip  = "$Root\\chromedriver.zip"
+        $cdUrl = "https://storage.googleapis.com/chrome-for-testing-public/$cdVersion/win64/chromedriver-win64.zip"
+        $cdZip = "$Root\\chromedriver.zip"
         Write-Host "  Descargando ChromeDriver $cdVersion..."
         Invoke-WebRequest -Uri $cdUrl -OutFile $cdZip -UseBasicParsing
         Expand-Archive -Path $cdZip -DestinationPath $ChromeDir -Force
         Remove-Item $cdZip -ErrorAction SilentlyContinue
-
-        # Mover el exe a la raiz de chrome_driver/
         $innerExe = Get-ChildItem $ChromeDir -Recurse -Filter "chromedriver.exe" | Select-Object -First 1
         if ($innerExe -and $innerExe.FullName -ne $ChromeExe) {{
             Move-Item $innerExe.FullName $ChromeExe -Force
         }}
         Write-Host "  ChromeDriver instalado." -ForegroundColor Green
     }} catch {{
-        Write-Host "  [AVISO] No se pudo instalar ChromeDriver automaticamente." -ForegroundColor Yellow
-        Write-Host "  Puedes instalarlo manualmente desde https://chromedriver.chromium.org/" -ForegroundColor Yellow
+        Write-Host "  [AVISO] ChromeDriver se descargara automaticamente al primer inicio." -ForegroundColor Yellow
     }}
 }}
 
-# ── Crear START_CVSniper.bat con rutas absolutas ──────────────────────────────
-$startContent = "@echo off`r`n"
+# ── Crear START_CVSniper.bat con la ruta absoluta al venv ─────────────────────
+$startContent  = "@echo off`r`n"
 $startContent += "title CVSniper`r`n"
 $startContent += "cd /d `"$Root`"`r`n"
 $startContent += "set PYTHONPATH=$Root`r`n"
-$startContent += "`r`n"
-$startContent += ":: Usar Python embebido si existe, si no usar Python del sistema`r`n"
-$startContent += "if exist `"$PyExe`" (`r`n"
-$startContent += "    `"$PyExe`" `"$Root\\runAiBot.py`"`r`n"
-$startContent += ") else (`r`n"
-$startContent += "    python --version >nul 2>&1`r`n"
-$startContent += "    if %errorlevel% equ 0 (`r`n"
-$startContent += "        python `"$Root\\runAiBot.py`"`r`n"
-$startContent += "    ) else (`r`n"
-$startContent += "        echo.`r`n"
-$startContent += "        echo [ERROR] Python no encontrado. Corre SETUP.bat primero.`r`n"
-$startContent += "        echo.`r`n"
-$startContent += "        pause`r`n"
-$startContent += "        exit /b 1`r`n"
-$startContent += "    )`r`n"
-$startContent += ")`r`n"
+$startContent += "`"$PyExe`" `"$Root\\runAiBot.py`"`r`n"
 $startContent += "pause`r`n"
 [System.IO.File]::WriteAllText("$Root\\START_CVSniper.bat", $startContent, [System.Text.Encoding]::ASCII)
 
@@ -226,7 +226,7 @@ Write-Host "[Verificando instalacion...]" -ForegroundColor Cyan
 $criticalModules = @("tkinter", "flask", "selenium", "pyautogui", "openai")
 $failed = @()
 foreach ($mod in $criticalModules) {{
-    $result = & $PyExe -c "import $mod" 2>&1
+    & $PyExe -c "import $mod" 2>$null
     if ($LASTEXITCODE -ne 0) {{
         $failed += $mod
         Write-Host "  [FALLO] $mod" -ForegroundColor Red
@@ -237,8 +237,8 @@ foreach ($mod in $criticalModules) {{
 
 if ($failed.Count -gt 0) {{
     Write-Host ""
-    Write-Host "[ERROR] Los siguientes modulos no se instalaron: $($failed -join ', ')" -ForegroundColor Red
-    Write-Host "Intenta correr SETUP.bat de nuevo. Si persiste, borra la carpeta python/ primero." -ForegroundColor Yellow
+    Write-Host "[ERROR] Modulos faltantes: $($failed -join ', ')" -ForegroundColor Red
+    Write-Host "Borra la carpeta venv/ y vuelve a correr SETUP.bat." -ForegroundColor Yellow
     exit 1
 }}
 
@@ -256,7 +256,7 @@ Write-Host "   Doble click en START_CVSniper.bat" -ForegroundColor Cyan
 Write-Host ""
 """
 
-# Placeholder inicial — SETUP.ps1 lo sobreescribe con rutas absolutas
+# Placeholder inicial — SETUP.ps1 lo sobreescribe con rutas absolutas al venv
 START_BAT = r"""@echo off
 title CVSniper
 cd /d "%~dp0"
@@ -272,20 +272,14 @@ if not exist ".setup_done" (
 
 set PYTHONPATH=%~dp0
 
-:: Usar Python embebido si existe, si no usar Python del sistema
-if exist "python\python.exe" (
-    python\python.exe runAiBot.py
+if exist "venv\Scripts\python.exe" (
+    venv\Scripts\python.exe runAiBot.py
 ) else (
-    python --version >nul 2>&1
-    if %errorlevel% equ 0 (
-        python runAiBot.py
-    ) else (
-        echo.
-        echo [ERROR] Python no encontrado. Corre SETUP.bat primero.
-        echo.
-        pause
-        exit /b 1
-    )
+    echo.
+    echo [ERROR] Entorno virtual no encontrado. Corre SETUP.bat primero.
+    echo.
+    pause
+    exit /b 1
 )
 pause
 """

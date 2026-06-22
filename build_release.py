@@ -195,6 +195,7 @@ $startBat = @'
 @echo off
 title CVSniper
 cd /d "%~dp0"
+set PYTHONPATH=%~dp0
 python\\python.exe runAiBot.py
 pause
 '@
@@ -215,6 +216,7 @@ Write-Host ""
 START_BAT = r"""@echo off
 title CVSniper
 cd /d "%~dp0"
+set PYTHONPATH=%~dp0
 python\python.exe runAiBot.py
 pause
 """

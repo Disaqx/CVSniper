@@ -112,8 +112,14 @@ def deepseek_completion(client: OpenAI, messages: list[dict], response_format: d
             # Check for errors
             if completion.model_extra and completion.model_extra.get("error"):
                 raise ValueError(f'Error occurred with DeepSeek API: "{completion.model_extra.get("error")}"')
-            
+
             result = completion.choices[0].message.content
+            try:
+                if completion.usage and completion.usage.total_tokens:
+                    from modules.bot_ui import update_api_usage
+                    update_api_usage(completion.usage.total_tokens)
+            except Exception:
+                pass
         
         # Convert to JSON if needed
         if response_format:

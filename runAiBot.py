@@ -54,6 +54,11 @@ pyautogui.FAILSAFE = False
 # Start the Controller UI (driver is ready after open_chrome import)
 ui_start(driver)
 ui_enforce_configuration()
+
+# ── Flask dashboard starts in background (opens only when user clicks the button) ──
+from modules.bot_ui import start_flask_dashboard, open_dashboard_in_browser, FLASK_URL
+start_flask_dashboard()
+
 ui_update_status("Initializing", "Starting CVSniper...")
 # if use_resume_generator:    from resume_generator import is_logged_in_GPT, login_GPT, open_resume_chat, create_custom_resume
 
@@ -537,6 +542,21 @@ def get_job_description(
             skipMessage = f'\n{jobDescription}\n\nFound "Clearance" or "Polygraph". Skipping this job!\n'
             skipReason = "Asking for Security clearance"
             skip = True
+        if not skip and disability_status == "No":
+            disability_exclusive_phrases = [
+                'vaga exclusiva para pcd', 'vaga exclusiva pcd', 'exclusiva para pessoas com deficiencia',
+                'exclusiva para pcd', 'vagas pcd', 'vaga pcd', 'candidatos pcd', 'candidato pcd',
+                'exclusive for people with disabilities', 'exclusively for disabled', 'only for disabled',
+                'exclusive disability', 'persons with disabilities only', 'people with disabilities only',
+                'exclusiva para personas con discapacidad', 'solo para personas con discapacidad',
+                'exclusivo para discapacitados', 'vaga para deficiente', 'vagas para deficientes',
+                'this role is exclusively', 'this position is exclusively for candidates with disab',
+                'open only to candidates with disab',
+            ]
+            if any(phrase in jobDescriptionLow for phrase in disability_exclusive_phrases):
+                skipMessage = f'\n{jobDescription}\n\nJob is exclusive for people with disabilities. Skipping!\n'
+                skipReason = "Disability-exclusive job"
+                skip = True
         if not skip:
             if did_masters and 'master' in jobDescriptionLow:
                 print_lg(f'Found the word "master" in \n{jobDescription}')
@@ -607,6 +627,12 @@ def resolve_value_for_category(category: str, var_name: str = None, direct_value
 
 def find_matching_option(options_text_list: list[str], target_answer) -> int | None:
     if target_answer is None or str(target_answer).strip() == "":
+        # If there's only one valid option and it's a "Yes" variant, pick it automatically (forced acceptance)
+        valid_opts = [o for o in options_text_list if not any(w in o.lower() for w in ["select", "selecciona", "elegir", "choose", "opcion"])]
+        if len(valid_opts) == 1:
+            opt_low = valid_opts[0].lower()
+            if any(ys == opt_low or ys in opt_low.split() for ys in ["yes", "sí", "si", "acepto", "agree", "i do", "i have"]):
+                return options_text_list.index(valid_opts[0])
         return None
         
     target_str = str(target_answer).lower().strip()
@@ -656,9 +682,12 @@ def find_matching_option(options_text_list: list[str], target_answer) -> int | N
         if target_str in opt_str or opt_str in target_str:
             return idx
             
-    # 5. Alphanumeric only check
+    # 5. Alphanumeric only check — skip placeholder options to avoid false matches (e.g. "no" in "selectanoption")
+    _placeholder_words = {"select", "selecciona", "elegir", "choose", "unselected", "opcion", "seleccione"}
     target_alnum = "".join(c for c in target_str if c.isalnum())
     for idx, opt in enumerate(options_text_list):
+        if any(w in opt.lower() for w in _placeholder_words):
+            continue
         opt_alnum = "".join(c for c in opt.lower() if c.isalnum())
         if target_alnum and opt_alnum and (target_alnum in opt_alnum or opt_alnum in target_alnum):
             return idx
@@ -688,7 +717,7 @@ def answer_language_question(label_org: str, question_type: str, options_text=No
     is_other_lang = any(w in norm for w in other_languages)
     
     # 3. Check if it is a general language question
-    is_lang_q = any(w in norm for w in ["language", "idioma", "habla", "speak", "proficiency", "competence", "competencia", "conversational", "fluent", "level of", "nivel de", "read", "leer", "write", "escribir"])
+    is_lang_q = any(w in norm for w in ["language", "idioma", "habla", "speak", "proficiency", "competence", "competencia", "conversational", "fluent", "level of", "nivel de"])
     
     # If it is not a language question and does not contain any language keywords, return None
     if not (is_spanish or is_english or is_german or is_other_lang or is_lang_q):
@@ -814,7 +843,10 @@ _SENSITIVE_KEYWORDS = [
     # Previous employment at this company
     'previously employed by us', 'former employee of', 'worked for us before',
     'previously worked here', 'have you worked here', 'been employed by this company',
+    'previously been employed by', 'have you previously been employed', 'been previously employed by',
+    'previously worked for', 'formerly worked for', 'former employee at',
     'empleado anteriormente aqui', 'trabajado aqui antes', 'ex empleado de',
+    'ha trabajado anteriormente en', 'fue empleado de', 'trabajo antes en',
     # Previous applications
     'previously applied', 'applied here before', 'applied to this company before',
     'interviewed here before', 'previous application', 'aplicado anteriormente',
@@ -822,6 +854,23 @@ _SENSITIVE_KEYWORDS = [
     # Other negative disclosures
     'drug use', 'drug test', 'substance abuse', 'terminated for cause', 'dismissed for cause',
     'misconduct', 'uso de drogas', 'despedido por causa', 'mala conducta',
+    # --- Conflict of interest / relationships ---
+    'conflict of interest', 'conflicto de interes', 'conflicto de interés',
+    'family relationship', 'relacion familiar', 'relación familiar',
+    'contractual relationship', 'relacion contractual', 'relación contractual',
+    'family and/or contractual', 'direct competitor', 'competidor directo',
+    'staff member', 'board member', 'shareholder', 'accionista',
+    'family member who works', 'familiar que trabaja',
+    'government entity', 'government official', 'entidad gubernamental', 'funcionario',
+    'public official', 'funcionario publico', 'funcionario público',
+    'employee of our company', 'empleado de nuestra empresa',
+    'relationship with any', 'relationship with a',
+    'personal relationship', 'relacion personal', 'relación personal',
+    'economic relationship', 'relacion economica', 'relación económica',
+    'related to any', 'related to an employee',
+    # --- Current Education / Employment (uncheck to reveal 'To' dates) ---
+    'currently attend', 'currently work', 'trabajo actualmente', 'estudio actualmente',
+    'actualmente asisto', 'trabajando actualmente', 'estudiando actualmente',
 ]
 
 def is_sensitive_question(label: str) -> bool:
@@ -865,6 +914,13 @@ def answer_common_questions(label: str, answer: str) -> str:
         answer = require_visa
     elif any(w in norm_label for w in ['relocate', 'relocation', 'reubicacion', 'reubicar', 'traslado', 'mudarse', 'cambio de residencia']):
         answer = 'Yes'
+    elif any(phrase in norm_label for phrase in [
+        'have read and accept', 'i accept the terms', 'i agree to the terms', 'agree to the privacy',
+        'terms and conditions', 'terms & conditions', 'privacy policy', 'terms of service',
+        'accept wizeline', 'accept the policy', 'acepto los terminos', 'acepto la politica',
+        'lei y acepto', 'he leido y acepto', 'leido y aceptado',
+    ]):
+        answer = 'Yes'
     return answer
 
 
@@ -898,13 +954,64 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                 return item
         return None
 
-    # Get all questions from the page
-    all_questions = modal.find_elements(By.XPATH, ".//div[@data-test-form-element]")
+    # Get all questions from the page (including custom ATS groupings that lack standard attributes)
+    all_questions = modal.find_elements(By.XPATH, ".//div[@data-test-form-element] | .//div[contains(@class, 'jobs-easy-apply-form-section__grouping') and not(.//div[@data-test-form-element])]")
+
+    _prev_q_text = ""  # Tracks the previous visible QBlock label to detect conditional "if YES" hidden inputs
+
+    _IF_YES_KEYWORDS = [
+        'if yes', 'if your answer is yes', 'if so', 'if applicable',
+        'en caso afirmativo', 'if you answered yes', 'si la respuesta es si',
+        'si su respuesta es si', 'si es si',
+    ]
 
     for Question in all_questions:
         if is_career_ops_mode():
             raise CareerOpsActivatedException()
         ui_pause_check()
+        # Skip hidden elements. For conditional "if YES" input blocks, inject N/A before skipping.
+        # LinkedIn renders label and input as SEPARATE data-test-form-element divs: the outer label
+        # block is visible (logged below), but the inner input block is hidden when parent = "No".
+        # _prev_q_text carries the previous visible block's text so we know what the hidden block is for.
+        try:
+            if not Question.is_displayed():
+                if any(w in _prev_q_text for w in _IF_YES_KEYWORDS):
+                    try:
+                        _hidden_inp = try_xp(Question, ".//input | .//textarea", False)
+                        if _hidden_inp:
+                            print_lg(f"[HiddenQBlock] Injecting N/A into conditional field (prev label: {_prev_q_text[:60]})")
+                            driver.execute_script("""
+                                var el = arguments[0];
+                                var proto = el.tagName === 'TEXTAREA'
+                                    ? window.HTMLTextAreaElement.prototype
+                                    : window.HTMLInputElement.prototype;
+                                var setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+                                setter.call(el, 'N/A');
+                                ['input', 'change', 'blur'].forEach(function(t) {
+                                    el.dispatchEvent(new Event(t, {bubbles: true, cancelable: true}));
+                                });
+                            """, _hidden_inp)
+                    except Exception as _hqe:
+                        print_lg(f"[HiddenQBlock] injection error: {_hqe}")
+                    _prev_q_text = ""  # Reset so next hidden QBlock doesn't reuse this signal
+                continue
+        except Exception:
+            pass
+        # Debug: log what each question block contains
+        try:
+            _q_preview = Question.text.replace('\n', ' | ')[:120]
+            print_lg(f"[QBlock] {_q_preview}")
+            _prev_q_text = _q_preview.lower()
+        except Exception:
+            _prev_q_text = ""
+        # Diagnostic: log all inputs found in this QBlock to reveal hidden-input types
+        try:
+            _dbg_inputs = Question.find_elements(By.XPATH, ".//input | .//textarea | .//select")
+            if _dbg_inputs:
+                _dbg_types = [f"{el.tag_name}[{el.get_attribute('type') or 'no-type'}]" for el in _dbg_inputs]
+                print_lg(f"[QBlock-Fields] {_dbg_types}")
+        except Exception:
+            pass
         # Check if it's a select Question
         select = try_xp(Question, ".//select", False)
         if select:
@@ -916,6 +1023,11 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                 label_org = label_el.text
             except:
                 pass
+            if not label_org or label_org == "Unknown":
+                try:
+                    q_text = Question.text.strip()
+                    if q_text: label_org = q_text.split('\n')[0].strip()
+                except: pass
             ui_update_status("Answering Modal", action_text=f"Select: {label_org}")
             answer = ""
             label = normalize_label(label_org)
@@ -946,74 +1058,183 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                     answer = 'No'
                 else:
                     db_match = match_rules(label_org)
-                if db_match:
-                    category = db_match.get("category")
-                    var_name = db_match.get("var_name")
-                    direct_value = db_match.get("value")
-                    answer = resolve_value_for_category(category, var_name, direct_value)
-                else:
-                    if any(w in label for w in ['email', 'correo']):
-                        answer = prev_answer
-                    elif any(w in label for w in ['gender', 'sex', 'genero', 'sexo']):
-                        answer = gender
-                    elif any(w in label for w in ['disability', 'discapacidad', 'limitacion']):
-                        answer = disability_status
-                    elif any(w in label for w in ['proficiency', 'competencia', 'nivel', 'idioma']):
-                        answer = 'Professional'
-                    elif any(loc_word in label for loc_word in ['location', 'city', 'state', 'country', 'ubicacion', 'ciudad', 'estado', 'pais', 'direccion']):
-                        if any(w in label for w in ['country', 'pais']):
-                            answer = country
-                        elif any(w in label for w in ['state', 'estado', 'departamento', 'provincia']):
-                            answer = state
-                        elif any(w in label for w in ['city', 'ciudad', 'municipio']):
-                            answer = current_city if current_city else work_location
-                        else:
-                            answer = work_location
+                    if db_match:
+                        category = db_match.get("category")
+                        var_name = db_match.get("var_name")
+                        direct_value = db_match.get("value_text") or db_match.get("value")
+                        answer = resolve_value_for_category(category, var_name, direct_value)
                     else:
-                        answer = answer_common_questions(label_org, answer)
+                        if any(w in label for w in ['email', 'correo']):
+                            answer = prev_answer
+                        elif any(w in label for w in ['gender', 'sex', 'genero', 'sexo']):
+                            answer = gender
+                        elif any(w in label for w in ['disability', 'discapacidad', 'limitacion']):
+                            answer = disability_status
+                        elif any(w in label for w in ['proficiency', 'competencia', 'nivel', 'idioma']):
+                            answer = 'Professional'
+                        elif any(loc_word in label for loc_word in ['location', 'city', 'state', 'country', 'ubicacion', 'ciudad', 'estado', 'pais', 'direccion']):
+                            if any(w in label for w in ['country', 'pais']):
+                                answer = country
+                            elif any(w in label for w in ['state', 'estado', 'departamento', 'provincia']):
+                                answer = state
+                            elif any(w in label for w in ['city', 'ciudad', 'municipio']):
+                                answer = current_city if current_city else work_location
+                            else:
+                                answer = work_location
+                        # --- Education dropdowns: use configured education data ---
+                        elif any(w in label for w in ['school', 'university', 'college', 'universidad', 'colegio', 'escuela', 'institution', 'institucion']):
+                            # Try smart matching: split university name into keywords and find best option
+                            uni_keywords = [w for w in university.lower().replace('(','').replace(')','').split() if len(w) > 3]
+                            best_match = None
+                            best_score = 0
+                            for opt in optionsText:
+                                opt_l = opt.lower()
+                                score = sum(1 for kw in uni_keywords if kw in opt_l)
+                                if score > best_score:
+                                    best_score = score
+                                    best_match = opt
+                            if best_match and best_score > 0:
+                                answer = best_match
+                            else:
+                                answer = university  # Will use find_matching_option later
+                        elif any(w in label for w in ['degree', 'titulo', 'titulacion', 'nivel educativo', 'education level', 'nivel academico', 'academic level', 'highest level']):
+                            # Map configured degree to available options
+                            degree_keywords = {
+                                'High School': ['high school', 'secundaria', 'bachiller', 'bachillerato', 'preparatoria', 'secundario'],
+                                "Associate's": ['associate', 'tecnico', 'técnico', 'tecnologo', 'tecnólogo', 'ciclo'],
+                                "Bachelor's": ['bachelor', 'licenciatura', 'pregrado', 'ingenier', 'universitario'],
+                                "Master's": ['master', 'maestria', 'maestría', 'posgrado', 'postgrado'],
+                                'Doctorate': ['doctor', 'phd', 'doctorado'],
+                            }
+                            _deg_lower = degree.lower()
+                            _kws = []
+                            for deg_name, kws in degree_keywords.items():
+                                if any(k in _deg_lower for k in kws) or _deg_lower in deg_name.lower():
+                                    _kws = kws
+                                    break
+                            best_match = None
+                            best_score = 0
+                            for opt in optionsText:
+                                opt_l = opt.lower()
+                                score = sum(1 for kw in _kws if kw in opt_l)
+                                if score > best_score:
+                                    best_score = score
+                                    best_match = opt
+                            answer = best_match if best_match else degree
+                        elif any(w in label for w in ['field of study', 'major', 'campo de estudio', 'especialidad', 'carrera', 'discipline']):
+                            answer = field_of_study
+                        elif any(w in label for w in ['graduation year', 'year graduated', 'año de graduacion', 'año graduacion', 'año egreso']):
+                            answer = graduation_year
+                        # Terms & Conditions / Privacy Policy acceptance
+                        elif any(w in label for w in [
+                            'i have read and accept', 'i agree', 'i accept', 'terms and conditions',
+                            'privacy policy', 'i have read', 'acepto', 'he leido', 'he leído',
+                            'terminos y condiciones', 'términos y condiciones', 'politica de privacidad',
+                            'política de privacidad', 'condiciones de uso', 'reglamento'
+                        ]):
+                            answer = 'Yes'
+                        # How did you find out about this job
+                        elif any(w in label for w in [
+                            'how did you find', 'how did you hear', 'how did you learn', 'how did you know',
+                            'where did you find', 'where did you hear', 'source of', 'job source',
+                            'como te enteraste', 'como se entero', 'como supiste', 'donde viste',
+                            'donde encontraste', 'fuente de empleo', 'como conociste'
+                        ]):
+                            # Truthful: we found the job on LinkedIn — try to match LinkedIn option
+                            answer = 'LinkedIn'
+                        else:
+                            answer = answer_common_questions(label_org, answer)
                 
                 # Use our robust option matcher!
                 match_idx = find_matching_option(optionsText, answer)
+                print_lg(f"Select '{label_org}': answer='{answer}', match_idx={match_idx}, options={optionsText}")
                 if match_idx is not None:
+                    target_text = optionsText[match_idx].strip()
+                    _selection_verified = False
+
+                    # 1. Programmatic selection FIRST — no visual dropdown opening needed
+                    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", select)
+                    time.sleep(0.3)
                     try:
-                        # 1. Visual clicking (mimicking human interaction)
-                        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", select)
-                        time.sleep(1)
-                        try: select.click()
-                        except: driver.execute_script("arguments[0].click();", select)
-                        time.sleep(1)
-                        
-                        opt = select_obj.options[match_idx]
-                        try: opt.click()
-                        except: driver.execute_script("arguments[0].click();", opt)
-                        time.sleep(1)
-                        
-                        # 2. Programmatic fallback and React hack
-                        try: select_obj.select_by_index(match_idx)
-                        except: pass
-                        
-                        js_script = """
-                        var select = arguments[0];
-                        var idx = arguments[1];
-                        select.selectedIndex = idx;
-                        select.value = select.options[idx].value;
-                        var nativeSelectValueSetter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, "value").set;
-                        nativeSelectValueSetter.call(select, select.options[idx].value);
-                        select.dispatchEvent(new Event('focus', { bubbles: true }));
-                        select.dispatchEvent(new Event('input', { bubbles: true }));
-                        select.dispatchEvent(new Event('change', { bubbles: true }));
-                        select.dispatchEvent(new Event('blur', { bubbles: true }));
-                        """
-                        driver.execute_script(js_script, select, match_idx)
-                    except Exception as e:
-                        print_lg(f"React hack failed: {e}")
+                        select_obj.select_by_visible_text(target_text)
+                        print_lg(f"select_by_visible_text succeeded: '{target_text}'")
+                    except Exception as _e1:
+                        print_lg(f"select_by_visible_text failed: {_e1}")
                         try:
                             select_obj.select_by_index(match_idx)
-                        except: pass
+                            print_lg(f"select_by_index succeeded: {match_idx}")
+                        except Exception as _e2:
+                            print_lg(f"select_by_index failed: {_e2}")
+
+                    # 2. Fire React/framework events so the component state updates
+                    try:
+                        _opt_value = select_obj.options[match_idx].get_attribute("value") or target_text
+                        driver.execute_script("""
+                        var sel = arguments[0];
+                        var val = arguments[1];
+                        var setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set;
+                        setter.call(sel, val);
+                        ['mousedown','mouseup','click','input','change','blur'].forEach(function(t){
+                            sel.dispatchEvent(new Event(t, {bubbles:true, cancelable:true}));
+                        });
+                        """, select, _opt_value)
+                    except Exception as _e3:
+                        print_lg(f"JS event dispatch failed: {_e3}")
+
+                    # 3. Verify selection
+                    try:
+                        _now_selected = select_obj.first_selected_option.text.strip()
+                        if _now_selected.lower() == target_text.lower():
+                            _selection_verified = True
+                            print_lg(f"Selection verified: '{_now_selected}'")
+                        else:
+                            print_lg(f"Selection NOT verified: expected '{target_text}', got '{_now_selected}'")
+                    except Exception:
+                        pass
+
+                    # 4. Visual fallback — only if programmatic approach didn't verify
+                    if not _selection_verified:
+                        try:
+                            # Click to open the dropdown, then look for visual DOM option elements
+                            try: select.click()
+                            except: driver.execute_script("arguments[0].click();", select)
+                            time.sleep(0.8)
+
+                            _vis_xpaths = (
+                                "//div[@role='option'] | //li[@role='option'] | "
+                                "//div[@role='listbox']//div | //ul[@role='listbox']//li"
+                            )
+                            _vis_clicked = False
+                            for _vo in driver.find_elements(By.XPATH, _vis_xpaths):
+                                try:
+                                    if _vo.is_displayed() and _vo.text.strip().lower() == target_text.lower():
+                                        _vo.click()
+                                        _vis_clicked = True
+                                        print_lg(f"Visual option clicked: '{_vo.text.strip()}'")
+                                        time.sleep(0.4)
+                                        break
+                                except Exception: continue
+
+                            if not _vis_clicked:
+                                # Keyboard fallback: type first char to jump to option, then Enter
+                                from selenium.webdriver.common.keys import Keys as _Keys
+                                from selenium.webdriver.common.action_chains import ActionChains as _AC
+                                _ac = _AC(driver)
+                                _ac.move_to_element(select).click().send_keys(target_text[0]).perform()
+                                time.sleep(0.3)
+                                _ac.send_keys(_Keys.RETURN).perform()
+                        except Exception as _e4:
+                            print_lg(f"Visual select fallback failed: {_e4}")
+
                     answer = optionsText[match_idx]
                 else:
                     foundOption = False
-                    if use_AI and aiClient and optionsText:
+                    # --- Do NOT use AI for institution names: it confabulates wrong institutions/countries ---
+                    # But DO use AI for degree and field of study so it can map "Bachelor's" to "Undergraduate", etc.
+                    _skip_ai_education = any(w in label for w in [
+                        'school', 'university', 'college', 'universidad', 'colegio', 'escuela', 'institution', 'institucion'
+                    ])
+                    if use_AI and aiClient and optionsText and not _skip_ai_education:
                         if is_career_ops_mode():
                             raise CareerOpsActivatedException()
                         try:
@@ -1068,42 +1289,87 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                             print_lg("AI failed to select option", e)
 
                     if not foundOption:
-                        print_lg(f'Failed to find an option with text "{answer}" for question labelled "{label_org}", answering randomly!')
-                        rand_idx = randint(1, len(select_obj.options)-1)
-                        try:
-                            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", select)
-                            time.sleep(1)
-                            try: select.click()
-                            except: driver.execute_script("arguments[0].click();", select)
-                            time.sleep(1)
+                        # --- IMPORTANT: Do NOT randomly select for critical education fields ---
+                        _is_education_field = any(w in label for w in [
+                            'school', 'university', 'college', 'universidad', 'colegio', 'escuela', 'institution',
+                            'degree', 'titulo', 'titulacion', 'nivel educativo', 'education level',
+                            'field of study', 'major', 'campo de estudio', 'especialidad', 'carrera'
+                        ])
+                        if _is_education_field:
+                            # Try to find 'Other' or 'Not Listed' to avoid blocking the application
+                            other_idx = None
+                            for idx, opt in enumerate(optionsText):
+                                opt_low = opt.lower()
+                                if any(w in opt_low for w in ["other", "not listed", "otro", "no listado", "none of the above", "ninguno"]):
+                                    other_idx = idx
+                                    break
                             
-                            opt = select_obj.options[rand_idx]
-                            try: opt.click()
-                            except: driver.execute_script("arguments[0].click();", opt)
-                            time.sleep(1)
-                            
-                            try: select_obj.select_by_index(rand_idx)
-                            except: pass
-                            
-                            js_script = """
-                            var select = arguments[0];
-                            var idx = arguments[1];
-                            select.selectedIndex = idx;
-                            select.value = select.options[idx].value;
-                            var nativeSelectValueSetter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, "value").set;
-                            nativeSelectValueSetter.call(select, select.options[idx].value);
-                            select.dispatchEvent(new Event('focus', { bubbles: true }));
-                            select.dispatchEvent(new Event('input', { bubbles: true }));
-                            select.dispatchEvent(new Event('change', { bubbles: true }));
-                            select.dispatchEvent(new Event('blur', { bubbles: true }));
-                            """
-                            driver.execute_script(js_script, select, rand_idx)
-                        except Exception as e:
-                            print_lg(f"React hack failed: {e}")
-                            try: select_obj.select_by_index(rand_idx)
-                            except: pass
-                        answer = optionsText[rand_idx]
-                        randomly_answered_questions.add((f'{label_org} [ {options} ]',"select"))
+                            if other_idx is not None:
+                                print_lg(f'Education field "{label_org}" had no exact match. Selecting "Other" fallback.')
+                                try:
+                                    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", select)
+                                    time.sleep(1)
+                                    try: select.click()
+                                    except: driver.execute_script("arguments[0].click();", select)
+                                    time.sleep(1)
+                                    opt = select_obj.options[other_idx]
+                                    try: opt.click()
+                                    except: driver.execute_script("arguments[0].click();", opt)
+                                    time.sleep(1)
+                                    try: select_obj.select_by_index(other_idx)
+                                    except: pass
+                                    js_script = """
+                                    var select = arguments[0]; var idx = arguments[1];
+                                    select.selectedIndex = idx; select.value = select.options[idx].value;
+                                    var nativeSelectValueSetter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, "value").set;
+                                    nativeSelectValueSetter.call(select, select.options[idx].value);
+                                    select.dispatchEvent(new Event('focus', { bubbles: true })); select.dispatchEvent(new Event('input', { bubbles: true }));
+                                    select.dispatchEvent(new Event('change', { bubbles: true })); select.dispatchEvent(new Event('blur', { bubbles: true }));
+                                    """
+                                    driver.execute_script(js_script, select, other_idx)
+                                except: pass
+                                answer = optionsText[other_idx]
+                            else:
+                                print_lg(f'Education field "{label_org}" had no good match. Leaving as-is to avoid wrong data (e.g. random country).')
+                                randomly_answered_questions.add((f'{label_org} [ {options} ]', "select"))
+                                answer = prev_answer  # Keep original selection ("Select an option")
+                        else:
+                            print_lg(f'Failed to find an option with text "{answer}" for question labelled "{label_org}", answering randomly!')
+                            rand_idx = randint(1, len(select_obj.options)-1)
+                            try:
+                                driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", select)
+                                time.sleep(1)
+                                try: select.click()
+                                except: driver.execute_script("arguments[0].click();", select)
+                                time.sleep(1)
+                                
+                                opt = select_obj.options[rand_idx]
+                                try: opt.click()
+                                except: driver.execute_script("arguments[0].click();", opt)
+                                time.sleep(1)
+                                
+                                try: select_obj.select_by_index(rand_idx)
+                                except: pass
+                                
+                                js_script = """
+                                var select = arguments[0];
+                                var idx = arguments[1];
+                                select.selectedIndex = idx;
+                                select.value = select.options[idx].value;
+                                var nativeSelectValueSetter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, "value").set;
+                                nativeSelectValueSetter.call(select, select.options[idx].value);
+                                select.dispatchEvent(new Event('focus', { bubbles: true }));
+                                select.dispatchEvent(new Event('input', { bubbles: true }));
+                                select.dispatchEvent(new Event('change', { bubbles: true }));
+                                select.dispatchEvent(new Event('blur', { bubbles: true }));
+                                """
+                                driver.execute_script(js_script, select, rand_idx)
+                            except Exception as e:
+                                print_lg(f"React hack failed: {e}")
+                                try: select_obj.select_by_index(rand_idx)
+                                except: pass
+                            answer = optionsText[rand_idx]
+                            randomly_answered_questions.add((f'{label_org} [ {options} ]',"select"))
             else:
                 answer = prev_answer
                 save_to_qa_database(label_org, answer)
@@ -1168,6 +1434,9 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                             answer = veteran_status
                         elif any(w in label for w in ['disability', 'handicapped', 'discapacidad', 'limitacion']):
                             answer = disability_status
+                        elif any(w in label for w in ['how did you find', 'how did you hear', 'how did you learn', 'como te enteraste', 'como se entero', 'como supiste', 'como supieron', 'donde viste', 'donde encontraste', 'fuente de', 'source of']):
+                            # Truthful: we found the job on LinkedIn
+                            answer = 'LinkedIn'
                         else:
                             answer = answer_common_questions(label_org, answer)
                 
@@ -1200,7 +1469,57 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                         except Exception as e:
                             print_lg("AI failed to answer Radio question", e)
                 
+                # "Yes first" helper: for "No" answers, temporarily click "Yes" so React renders
+                # conditional required fields (e.g. "If YES, provide name..."), fill them with
+                # N/A via the React native setter, then proceed to click the actual "No" answer.
+                def _yes_first_fill_conditionals(final_answer_text):
+                    if (final_answer_text or '').lower().strip() not in ('no', 'false', 'nein', 'non', 'não', 'нет'):
+                        return
+                    _yes_el = None
+                    for _ro in radio_options:
+                        if _ro.get('text', '').lower().strip() in ('yes', 'sí', 'si', 'oui', 'ja', 'да', 'sim', 'true'):
+                            _yes_el = _ro.get('label')
+                            break
+                    if not _yes_el:
+                        return
+                    try:
+                        try: _yes_el.click()
+                        except: driver.execute_script("arguments[0].click();", _yes_el)
+                        time.sleep(0.6)  # Wait for React to mount conditional fields
+                        _cfilled = driver.execute_script("""
+                            var phrases=['if your answer is yes','if yes','if so','if applicable',
+                                'en caso afirmativo','if you answered yes','si la respuesta es si','si su respuesta es si'];
+                            var filled=[];
+                            document.querySelectorAll('label').forEach(function(lbl){
+                                if(lbl.offsetParent===null) return;
+                                var txt=(lbl.textContent||'').toLowerCase().trim();
+                                if(!phrases.some(function(p){return txt.indexOf(p)!==-1;})) return;
+                                var inp=null,forId=lbl.getAttribute('for');
+                                if(forId) inp=document.getElementById(forId);
+                                if(!inp){
+                                    var par=lbl.parentElement;
+                                    for(var d=0;d<5&&par;d++){
+                                        inp=par.querySelector('input:not([type=hidden]):not([type=radio]):not([type=checkbox]),textarea');
+                                        if(inp) break; par=par.parentElement;
+                                    }
+                                }
+                                if(!inp||(inp.value&&inp.value.trim())) return;
+                                var proto=inp.tagName==='TEXTAREA'?window.HTMLTextAreaElement.prototype:window.HTMLInputElement.prototype;
+                                var s=Object.getOwnPropertyDescriptor(proto,'value').set;
+                                s.call(inp,'N/A');
+                                ['input','change','blur'].forEach(function(t){inp.dispatchEvent(new Event(t,{bubbles:true,cancelable:true}));});
+                                filled.push(lbl.textContent.trim().substring(0,60));
+                            });
+                            return filled;
+                        """)
+                        if _cfilled:
+                            for _cf in _cfilled:
+                                print_lg(f"[YesFirst] Set N/A for: {_cf}")
+                    except Exception as _yfe:
+                        print_lg(f"[YesFirst] error: {_yfe}")
+
                 if label_to_click:
+                    _yes_first_fill_conditionals(answer)
                     try:
                         label_to_click.click()
                     except Exception:
@@ -1211,9 +1530,23 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                                 driver.execute_script("arguments[0].click();", label_to_click)
                             except Exception as click_err:
                                 print_lg(f"Failed to click radio option: {answer}", click_err)
+                    time.sleep(0.4)  # Let React hide/show conditional fields before next iteration
                 else:
-                    ele = radio_options[0]["label"] if radio_options else None
+                    # No direct match and no AI answer — safe fallback
+                    # For Yes/No questions, always default to 'No' (safer than random 'Yes')
+                    _opt_texts_lower = [o['text'].lower().strip() for o in radio_options]
+                    _no_idx = None
+                    for _i, _t in enumerate(_opt_texts_lower):
+                        if _t in ('no', 'no.', 'ninguno', 'ninguna', 'nope'):
+                            _no_idx = _i
+                            break
+                    if _no_idx is not None:
+                        ele = radio_options[_no_idx]["label"]
+                        answer = radio_options[_no_idx]["text"]
+                    else:
+                        ele = radio_options[0]["label"] if radio_options else None
                     if ele:
+                        _yes_first_fill_conditionals(answer)
                         try:
                             ele.click()
                         except Exception:
@@ -1221,6 +1554,7 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                                 actions.move_to_element(ele).click().perform()
                             except Exception:
                                 driver.execute_script("arguments[0].click();", ele)
+                        time.sleep(0.4)  # Let React hide/show conditional fields before next iteration
                         randomly_answered_questions.add((label_org_full, "radio"))
             else:
                 answer = prev_answer
@@ -1232,7 +1566,29 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
 
         # Check if it's a text question
         text = try_xp(Question, ".//input[@type='text']", False)
-        if text: 
+        if text:
+            # Handle hidden conditional fields (e.g. "If YES, provide details" when parent radio was "No")
+            try:
+                if not text.is_displayed():
+                    _hidden_q = ""
+                    try: _hidden_q = Question.text[:80].replace('\n', ' ')
+                    except: pass
+                    print_lg(f"[HiddenInput] injecting N/A: {_hidden_q}")
+                    try:
+                        driver.execute_script("""
+                            var el = arguments[0];
+                            var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+                            setter.call(el, 'N/A');
+                            ['input', 'change', 'blur'].forEach(function(t) {
+                                el.dispatchEvent(new Event(t, {bubbles: true, cancelable: true}));
+                            });
+                        """, text)
+                        print_lg("[HiddenInput] injection done")
+                    except Exception as _he:
+                        print_lg(f"[HiddenInput] injection failed: {_he}")
+                    continue
+            except Exception:
+                pass
             do_actions = False
             label_el = try_xp(Question, ".//label[@for]", False)
             try: label_el = label_el.find_element(By.CLASS_NAME,'visually-hidden')
@@ -1241,6 +1597,12 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
             ui_update_status("Answering Modal", action_text=f"Text: {label_org}")
             answer = ""
             label = normalize_label(label_org)
+
+            # Extract full question block text for richer AI context (includes hints, descriptions, etc.)
+            try:
+                question_full_text = Question.text.strip()
+            except Exception:
+                question_full_text = label_org
 
             has_error = False
             error_msg = ""
@@ -1254,15 +1616,38 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
             prev_answer = text.get_attribute("value")
             if not prev_answer or overwrite_previous_answers or has_error:
                 matched_val = None
-                
-                # If there is no error, try our local rules first
-                if not has_error:
+
+                # "If YES" conditional follow-ups: always N/A regardless of error state.
+                # These must be checked BEFORE the `not has_error` guard so that when LinkedIn
+                # shows them with a validation error on retry, they still get answered.
+                _is_if_yes_field = any(w in label for w in [
+                    'if yes', 'if your answer is yes', 'if applicable',
+                    'si la respuesta es si', 'si su respuesta es si', 'si es si',
+                    'en caso afirmativo', 'if you answered yes', 'if so',
+                ])
+                if _is_if_yes_field:
+                    if '*' not in label_org and 'obligatorio' not in label:
+                        matched_val = "[SKIP]"
+                    else:
+                        matched_val = "N/A"
+                        print_lg(f"[IfYes] '{label_org[:60]}' → N/A")
+
+                # Referral questions: default to N/A (only when no error, to avoid loops)
+                elif any(w in label for w in [
+                    'referral', 'referido', 'referred by', 'referrer', 'quien te refirio',
+                    'quien lo refirio', 'codigo de referencia', 'referral code', 'referral id',
+                    'employee referral', 'internal referral', 'referral name', 'refer a friend',
+                ]) and not has_error:
+                    matched_val = "N/A"
+
+                # If there is no error, try other local rules
+                elif not has_error:
                     # Check for language question first!
                     lang_answer = answer_language_question(label_org, "text")
                     if lang_answer is not None:
                         matched_val = lang_answer
                 else:
-                    # If there IS an error, we can try a quick local fallback for numeric language questions
+                    # Error on non-"if YES" field: quick fallback for numeric/decimal language questions
                     lang_answer = answer_language_question(label_org, "text")
                     if lang_answer is not None and any(w in error_msg.lower() for w in ["número", "numero", "number", "decimal"]):
                         print_lg(f"Quick fallback: form expects a number for language question '{label_org}'. Using 10.0.")
@@ -1298,12 +1683,16 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                         if is_career_ops_mode():
                             raise CareerOpsActivatedException()
                         try:
+                            # Pass full question block text when it adds context beyond just the label
+                            ai_question = label_org
+                            if question_full_text and question_full_text.lower() != label_org.lower() and len(question_full_text) > len(label_org) + 5:
+                                ai_question = f"{label_org}\n\n[Full question context: {question_full_text}]"
                             if ai_provider.lower() in ("openai", "groq"):
-                                ai_answer = ai_answer_question(aiClient, label_org, question_type="text", job_description=job_description, user_information_all=user_information_all)
+                                ai_answer = ai_answer_question(aiClient, ai_question, question_type="text", job_description=job_description, user_information_all=user_information_all)
                             elif ai_provider.lower() == "deepseek":
-                                ai_answer = deepseek_answer_question(aiClient, label_org, options=None, question_type="text", job_description=job_description, about_company=None, user_information_all=user_information_all)
+                                ai_answer = deepseek_answer_question(aiClient, ai_question, options=None, question_type="text", job_description=job_description, about_company=None, user_information_all=user_information_all)
                             elif ai_provider.lower() == "gemini":
-                                ai_answer = gemini_answer_question(aiClient, label_org, options=None, question_type="text", job_description=job_description, about_company=None, user_information_all=user_information_all, error_message=error_msg if has_error else None)
+                                ai_answer = gemini_answer_question(aiClient, ai_question, options=None, question_type="text", job_description=job_description, about_company=None, user_information_all=user_information_all, error_message=error_msg if has_error else None)
                             
                             if ai_answer is not None and isinstance(ai_answer, str) and len(ai_answer) > 0:
                                 print_lg(f'AI Answered received for question "{label_org}" \nhere is answer: "{ai_answer}"')
@@ -1376,37 +1765,35 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                             answer = years_of_experience
                         elif cat == "phone":
                             answer = phone_number
-                        randomly_answered_questions.add((label_org, "text"))
-                        answer = ""
-                        db_fallback = match_rules(label_org)
-                        if db_fallback:
-                            cat = db_fallback.get("category")
-                            if cat in ["desired_salary", "current_salary"]:
-                                answer = resolve_salary_expectation(label_org, cat == "current_salary", work_location)
-                            elif cat == "experience":
-                                answer = years_of_experience
-                            elif cat == "phone":
-                                answer = phone_number
-                            else:
-                                answer = "0"
                         else:
-                            if any(w in label for w in ['salary', 'pay', 'rate', 'compensation', 'ctc', 'expect', 'salario', 'salarial', 'sueldo', 'remuneracion', 'expectativa', 'expectativas', 'pretension', 'pretensiones', 'pretendido', 'pretendida', 'aspiracion', 'aspiraciones', 'tarifa', 'pago']): 
-                                answer = resolve_salary_expectation(label_org, any(w in label for w in ['current', 'present', 'actual', 'presente', 'ultimo', 'último']), work_location)
-                            elif any(w in label for w in ['currency', 'moneda']): 
-                                answer = "COP" if current_city == "Bogotá" else "USD"
-                            elif any(w in label for w in ['name', 'nombre']): 
-                                answer = full_name
-                            elif any(w in label for w in ['number', 'phone', 'telefono', 'celular', 'movil']): 
-                                answer = phone_number
-                            else: 
-                                answer = years_of_experience if any(w in label for w in ['year', 'experience', 'ano', 'anos', 'experiencia', 'tiempo']) else "0"
+                            answer = "0"
+                    else:
+                        if any(w in label for w in ['if yes', 'if your answer is yes', 'if applicable', 'si la respuesta es si', 'si su respuesta es si', 'si es si', 'en caso afirmativo', 'if you answered yes', 'if so']):
+                            answer = "[SKIP]" if ('*' not in label_org and 'obligatorio' not in label) else "N/A"
+                        elif any(w in label for w in ['salary', 'pay', 'rate', 'compensation', 'ctc', 'expect', 'salario', 'salarial', 'sueldo', 'remuneracion', 'expectativa', 'expectativas', 'pretension', 'pretensiones', 'pretendido', 'pretendida', 'aspiracion', 'aspiraciones', 'tarifa', 'pago']): 
+                            answer = resolve_salary_expectation(label_org, any(w in label for w in ['current', 'present', 'actual', 'presente', 'ultimo', 'último']), work_location)
+                        elif any(w in label for w in ['currency', 'moneda']): 
+                            answer = "COP" if current_city == "Bogotá" else "USD"
+                        elif any(re.search(r'\b' + w + r'\b', label) for w in ['name', 'nombre']): 
+                            answer = full_name
+                        elif any(re.search(r'\b' + w + r'\b', label) for w in ['document', 'documento', 'cedula', 'identificacion', 'identification', 'c.c.', 'c.c', 'dni']) or \
+                             (re.search(r'\bid\b', label) and not any(w in label for w in ['referral', 'referido', 'employee', 'empleado', 'contact', 'job', 'posting', 'requisition', 'req'])):
+                            try: answer = identification_number
+                            except NameError: answer = "1000708811"
+                        elif any(re.search(r'\b' + w + r'\b', label) for w in ['number', 'phone', 'telefono', 'celular', 'movil']): 
+                            answer = phone_number
+                        else: 
+                            answer = years_of_experience if any(w in label for w in ['year', 'experience', 'ano', 'anos', 'experiencia', 'tiempo']) else "0"
                 
                 if not isinstance(answer, str): 
                     answer = str(answer)
                 
+                # If AI returned an empty string for a required field, force it to "N/A"
+                if answer.strip() == "" and ('*' in label_org or 'obligatorio' in label):
+                    answer = "N/A"
+
                 # Check entire Question text for decimal requirements (including help texts / validation errors)
-                question_full_text = Question.text.lower()
-                if any(w in question_full_text for w in ['decimal', 'mayor que 0.0', 'mayor que 0,0', 'greater than 0.0', 'greater than 0,0', 'mayor a 0.0', 'mayor a 0,0']):
+                if any(w in question_full_text.lower() for w in ['decimal', 'mayor que 0.0', 'mayor que 0,0', 'greater than 0.0', 'greater than 0,0', 'mayor a 0.0', 'mayor a 0,0']):
                     try:
                         val = float(answer)
                         answer = f"{val:.1f}"
@@ -1425,8 +1812,21 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                     except: pass
                     text.send_keys(answer_no_accent)
                     sleep(2)
-                    actions.send_keys(Keys.ARROW_DOWN)
-                    actions.send_keys(Keys.ENTER).perform()
+                    try:
+                        options = driver.find_elements(By.XPATH, "//div[@role='option'] | //li[@role='option']")
+                        clicked = False
+                        for opt in options:
+                            if opt.is_displayed() and opt.text.strip().lower() != "select an option":
+                                # Just click the first valid option that isn't the placeholder
+                                opt.click()
+                                clicked = True
+                                break
+                        if not clicked:
+                            text.send_keys(Keys.ARROW_DOWN)
+                            sleep(0.5)
+                            text.send_keys(Keys.TAB)
+                        sleep(1)
+                    except: pass
                 else:
                     try:
                         text.clear()
@@ -1587,6 +1987,22 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
         
         text_area = try_xp(Question, ".//textarea", False)
         if text_area:
+            try:
+                if not text_area.is_displayed():
+                    try:
+                        driver.execute_script("""
+                            var el = arguments[0];
+                            var setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+                            setter.call(el, 'N/A');
+                            ['input', 'change', 'blur'].forEach(function(t) {
+                                el.dispatchEvent(new Event(t, {bubbles: true, cancelable: true}));
+                            });
+                        """, text_area)
+                    except Exception:
+                        pass
+                    continue
+            except Exception:
+                pass
             label_el = try_xp(Question, ".//label[@for]", False)
             try: label_el = label_el.find_element(By.CLASS_NAME,'visually-hidden')
             except: pass
@@ -1632,7 +2048,7 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                                 answer = notice_period_weeks
                             else: 
                                 answer = notice_period
-                        elif any(w in label for w in ['document', 'documento', 'cedula', 'id', 'identificacion', 'identification', 'c.c.', 'c.c', 'dni']):
+                        elif any(re.search(r'\b' + w + r'\b', label) for w in ['document', 'documento', 'cedula', 'id', 'identificacion', 'identification', 'c.c.', 'c.c', 'dni']):
                             try:
                                 answer = identification_number
                             except NameError:
@@ -1641,7 +2057,7 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                             answer = resolve_salary_expectation(label_org, any(w in label for w in ['current', 'present', 'actual', 'presente', 'ultimo', 'último']), work_location)
                         elif any(w in label for w in ['experience', 'years', 'experiencia', 'anos', 'ano', 'tiempo']): 
                             answer = years_of_experience
-                        elif any(w in label for w in ['phone', 'mobile', 'telefono', 'celular', 'movil']): 
+                        elif any(re.search(r'\b' + w + r'\b', label) for w in ['number', 'phone', 'telefono', 'celular', 'movil']): 
                             answer = phone_number
                         elif any(w in label for w in ['street', 'calle']): 
                             answer = street
@@ -1757,9 +2173,11 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                                 answer = phone_number
                             else: 
                                 answer = years_of_experience if any(w in label for w in ['year', 'experience', 'ano', 'anos', 'experiencia', 'tiempo']) else "0"
-                
                 if not isinstance(answer, str): 
                     answer = str(answer)
+                
+                if answer == "[SKIP]":
+                    answer = ""
                 
                 # Check entire Question text for decimal requirements (including help texts / validation errors)
                 question_full_text = Question.text.lower()
@@ -1798,19 +2216,78 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
         if checkbox:
             label = try_xp(Question, ".//span[@class='visually-hidden']", False)
             label_org = label.text if label else "Unknown"
+            if not label_org or label_org == "Unknown":
+                try:
+                    q_text = Question.text.strip()
+                    if q_text: label_org = q_text.split('\n')[0].strip()
+                except: pass
             ui_update_status("Answering Modal", action_text=f"Checkbox: {label_org}")
             label = label_org.lower()
             answer = try_xp(Question, ".//label[@for]", False)  # Sometimes multiple checkboxes are given for 1 question, Not accounted for that yet
             answer = answer.text if answer else "Unknown"
             prev_answer = checkbox.is_selected()
             checked = prev_answer
-            if not prev_answer:
-                try:
-                    actions.move_to_element(checkbox).click().perform()
-                    checked = True
-                except Exception as e: 
-                    print_lg("Checkbox click failed!", e)
-                    pass
+
+            if overwrite_previous_answers or not prev_answer:
+                desired = True  # default: check the box
+                if is_sensitive_question(label_org):
+                    desired = False
+                else:
+                    # --- Work model checkbox logic ---
+                    # Detect if this is a work model question (Onsite/Hybrid/Remote)
+                    _work_model_q_words = ["work model", "modelo de trabajo", "comfortable working", "which of the following work", "modalidad", "modality"]
+                    _is_work_model_q = any(w in label for w in _work_model_q_words)
+                    if not _is_work_model_q:
+                        # Also check if the checkbox option itself is an onsite/hybrid/remote keyword
+                        _option_low = answer.lower() if answer else ""
+                        _is_work_model_q = any(w in _option_low for w in ["onsite", "on-site", "on site", "hybrid", "hybride", "remote", "work from home", "presencial", "virtual", "teletrabajo"])
+                    if _is_work_model_q:
+                        _option_low = answer.lower() if answer else ""
+                        _is_onsite_option = any(w in _option_low for w in ["onsite", "on-site", "on site", "presencial", "in-person", "in office"])
+                        _is_remote_option = any(w in _option_low for w in ["remote", "work from home", "virtual", "teletrabajo", "wfh"])
+                        _is_hybrid_option = any(w in _option_low for w in ["hybrid", "hybrido", "híbrido", "blended"])
+                        # Check if job is IT/tech or customer service based on job_description
+                        _desc_low = (job_description or "").lower()
+                        _is_cs_job = any(w in _desc_low for w in ["customer service", "customer support", "servicio al cliente", "atención al cliente", "atencion al cliente", "call center"])
+                        _is_it_job = any(w in _desc_low for w in ["it support", "tech support", "technical support", "help desk", "helpdesk", "systems admin", "sysadmin", "soporte tecnico", "soporte técnico"])
+                        if _is_cs_job and not _is_it_job:
+                            # Customer Service: only Remote/Virtual is acceptable, not Onsite or Hybrid
+                            desired = _is_remote_option
+                        else:
+                            # IT jobs or generic: all work models are fine (Onsite, Hybrid, Remote)
+                            desired = True
+                    else:
+                        db_match = match_rules(label_org)
+                        if db_match:
+                            val = str(db_match.get("value", "Yes"))
+                            desired = val.lower() not in ("no", "false", "0")
+                        else:
+                            common_ans = answer_common_questions(label_org, "Yes")
+                            desired = common_ans.lower() not in ("no", "false", "0")
+
+                    if use_AI and aiClient:
+                        if is_career_ops_mode():
+                            raise CareerOpsActivatedException()
+                        try:
+                            ai_ans = None
+                            if ai_provider.lower() in ("openai", "groq"):
+                                ai_ans = ai_answer_question(aiClient, label_org, options=["Yes", "No"], question_type="single_select", job_description=job_description, user_information_all=user_information_all)
+                            elif ai_provider.lower() == "deepseek":
+                                ai_ans = deepseek_answer_question(aiClient, label_org, options=["Yes", "No"], question_type="single_select", job_description=job_description, about_company=None, user_information_all=user_information_all)
+                            elif ai_provider.lower() == "gemini":
+                                ai_ans = gemini_answer_question(aiClient, label_org, options=["Yes", "No"], question_type="single_select", job_description=job_description, about_company=None, user_information_all=user_information_all)
+                            if ai_ans and isinstance(ai_ans, str):
+                                desired = ai_ans.strip().lower() not in ("no", "false", "0")
+                        except Exception as e:
+                            print_lg("Failed to get AI answer for checkbox!", e)
+
+                if desired != prev_answer:
+                    try:
+                        actions.move_to_element(checkbox).click().perform()
+                        checked = desired
+                    except Exception as e:
+                        print_lg("Checkbox click failed!", e)
+
             ui_update_status("Answering Modal", action_text=f"Checked Checkbox: {checked}")
             questions_list.add((f'{label} ([X] {answer})', checked, "checkbox", prev_answer))
             continue
@@ -1822,6 +2299,55 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
     # Collect important skills
     # if 'do you have' in label and 'experience' in label and ' in ' in label -> Get word (skill) after ' in ' from label
     # if 'how many years of experience do you have in ' in label -> Get word (skill) after ' in '
+
+    # JS sweep: fill all "If YES" conditional text fields with N/A.
+    # Uses textContent (reads hidden elements too) so it works regardless of CSS visibility or React render state.
+    try:
+        filled = driver.execute_script("""
+            var IF_YES_PHRASES = [
+                'if your answer is yes', 'if yes', 'if so', 'if applicable',
+                'en caso afirmativo', 'if you answered yes',
+                'si la respuesta es si', 'si su respuesta es si'
+            ];
+            var modal = arguments[0];
+            var labels = modal.querySelectorAll('label');
+            var filled = [];
+            labels.forEach(function(lbl) {
+                var txt = (lbl.textContent || '').toLowerCase().trim();
+                var matches = IF_YES_PHRASES.some(function(p) { return txt.indexOf(p) !== -1; });
+                if (!matches) return;
+                // Find target input: first by label[for], then by sibling search
+                var inp = null;
+                var forId = lbl.getAttribute('for');
+                if (forId) inp = document.getElementById(forId);
+                if (!inp) {
+                    var parent = lbl.parentElement;
+                    for (var d = 0; d < 5 && parent; d++) {
+                        inp = parent.querySelector('input:not([type="hidden"]):not([type="radio"]):not([type="checkbox"]), textarea');
+                        if (inp) break;
+                        parent = parent.parentElement;
+                    }
+                }
+                if (!inp) return;
+                // Skip if already has a value
+                if (inp.value && inp.value.trim() !== '') return;
+                var proto = inp.tagName === 'TEXTAREA'
+                    ? window.HTMLTextAreaElement.prototype
+                    : window.HTMLInputElement.prototype;
+                var setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+                setter.call(inp, 'N/A');
+                ['input', 'change', 'blur'].forEach(function(t) {
+                    inp.dispatchEvent(new Event(t, {bubbles: true, cancelable: true}));
+                });
+                filled.push(lbl.textContent.trim().substring(0, 60));
+            });
+            return filled;
+        """, modal)
+        if filled:
+            for _f in filled:
+                print_lg(f"[JSSweep] Set N/A for: {_f}")
+    except Exception as _jse:
+        print_lg(f"[JSSweep] error: {_jse}")
 
     return questions_list
 
@@ -2290,10 +2816,22 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str) -> None:
                                         raise Exception("Seems like stuck in a continuous loop of next, probably because of new questions.")
                                     questions_list = answer_questions(modal, questions_list, work_location, job_description=description)
                                     if useNewResume and not uploaded: uploaded, resume = upload_resume(modal, default_resume_path)
-                                    try: next_button = modal.find_element(By.XPATH, './/span[normalize-space(.)="Review"]') 
-                                    except NoSuchElementException:  next_button = modal.find_element(By.XPATH, './/button[contains(span, "Next")]')
-                                    try: next_button.click()
-                                    except ElementClickInterceptedException: break    # Happens when it tries to click Next button in About Company photos section
+                                    try: next_button = modal.find_element(By.XPATH, './/button[contains(normalize-space(.), "Review") or contains(@aria-label, "Review")]') 
+                                    except NoSuchElementException:  next_button = modal.find_element(By.XPATH, './/button[contains(normalize-space(.), "Next") or contains(@aria-label, "next") or contains(@aria-label, "Next")]')
+                                    try: 
+                                        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", next_button)
+                                        time.sleep(0.5)
+                                        try: next_button.click()
+                                        except Exception: driver.execute_script("arguments[0].click();", next_button)
+                                    except Exception:
+                                        try:
+                                            time.sleep(1)
+                                            try: next_button = modal.find_element(By.XPATH, './/button[contains(normalize-space(.), "Review") or contains(@aria-label, "Review")]') 
+                                            except: next_button = modal.find_element(By.XPATH, './/button[contains(normalize-space(.), "Next") or contains(@aria-label, "next") or contains(@aria-label, "Next")]')
+                                            driver.execute_script("arguments[0].click();", next_button)
+                                        except Exception as e:
+                                            print_lg(f"Failed to click Next/Review: {e}")
+                                            break
                                     buffer(click_gap)
 
                             except NoSuchElementException: errored = "nose"
@@ -2312,7 +2850,7 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str) -> None:
                                         pause_before_submit = False if "Disable Pause" == decision else True
                                         # try_xp(modal, ".//span[normalize-space(.)='Review']")
                                     follow_company(modal)
-                                    if wait_span_click(driver, "Submit application", 2, scrollTop=True): 
+                                    if wait_span_click(driver, "Submit application", 5, scrollTop=True) or wait_span_click(driver, "Submit", 3, scrollTop=True): 
                                         date_applied = datetime.now()
                                         if not wait_span_click(driver, "Done", 2): actions.send_keys(Keys.ESCAPE).perform()
                                     elif errored != "stuck" and cur_pause_before_submit and "Yes" in ui_confirm("Failed to find Submit Application!", "You submitted the application, didn't you?", ["Yes", "No"]):

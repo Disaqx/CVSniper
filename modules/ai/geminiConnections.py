@@ -95,6 +95,15 @@ def gemini_completion(model, prompt: str, is_json: bool = False) -> dict | str:
 
         result = response.text
 
+        try:
+            if hasattr(response, 'usage_metadata') and response.usage_metadata:
+                total = getattr(response.usage_metadata, 'total_token_count', 0) or 0
+                if total:
+                    from modules.bot_ui import update_api_usage
+                    update_api_usage(total)
+        except Exception:
+            pass
+
         if is_json:
             if result.startswith("```json"):
                 result = result[7:]

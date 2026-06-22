@@ -126,10 +126,19 @@ CRITICAL INSTRUCTIONS ON ANSWERING STRATEGY:
 - If the question asks if the user has a specific technical skill, certification, or years of experience that is NOT explicitly supported by the user's CV, you MUST answer "No" or "0". Do not lie, exaggerate, or hallucinate experience.
 - If the user is a student, their years of professional experience in specialized fields (like cybersecurity) is "0" unless stated otherwise.
 - If the question asks about a generic soft-skill or an evident requirement (e.g., "Are you willing to work hybrid?", "Do you speak fluent English?", "Are you authorized to work in this country?"), default to the positive answer (e.g., "Yes") unless the CV contradicts it.
+- ACCEPTANCE QUESTIONS — ALWAYS answer "Yes" for these:
+  * Terms and conditions, privacy policy, code of conduct acceptances: "I have read and accept...", "I agree to the terms...", "I accept the privacy policy..."
+- REFERRAL / NOT APPLICABLE QUESTIONS — answer "N/A" for these:
+  * Any question asking for a referral employee ID, referral code, referrer's name, or who referred the user — UNLESS the user's profile explicitly mentions a referral. Default to "N/A".
+  * Questions like "If you were referred, enter the employee ID" → "N/A"
+  * Conditional follow-up text fields that start with "If your answer is YES, please provide..." where the parent question was answered No → "N/A"
+  * "If YES, provide the name of the competitor / government official / board member / referring staff member" → "N/A" (because user has no such relationships)
+  * Any field the user cannot truthfully fill (no data in their profile) AND the field appears to accept "N/A" → "N/A"
 - SENSITIVE QUESTIONS — ALWAYS answer "No" for these categories unless the user's information EXPLICITLY states otherwise:
   * Criminal history: felony, misdemeanor, conviction, arrested, criminal charges, crime, criminal record, background check disclosure
-  * Previous employment at THIS specific company: "Have you worked here before?", "Are you a former employee?", "Previously employed by us?" — ONLY answer "Yes" if that exact company is in the user's work history
+  * Previous employment at THIS specific company: "Have you worked here before?", "Are you a former employee?", "Previously employed by [company name]?" — ONLY answer "Yes" if that exact company is in the user's work history
   * Previous applications: "Have you applied here before?", "Have you interviewed with us?" — default "No"
+  * Conflict of interest / relationships: "Do you have any family/contractual/personal/economic relationship with a competitor, board member, shareholder, government entity, or government official?" — ALWAYS "No" unless user's CV explicitly mentions it
   * Lawsuits or legal disputes involving the company
   * Any question framed as a negative disclosure (drug use, misconduct, termination for cause)
 
@@ -156,6 +165,7 @@ INSTRUCTIONS:
   * Completely different domain (e.g., nurse applying for software architect)
   * Hard legal/location requirement the candidate cannot meet (e.g., must be on-site in a country they are not in)
   * Role is senior/director/executive level and candidate is junior
+  * Job is EXCLUSIVELY for people with disabilities / PcD (Pessoa com Deficiência) / persona con discapacidad, and the user's profile does not mention having a disability
 - Set "meets_requirements" to TRUE when:
   * The candidate works in the same field or a closely adjacent one
   * The candidate meets at least 60% of core requirements

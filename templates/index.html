@@ -301,7 +301,20 @@
                         <div class="form-group"><label class="form-label">Dpto / Estado</label><input class="form-input" id="p-state" type="text"></div>
                         <div class="form-group"><label class="form-label">Código Postal</label><input class="form-input" id="p-zipcode" type="text"></div>
                         <div class="form-group"><label class="form-label">País</label><input class="form-input" id="p-country" type="text"></div>
-                        <div class="form-group span-2"><label class="form-label">Universidad / Colegio</label><input class="form-input" id="p-university" type="text"></div>
+                        <div class="form-group span-2"><label class="form-label">Institución educativa / Colegio</label><input class="form-input" id="p-university" type="text"></div>
+                        <div class="form-group"><label class="form-label">Nivel de educación</label>
+                            <select class="form-select" id="p-degree">
+                                <option value="">-- Seleccionar --</option>
+                                <option value="High School">High School / Bachiller</option>
+                                <option value="Associate's">Associate's / Técnico</option>
+                                <option value="Bachelor's">Bachelor's / Licenciatura</option>
+                                <option value="Master's">Master's / Maestría</option>
+                                <option value="Doctorate">Doctorate / PhD</option>
+                                <option value="Other">Otro</option>
+                            </select>
+                        </div>
+                        <div class="form-group"><label class="form-label">Año de graduación</label><input class="form-input" id="p-graduation_year" type="text" placeholder="2021"></div>
+                        <div class="form-group span-2"><label class="form-label">Campo de estudio / Major</label><input class="form-input" id="p-field_of_study" type="text" placeholder="IT Support, Computer Science..."></div>
                     </div>
                 </div>
                 <div class="form-section">
@@ -616,6 +629,7 @@
             sv('p-first_name',p.first_name); sv('p-middle_name',p.middle_name); sv('p-last_name',p.last_name);
             sv('p-phone_number',p.phone_number); sv('p-current_city',p.current_city); sv('p-street',p.street);
             sv('p-state',p.state); sv('p-zipcode',p.zipcode); sv('p-country',p.country); sv('p-university',p.university);
+            sv('p-degree',p.degree); sv('p-graduation_year',p.graduation_year); sv('p-field_of_study',p.field_of_study);
             sv('p-gender',p.gender); sv('p-disability_status',p.disability_status); sv('p-veteran_status',p.veteran_status); sv('p-ethnicity',p.ethnicity);
             sv('q-years_of_experience',q.years_of_experience); sv('q-confidence_level',q.confidence_level);
             sv('q-desired_salary',q.desired_salary); sv('q-current_ctc',q.current_ctc); sv('q-notice_period',q.notice_period);
@@ -638,7 +652,7 @@
             const sr = currentConfig.search || {};
             return {
                 _comment: currentConfig._comment,
-                personals: { first_name:gv('p-first_name'), middle_name:gv('p-middle_name'), last_name:gv('p-last_name'), phone_number:gv('p-phone_number'), current_city:gv('p-current_city'), street:gv('p-street'), state:gv('p-state'), zipcode:gv('p-zipcode'), country:gv('p-country'), university:gv('p-university'), ethnicity:gv('p-ethnicity'), gender:gv('p-gender'), disability_status:gv('p-disability_status'), veteran_status:gv('p-veteran_status') },
+                personals: { first_name:gv('p-first_name'), middle_name:gv('p-middle_name'), last_name:gv('p-last_name'), phone_number:gv('p-phone_number'), current_city:gv('p-current_city'), street:gv('p-street'), state:gv('p-state'), zipcode:gv('p-zipcode'), country:gv('p-country'), university:gv('p-university'), degree:gv('p-degree'), graduation_year:gv('p-graduation_year'), field_of_study:gv('p-field_of_study'), ethnicity:gv('p-ethnicity'), gender:gv('p-gender'), disability_status:gv('p-disability_status'), veteran_status:gv('p-veteran_status') },
                 questions: { default_resume_path:gv('q-default_resume_path'), years_of_experience:gv('q-years_of_experience'), confidence_level:gv('q-confidence_level'), desired_salary:parseInt(gv('q-desired_salary'))||0, current_ctc:parseInt(gv('q-current_ctc'))||0, notice_period:parseInt(gv('q-notice_period'))||0, require_visa:gv('q-require_visa'), linkedIn:gv('q-linkedIn'), website:gv('q-website'), recent_employer:gv('q-recent_employer'), us_citizenship:gv('q-us_citizenship'), linkedin_headline:gv('q-linkedin_headline'), linkedin_summary:gv('q-linkedin_summary'), cover_letter:gv('q-cover_letter'), user_information_all:gv('q-user_information_all'), pause_before_submit:gc('q-pause_before_submit'), pause_at_failed_question:gc('q-pause_at_failed_question'), overwrite_previous_answers:gc('q-overwrite_previous_answers') },
                 search: { search_terms:tagData.search_terms, search_location:gv('s-search_location'), sort_by:gv('s-sort_by'), date_posted:gv('s-date_posted'), current_experience:parseInt(gv('s-current_experience'))||-1, switch_number:parseInt(gv('s-switch_number'))||10, easy_apply_only:gc('s-easy_apply_only'), under_10_applicants:gc('s-under_10_applicants'), randomize_search_order:gc('s-randomize_search_order'), security_clearance:gc('s-security_clearance'), did_masters:gc('s-did_masters'), bad_words:tagData.bad_words, about_company_bad_words:tagData.about_company_bad_words, about_company_good_words:tagData.about_company_good_words, salary:sr.salary||'', experience_level:sr.experience_level||[], job_type:sr.job_type||[], on_site:sr.on_site||[], companies:sr.companies||[], location:sr.location||[], industry:sr.industry||[], job_function:sr.job_function||[], job_titles:sr.job_titles||[], benefits:sr.benefits||[], commitments:sr.commitments||[], in_your_network:sr.in_your_network||false, fair_chance_employer:sr.fair_chance_employer||false, pause_after_filters:sr.pause_after_filters||false },
                 secrets: currentConfig.secrets || {}

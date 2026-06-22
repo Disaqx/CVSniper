@@ -25,7 +25,10 @@ street = ""
 state = ""
 zipcode = ""
 country = ""
-university = ""
+university = ""         # Tu colegio / universidad
+degree = ""             # "High School", "Associate's", "Bachelor's", "Master's", "Doctorate" or "Other"
+graduation_year = ""    # Ej: "2021"
+field_of_study = ""     # Ej: "Computer Science", "IT Support", "Business Administration"
 
 ## Preguntas de igualdad de oportunidades / Equal Opportunity questions
 ethnicity = ""      # "Hispanic/Latino", "White", "Black or African American", "Asian", "Other", or ""

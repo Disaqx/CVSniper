@@ -188,10 +188,16 @@ def ai_completion(client: OpenAI, messages: list[dict], response_format: dict = 
     else:
         ai_check_error(completion)
         result = completion.choices[0].message.content
-    
+        try:
+            if completion.usage and completion.usage.total_tokens:
+                from modules.bot_ui import update_api_usage
+                update_api_usage(completion.usage.total_tokens)
+        except Exception:
+            pass
+
     if response_format:
         result = convert_to_json(result)
-    
+
     print_lg("\nAI Answer to Question:\n")
     print_lg(result, pretty=response_format)
     return result

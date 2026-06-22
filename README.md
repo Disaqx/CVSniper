@@ -17,6 +17,7 @@ CVSniper automatiza el proceso de aplicar a empleos en LinkedIn usando Selenium 
 7. [Interfaz de control](#interfaz-de-control)
 8. [Archivos de salida](#archivos-de-salida)
 9. [Errores comunes](#errores-comunes)
+10. [Novedades](#novedades)
 
 ---
 
@@ -92,8 +93,11 @@ state        = "XXXXXXX"
 zipcode      = "XXXXXX"         # También debe ser string (con comillas)
 country      = "XXXXXX"
 
-# Universidad
-university = "Universidad XXXXX"
+# Educación
+university         = "Universidad XXXXX"
+degree             = "Bachelor's"    # "High School", "Associate's", "Bachelor's", "Master's", "Doctorate" o "Other"
+graduation_year    = "2021"          # Año de graduación (string con comillas)
+field_of_study     = "Computer Science"  # Área de estudio / Major
 
 # Preguntas de igualdad de oportunidades (EEO) — principalmente para empresas de EE.UU.
 # Déjalas como "" si no quieres responderlas
@@ -368,9 +372,11 @@ Al ejecutar el bot aparece una ventana flotante en la esquina de la pantalla con
 - **Panel de logs** con lo que hace el bot en tiempo real
 - Botón **PAUSE** — pausa el bot entre acciones de forma segura
 - Botón **STOP** — detiene la ejecución completamente
+  - Requiere doble clic de confirmación (el botón cambia a naranja tras el primer clic)
+  - Si Chrome o chromedriver no responde, fuerza la salida del proceso después de 5 segundos
 
 Atajos de teclado:
-- `Ctrl + Q` o `Ctrl + C` — detener
+- `Ctrl + Q` o `Ctrl + C` — detener (fuerza salida inmediata)
 - `Ctrl + P` — pausar / reanudar
 
 ---
@@ -420,3 +426,21 @@ Todos los archivos se generan automáticamente en `all excels/`:
 - El bot está diseñado exclusivamente para **Easy Apply** de LinkedIn. Empleos con formulario externo se registran pero no se completan automáticamente.
 - Usa `pause_before_submit = True` al principio para revisar cada aplicación antes de enviarla.
 - LinkedIn puede detectar y suspender cuentas por actividad automatizada excesiva. Usa el bot con moderación.
+
+---
+
+## 🆕 Novedades
+
+### Formularios — campos condicionales "If YES" resueltos
+Algunos formularios de Easy Apply muestran campos de texto adicionales que solo aparecen en el DOM cuando el usuario selecciona "Yes" en un radio previo (ej: *"If your answer is YES, please provide the name of the referring staff member"*). El bot ahora los maneja automáticamente:
+- Si la respuesta final al radio es **"No"**, el bot primero hace clic en **"Yes"** para que React monte los campos condicionales en el DOM, les escribe **"N/A"** usando el setter nativo de React, y luego hace clic en **"No"**. Esto evita que los campos obligatorios queden vacíos y bloqueen el envío del formulario.
+
+### Prompts de IA mejorados
+- Reglas explícitas para responder **"N/A"** en preguntas de referidos, conflictos de interés y campos condicionales follow-up.
+- Evaluación de empleo más permisiva: solo rechaza candidatos claramente descalificados (gran brecha de experiencia, dominio completamente distinto, requisito legal inamovible o vacante exclusiva para personas con discapacidad).
+
+### Nuevos campos de educación en `personals.py`
+Se agregaron `degree`, `graduation_year` y `field_of_study` para que el bot pueda responder preguntas académicas en formularios sin depender de la IA.
+
+### Botón Stop — fuerza de salida garantizada
+Se corrigió un bug donde el botón Stop dejaba de funcionar cuando Chrome/chromedriver estaba colgado (por ejemplo, durante una llamada larga a la API de Gemini). Ahora, al confirmar el Stop, se lanza un hilo de seguridad que fuerza `os._exit(0)` después de 5 segundos, sin importar el estado del driver.

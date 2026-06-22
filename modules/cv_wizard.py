@@ -30,6 +30,9 @@ Fields to extract (use "" or [] or 0 if not found — never omit a field):
   "country": "",
   "zipcode": "",
   "university": "",
+  "degree": "",
+  "graduation_year": "",
+  "field_of_study": "",
   "linkedIn": "",
   "website": "",
   "years_of_experience": 0,
@@ -44,6 +47,10 @@ Fields to extract (use "" or [] or 0 if not found — never omit a field):
 }}
 
 Rules:
+- university: name of the institution they attended
+- degree: highest level completed, one of: "High School", "Associate's", "Bachelor's", "Master's", "Doctorate", "Other"
+- graduation_year: year of most recent graduation (string, e.g. "2021")
+- field_of_study: their main area of study or major (e.g. "Computer Science", "IT Support", "Business Administration")
 - years_of_experience: integer, estimate from total work history
 - linkedin_headline: 6-10 word professional title (e.g. "IT Support Specialist | M365 | Active Directory")
 - linkedin_summary: 3-4 sentence professional summary for LinkedIn
@@ -206,7 +213,10 @@ def _write_data_to_configs(data: dict, cv_path: str):
     _set(_PERS, "state",        data.get("state", ""))
     _set(_PERS, "country",      data.get("country", ""))
     _set(_PERS, "zipcode",      data.get("zipcode", ""))
-    _set(_PERS, "university",   data.get("university", ""))
+    _set(_PERS, "university",      data.get("university", ""))
+    _set(_PERS, "degree",          data.get("degree", ""))
+    _set(_PERS, "graduation_year", data.get("graduation_year", ""))
+    _set(_PERS, "field_of_study",  data.get("field_of_study", ""))
 
     # questions.py
     _set(_QUEST, "linkedIn",           data.get("linkedIn", ""))

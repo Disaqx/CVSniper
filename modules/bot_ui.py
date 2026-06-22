@@ -7,9 +7,49 @@ import time
 import os
 import re
 import ast
+import webbrowser
 from ctypes import c_int, c_void_p, Structure, sizeof, windll, pointer, byref
 from ctypes import wintypes
 from modules.i18n import T, get_language
+
+# ── Flask Dashboard ────────────────────────────────────────────────────────────
+FLASK_PORT = 5000
+FLASK_URL  = f"http://127.0.0.1:{FLASK_PORT}"
+_flask_started = False
+
+def start_flask_dashboard():
+    """Launch the Flask web dashboard in a background daemon thread."""
+    global _flask_started
+    if _flask_started:
+        return
+    _flask_started = True
+
+    def _run():
+        try:
+            import sys
+            _base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            sys.path.insert(0, _base)
+            from app import app as flask_app
+            import logging
+            log = logging.getLogger('werkzeug')
+            log.setLevel(logging.ERROR)  # suppress Flask request logs
+            flask_app.run(host="127.0.0.1", port=FLASK_PORT, debug=False, use_reloader=False)
+        except Exception as e:
+            print(f"[Dashboard] Flask error: {e}")
+
+    t = threading.Thread(target=_run, name="FlaskDashboard", daemon=True)
+    t.start()
+    # Give Flask a moment to bind
+    time.sleep(1.2)
+    print(f"[Dashboard] Web UI running at {FLASK_URL}")
+
+def open_dashboard_in_browser():
+    """Open the dashboard in the user's default browser (not necessarily Chrome)."""
+    try:
+        # webbrowser.open uses the OS default browser, not the Selenium Chrome
+        webbrowser.open(FLASK_URL, new=2)  # new=2 → open in new tab if possible
+    except Exception as e:
+        print(f"[Dashboard] Could not open browser: {e}")
 
 # Enable DPI awareness
 try:
@@ -33,6 +73,14 @@ active_driver = None
 current_ui_status = "Status: Idle"
 current_ui_details = ""
 current_ui_action = ""
+
+# API usage tracking — updated from AI provider modules
+_api_tokens_used = 0
+_api_token_budget = 100000  # default session budget; adjust if needed
+
+def update_api_usage(tokens: int) -> None:
+    global _api_tokens_used
+    _api_tokens_used += tokens
 
 # Windows API structures for DWM Blur/Acrylic
 class AccentPolicy(Structure):
@@ -92,13 +140,16 @@ def hotkey_listener_thread():
                 if msg.wParam in [STOP_ID_Q, STOP_ID_C]:
                     print("[BotUI] Hotkey STOP triggered. Force-exiting...")
                     def _hotkey_kill():
+                        def _force():
+                            time.sleep(5)
+                            os._exit(0)
+                        threading.Thread(target=_force, daemon=True).start()
                         try:
                             if active_driver:
                                 active_driver.quit()
                         except Exception:
                             pass
-                        finally:
-                            os._exit(0)
+                        os._exit(0)
                     threading.Thread(target=_hotkey_kill, daemon=True).start()
                 elif msg.wParam == PAUSE_ID:
                     global is_paused
@@ -427,10 +478,10 @@ class GlassSettings(tk.Toplevel):
         hdr.pack(fill="x", padx=0)
         hdr.pack_propagate(False)
 
-        tk.Label(hdr, text=f"  ⎔  {T('cfg_title')}", fg=ACCENT, bg=BG,
+        tk.Label(hdr, text=f"  {T('cfg_title')}", fg=ACCENT, bg=BG,
                  font=("Segoe UI Bold", 10)).pack(side="left", padx=8)
 
-        close_lbl = tk.Label(hdr, text="  ✕  ", fg=FG_DIM, bg=BG,
+        close_lbl = tk.Label(hdr, text="  X  ", fg=FG_DIM, bg=BG,
                              font=("Segoe UI Bold", 10), cursor="hand2")
         close_lbl.pack(side="right", padx=4)
         close_lbl.bind("<Enter>", lambda e: close_lbl.config(fg="#E74C3C"))
@@ -448,10 +499,10 @@ class GlassSettings(tk.Toplevel):
         tab_bar.pack(fill="x")
         tab_bar.pack_propagate(False)
 
-        tabs = [(f"⌕  {T('cfg_tab_search')}", "search"),
-                (f"≡  {T('cfg_tab_personal')}", "personal"),
-                (f"✎  {T('cfg_tab_responses')}", "responses"),
-                (f"⎔  {T('cfg_tab_bot')}", "bot")]
+        tabs = [(T('cfg_tab_search'), "search"),
+                (T('cfg_tab_personal'), "personal"),
+                (T('cfg_tab_responses'), "responses"),
+                (T('cfg_tab_bot'), "bot")]
         for label, key in tabs:
             btn = tk.Label(tab_bar, text=label, fg=FG_DIM, bg=BG,
                            font=("Segoe UI", 9), cursor="hand2", padx=12)
@@ -641,16 +692,16 @@ class GlassSettings(tk.Toplevel):
             getattr(self, f"_build_tab_{key}")(inner)
 
     def _build_tab_search(self, p):
-        _section_title(p, "⌕  Términos de búsqueda y foco")
+        _section_title(p, "Terminos de busqueda y foco")
         self._add_list(p, "search_terms", "Términos de búsqueda (search_terms)", self._SEARCH, "search_terms", height=5)
         self._add_entry(p, "search_location", "Ubicación (search_location)", self._SEARCH, "search_location")
 
-        _section_title(p, "⌕  Filtro de Relevancia")
+        _section_title(p, "Filtro de Relevancia")
         self._add_list(p, "primary_focus_keywords", "Palabras clave PRINCIPALES (Help Desk, Tech Support...)", self._SEARCH, "primary_focus_keywords", height=3)
         self._add_list(p, "secondary_focus_keywords", "Palabras clave SECUNDARIAS (solo Remote/Hybrid)", self._SEARCH, "secondary_focus_keywords", height=3)
         self._add_bool(p, "enable_job_focus_filter", "Activar filtro de relevancia (skip trabajos irrelevantes)", self._SEARCH, "enable_job_focus_filter")
 
-        _section_title(p, "⎔  Filtros LinkedIn")
+        _section_title(p, "Filtros LinkedIn")
         self._add_entry(p, "switch_number", "Cambiar búsqueda cada N aplicaciones", self._SEARCH, "switch_number", width=10)
         self._add_dropdown(p, "date_posted", "Fecha publicada", self._SEARCH, "date_posted",
                            ["Past week", "Past 24 hours", "Past month", "Any time"])
@@ -665,13 +716,13 @@ class GlassSettings(tk.Toplevel):
         self._add_bool(p, "easy_apply_only", "Solo Easy Apply", self._SEARCH, "easy_apply_only")
         self._add_bool(p, "randomize_search_order", "Aleatorizar orden de búsqueda", self._SEARCH, "randomize_search_order")
 
-        _section_title(p, "✕  Palabras a evitar")
+        _section_title(p, "Palabras a evitar")
         self._add_list(p, "bad_words", "Palabras malas en descripción (bad_words)", self._SEARCH, "bad_words", height=3)
         self._add_list(p, "about_company_bad_words", "Palabras malas en empresa", self._SEARCH, "about_company_bad_words", height=2)
         self._add_entry(p, "current_experience", "Experiencia actual en años (-1 = ignorar)", self._SEARCH, "current_experience", width=10)
 
     def _build_tab_personal(self, p):
-        _section_title(p, "≡  Datos personales")
+        _section_title(p, "Datos personales")
         self._add_entry(p, "first_name", "Nombre (first_name)", self._PERS, "first_name")
         self._add_entry(p, "middle_name", "Segundo nombre (middle_name)", self._PERS, "middle_name")
         self._add_entry(p, "last_name", "Apellido (last_name)", self._PERS, "last_name")
@@ -681,10 +732,14 @@ class GlassSettings(tk.Toplevel):
         self._add_entry(p, "country", "País (country)", self._PERS, "country")
         self._add_entry(p, "zipcode", "Código postal (zipcode)", self._PERS, "zipcode")
         self._add_entry(p, "street", "Calle (street)", self._PERS, "street")
-        self._add_entry(p, "university", "Universidad (university)", self._PERS, "university")
+        self._add_entry(p, "university", "Institución educativa (university)", self._PERS, "university")
+        self._add_dropdown(p, "degree", "Nivel de educación (degree)", self._PERS, "degree",
+                           ["High School", "Associate's", "Bachelor's", "Master's", "Doctorate", "Other"])
+        self._add_entry(p, "graduation_year", "Año de graduación (graduation_year)", self._PERS, "graduation_year", width=10)
+        self._add_entry(p, "field_of_study", "Campo de estudio / Major (field_of_study)", self._PERS, "field_of_study")
         self._add_entry(p, "identification_number", "Número de identificación", self._PERS, "identification_number")
 
-        _section_title(p, "⊜  Igualdad de Oportunidades")
+        _section_title(p, "Igualdad de Oportunidades")
         self._add_dropdown(p, "gender", "Género", self._PERS, "gender",
                            ["Decline to self identify", "Male", "Female", "Other", "Non-binary"])
         self._add_entry(p, "ethnicity", "Etnia", self._PERS, "ethnicity")
@@ -696,7 +751,7 @@ class GlassSettings(tk.Toplevel):
                             "Decline to self identify"])
 
     def _build_tab_responses(self, p):
-        _section_title(p, "✎  Experiencia & Salario")
+        _section_title(p, "Experiencia & Salario")
         self._add_entry(p, "years_of_experience", "Años de experiencia a reportar", self._QUEST, "years_of_experience", width=10)
         self._add_entry(p, "desired_salary", "Salario deseado (número)", self._QUEST, "desired_salary", width=16)
         self._add_entry(p, "current_ctc", "CTC actual (número)", self._QUEST, "current_ctc", width=16)
@@ -707,11 +762,11 @@ class GlassSettings(tk.Toplevel):
         self._add_entry(p, "confidence_level", "Nivel de confianza 1-10", self._QUEST, "confidence_level", width=10)
         self._add_entry(p, "us_citizenship", "Ciudadanía US", self._QUEST, "us_citizenship")
 
-        _section_title(p, "⎔  Links")
+        _section_title(p, "Links")
         self._add_entry(p, "linkedIn", "URL de LinkedIn", self._QUEST, "linkedIn")
         self._add_entry(p, "website", "Portfolio / Website", self._QUEST, "website")
 
-        _section_title(p, "✎  Textos largos")
+        _section_title(p, "Textos largos")
         self._add_entry(p, "linkedin_headline", "Titular de LinkedIn", self._QUEST, "linkedin_headline")
         self._add_text(p, "linkedin_summary", "Resumen de LinkedIn", self._QUEST, "linkedin_summary", height=5)
         self._add_text(p, "cover_letter", "Carta de presentación", self._QUEST, "cover_letter", height=8)
@@ -719,7 +774,7 @@ class GlassSettings(tk.Toplevel):
         self._add_entry(p, "default_resume_path", "Ruta del CV (PDF)", self._QUEST, "default_resume_path", browse=True)
 
     def _build_tab_bot(self, p):
-        _section_title(p, "⎔  Comportamiento del Bot")
+        _section_title(p, "Comportamiento del Bot")
         self._add_bool(p, "pause_before_submit", "Pausar antes de enviar cada aplicación", self._QUEST, "pause_before_submit")
         self._add_bool(p, "pause_at_failed_question", "Pausar si no puede responder una pregunta", self._QUEST, "pause_at_failed_question")
         self._add_bool(p, "overwrite_previous_answers", "Sobreescribir respuestas anteriores", self._QUEST, "overwrite_previous_answers")
@@ -727,7 +782,7 @@ class GlassSettings(tk.Toplevel):
         self._add_bool(p, "follow_companies", "Seguir empresas al aplicar", self._SETT, "follow_companies")
         self._add_bool(p, "close_tabs", "Cerrar tabs de aplicaciones externas", self._SETT, "close_tabs")
 
-        _section_title(p, "⎔  Navegador & Performance")
+        _section_title(p, "Navegador & Performance")
         self._add_entry(p, "click_gap", "Pausa entre clicks (seg)", self._SETT, "click_gap", width=10)
         self._add_bool(p, "run_in_background", "Correr en fondo (sin Chrome visible)", self._SETT, "run_in_background")
         self._add_bool(p, "smooth_scroll", "Scroll suave", self._SETT, "smooth_scroll")
@@ -735,16 +790,16 @@ class GlassSettings(tk.Toplevel):
         self._add_bool(p, "safe_mode", "Modo seguro (perfil invitado)", self._SETT, "safe_mode")
         self._add_bool(p, "keep_screen_awake", "Mantener pantalla activa", self._SETT, "keep_screen_awake")
 
-        _section_title(p, "🔄  Ciclos de Búsqueda")
+        _section_title(p, "Ciclos de Busqueda")
         self._add_bool(p, "alternate_sortby", "Alternar orden de resultados", self._SETT, "alternate_sortby")
         self._add_bool(p, "cycle_date_posted", "Ciclar filtro de fecha automáticamente", self._SETT, "cycle_date_posted")
         self._add_bool(p, "stop_date_cycle_at_24hr", "Parar ciclo al llegar a 24h", self._SETT, "stop_date_cycle_at_24hr")
 
-        _section_title(p, "🌐  " + T("lang_label"))
+        _section_title(p, T("lang_label"))
         self._add_dropdown(p, "ui_language", T("lang_label"), self._SETT, "ui_language",
                            ["es", "en"])
 
-        _section_title(p, "🤖  Inteligencia Artificial")
+        _section_title(p, "Inteligencia Artificial")
         _styled_label(p, "Proveedor:  groq (gratis) | gemini | openai | deepseek", small=True).pack(anchor="w", padx=14, pady=(2, 1))
         self._add_entry(p, "ai_provider", "Proveedor de IA (ai_provider)", self._SECR, "ai_provider", width=16)
         self._add_entry(p, "llm_api_key", "API Key (groq.com → API Keys → Create key)", self._SECR, "llm_api_key", width=38)
@@ -795,9 +850,9 @@ class GlassSettings(tk.Toplevel):
                 errors.append(f"{varname}: {e}")
 
         if errors:
-            self._show_result(f"⚠ {T('cfg_saved_err')}{', '.join(errors)}", error=True)
+            self._show_result(f"[!] {T('cfg_saved_err')}{', '.join(errors)}", error=True)
         else:
-            self._show_result(f"✓ {T('cfg_saved_ok')}")
+            self._show_result(T('cfg_saved_ok'))
             # If language changed, rebuild the settings panel in the new language
             from modules.i18n import get_language, _lang_cache
             _lang_cache.clear()  # force re-read after write
@@ -859,8 +914,8 @@ class BotUIApp:
                                     font=("Segoe UI Bold", 9))
         self.title_label.pack(side="left")
 
-        # Close button (X)
-        self.close_btn = tk.Label(self.header, text="✕", fg="#94A1B2",
+        # Close button
+        self.close_btn = tk.Label(self.header, text="X", fg="#94A1B2",
                                   bg="#0a0a0c", font=("Segoe UI Bold", 10),
                                   cursor="hand2")
         self.close_btn.pack(side="right", padx=(8, 0))
@@ -868,21 +923,55 @@ class BotUIApp:
         self.close_btn.bind("<Leave>", lambda e: self.close_btn.config(fg="#94A1B2"))
         self.close_btn.bind("<Button-1>", lambda e: self.trigger_stop())
 
-        # ⚙ Settings gear button — discrete, right of title
-        self.gear_btn = tk.Label(self.header, text="⚙", fg="#4c4c52",
-                                 bg="#0a0a0c", font=("Segoe UI", 10),
+        # Settings button
+        self.gear_btn = tk.Label(self.header, text="CFG", fg="#4c4c52",
+                                 bg="#0a0a0c", font=("Segoe UI", 8),
                                  cursor="hand2")
         self.gear_btn.pack(side="right", padx=(0, 4))
         self.gear_btn.bind("<Enter>", lambda e: self.gear_btn.config(fg=ACCENT))
         self.gear_btn.bind("<Leave>", lambda e: self.gear_btn.config(fg="#4c4c52"))
         self.gear_btn.bind("<Button-1>", lambda e: self._open_settings())
 
-        # Drag indicator label
-        self.drag_lbl = tk.Label(self.header, text="⠿", fg="#4c4c52",
-                                 bg="#0a0a0c", font=("Segoe UI", 10))
+        # Drag indicator
+        self.drag_lbl = tk.Label(self.header, text=":::", fg="#4c4c52",
+                                 bg="#0a0a0c", font=("Segoe UI", 9))
         self.drag_lbl.pack(side="right")
 
-        # Buttons Container
+        # API usage bar
+        self.api_row = tk.Frame(self.border_frame, bg="#0a0a0c")
+        self.api_row.pack(side="bottom", fill="x", padx=12, pady=(0, 1))
+
+        self.api_lbl = tk.Label(self.api_row, text="API  0 tok", fg="#4c4c52",
+                                bg="#0a0a0c", font=("Consolas", 7), anchor="w")
+        self.api_lbl.pack(side="left")
+
+        self.api_pct_lbl = tk.Label(self.api_row, text="0%", fg="#4c4c52",
+                                    bg="#0a0a0c", font=("Consolas", 7), anchor="e")
+        self.api_pct_lbl.pack(side="right")
+
+        self.api_bar_bg = tk.Frame(self.border_frame, bg="#1a1a20", height=3)
+        self.api_bar_bg.pack(side="bottom", fill="x", padx=12, pady=(0, 2))
+        self.api_bar_bg.pack_propagate(False)
+
+        self.api_bar_fill = tk.Frame(self.api_bar_bg, bg="#7F5AF0", height=3)
+        self.api_bar_fill.place(x=0, y=0, relheight=1, width=0)
+
+        # Buttons Container — row 1: Dashboard + Settings
+        self.top_btn_frame = tk.Frame(self.border_frame, bg="#0a0a0c")
+        self.top_btn_frame.pack(side="bottom", fill="x", padx=12, pady=(0, 2))
+
+        self.dashboard_btn = tk.Button(
+            self.top_btn_frame, text="Dashboard",
+            fg="#00E8C6", bg="#131316",
+            activeforeground="#00E8C6", activebackground="#1a1a20",
+            bd=0, padx=10, pady=3,
+            font=("Segoe UI Bold", 8),
+            command=self._open_dashboard,
+            cursor="hand2"
+        )
+        self.dashboard_btn.pack(side="left", fill="x", expand=True, padx=(0, 4))
+
+        # Buttons Container — row 2: main action buttons
         self.btn_frame = tk.Frame(self.border_frame, bg="#0a0a0c")
         self.btn_frame.pack(side="bottom", fill="x", padx=12, pady=(4, 8))
 
@@ -981,6 +1070,14 @@ class BotUIApp:
             return
         self._settings_win = GlassSettings(self.root)
 
+    def _open_dashboard(self):
+        """Open web dashboard in the system default browser."""
+        open_dashboard_in_browser()
+        # Flash button to confirm
+        self.dashboard_btn.config(bg="#00E8C6", fg="#0a0a0c")
+        self.root.after(600, lambda: self.dashboard_btn.config(bg="#131316", fg="#00E8C6"))
+        self.add_log("System", f"Dashboard abierto: {FLASK_URL}", "action")
+
     def _trigger_optimize_cv(self):
         threading.Thread(target=self._optimize_cv_flow, daemon=True).start()
 
@@ -1060,13 +1157,17 @@ class BotUIApp:
         self.root.update()
 
         def _kill():
+            # Safety net: force-exit after 5s even if driver.quit() hangs
+            def _force():
+                time.sleep(5)
+                os._exit(0)
+            threading.Thread(target=_force, daemon=True).start()
             try:
                 if active_driver:
                     active_driver.quit()
             except Exception:
                 pass
-            finally:
-                os._exit(0)
+            os._exit(0)
 
         threading.Thread(target=_kill, daemon=True).start()
 
@@ -1173,6 +1274,22 @@ class BotUIApp:
                 self.dot_canvas.itemconfig(self.status_dot, fill="#E74C3C")
             else:
                 self.dot_canvas.itemconfig(self.status_dot, fill="#2ECC71")
+
+        # Update API usage bar
+        try:
+            used = _api_tokens_used
+            budget = _api_token_budget
+            pct = min(100, int(used / budget * 100)) if budget > 0 else 0
+            bar_color = "#E74C3C" if pct >= 90 else "#F1C40F" if pct >= 70 else "#7F5AF0"
+            used_str = f"{used:,}" if used < 1_000_000 else f"{used/1000:.1f}k"
+            self.api_lbl.config(text=f"API  {used_str} tok", fg="#4c4c52" if pct < 70 else bar_color)
+            self.api_pct_lbl.config(text=f"{pct}%", fg=bar_color if pct > 0 else "#4c4c52")
+            bar_total = self.api_bar_bg.winfo_width()
+            if bar_total > 1:
+                self.api_bar_fill.place(x=0, y=0, relheight=1, width=int(bar_total * pct / 100))
+                self.api_bar_fill.config(bg=bar_color)
+        except Exception:
+            pass
 
         try:
             self.root.lift()

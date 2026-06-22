@@ -97,23 +97,20 @@ if (Test-Path $PyExe) {{
     }}
 
     Write-Host "  Instalando Python en la carpeta del app (sin afectar el sistema)..."
-    $installArgs = @(
-        "/quiet",
-        "InstallAllUsers=0",
-        "TargetDir=`"$PyDir`"",
-        "Include_tcltk=1",
-        "Include_pip=1",
-        "Include_test=0",
-        "Include_doc=0",
-        "PrependPath=0",
-        "Shortcuts=0"
-    )
+    # Pasar como string unico — arrays con = y comillas fallan en Start-Process
+    $installArgs = "/quiet InstallAllUsers=0 TargetDir=`"$PyDir`" Include_tcltk=1 Include_pip=1 Include_test=0 Include_doc=0 PrependPath=0 Shortcuts=0"
     $proc = Start-Process -FilePath $installer -ArgumentList $installArgs -Wait -PassThru
     Remove-Item $installer -ErrorAction SilentlyContinue
 
     if ($proc.ExitCode -ne 0) {{
         Write-Host "[ERROR] Fallo la instalacion de Python (codigo $($proc.ExitCode))." -ForegroundColor Red
         Write-Host "Intenta correr SETUP.bat como Administrador." -ForegroundColor Yellow
+        exit 1
+    }}
+
+    if (-not (Test-Path $PyExe)) {{
+        Write-Host "[ERROR] Python no se instalo en $PyDir" -ForegroundColor Red
+        Write-Host "Intenta correr SETUP.bat haciendo clic derecho -> Ejecutar como Administrador." -ForegroundColor Yellow
         exit 1
     }}
     Write-Host "  Python instalado con tkinter." -ForegroundColor Green

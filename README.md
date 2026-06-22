@@ -2,7 +2,7 @@
 
 CVSniper automatiza el proceso de aplicar a empleos en LinkedIn usando Selenium para controlar el navegador e IA (OpenAI, DeepSeek o Gemini) para responder preguntas de formularios y filtrar vacantes según tu perfil.
 
-> **Proyecto compartido:** cada persona configura sus propios archivos en `config/` antes de ejecutar. Nunca compartas ni subas a Git los archivos con tus datos reales.
+> **Proyecto compartido:** cada persona configura sus propios datos desde la interfaz del bot. Nunca compartas ni subas a Git tus credenciales reales.
 
 ---
 
@@ -10,14 +10,15 @@ CVSniper automatiza el proceso de aplicar a empleos en LinkedIn usando Selenium 
 
 1. [Requisitos](#requisitos)
 2. [Instalación](#instalación)
-3. [Configuración inicial](#configuración-inicial)
-4. [Estructura del proyecto](#estructura-del-proyecto)
-5. [Flujo de ejecución](#flujo-de-ejecución)
-6. [Módulos de IA](#módulos-de-ia)
-7. [Interfaz de control](#interfaz-de-control)
-8. [Archivos de salida](#archivos-de-salida)
-9. [Errores comunes](#errores-comunes)
-10. [Novedades](#novedades)
+3. [Primer inicio — configuración desde la UI](#primer-inicio--configuración-desde-la-ui)
+4. [Referencia de campos de configuración](#referencia-de-campos-de-configuración)
+5. [Estructura del proyecto](#estructura-del-proyecto)
+6. [Flujo de ejecución](#flujo-de-ejecución)
+7. [Módulos de IA](#módulos-de-ia)
+8. [Interfaz de control](#interfaz-de-control)
+9. [Archivos de salida](#archivos-de-salida)
+10. [Errores comunes](#errores-comunes)
+11. [Novedades](#novedades)
 
 ---
 
@@ -26,7 +27,7 @@ CVSniper automatiza el proceso de aplicar a empleos en LinkedIn usando Selenium 
 - Python 3.10 o superior
 - Google Chrome instalado
 - Cuenta activa en LinkedIn
-- Clave API de uno de los siguientes proveedores de IA (si activas `use_AI = True`):
+- Clave API de uno de los siguientes proveedores de IA (si activas el uso de IA):
   - [OpenAI](https://platform.openai.com/api-keys)
   - [Google Gemini](https://aistudio.google.com/app/apikey)
   - [DeepSeek](https://platform.deepseek.com/)
@@ -37,7 +38,7 @@ CVSniper automatiza el proceso de aplicar a empleos en LinkedIn usando Selenium 
 
 **1. Clona el repositorio:**
 ```bash
-git clone https://github.com/tu-usuario/CVSniper.git
+git clone https://github.com/Disaqx/CVSniper.git
 cd CVSniper
 ```
 
@@ -55,217 +56,109 @@ setup\windows-setup.bat
 bash setup/setup.sh
 ```
 
-**3. Configura tus archivos** (ver sección siguiente)
-
-**4. Ejecuta el bot:**
+**3. Ejecuta el bot:**
 ```bash
 python runAiBot.py
 ```
 
----
-
-## ⚙️ Configuración Inicial
-
-Antes de ejecutar el bot debes editar los siguientes archivos en la carpeta `config/`. Cada archivo tiene comentarios que explican cada campo.
-
-> ⚠️ **Importante:** No subas estos archivos a GitHub si contienen tus datos reales. Agrega `config/secrets.py` y `config/personals.py` a tu `.gitignore`.
+> No necesitas editar ningún archivo antes de ejecutar. La configuración completa se hace desde la interfaz gráfica.
 
 ---
 
-### 1. `config/personals.py` — Tus datos personales
+## 🖥️ Primer inicio — configuración desde la UI
 
-Aquí van los datos que el bot ingresa en los formularios de aplicación.
+Al ejecutar el bot por primera vez (sin configuración previa), el proceso es completamente guiado:
 
-```python
-# Nombre legal
-first_name  = "XXXX"
-middle_name = ""          # Deja "" si no tienes segundo nombre
-last_name   = "XXXX"
+### Paso 1 — CV Wizard (opcional)
+Si aún no tienes datos personales configurados, aparece el **CV Wizard**: sube tu CV en PDF y el bot extrae automáticamente tu información usando IA y pre-rellena todos los campos de configuración por ti.
 
-# ⚠️ phone_number DEBE ser un string (con comillas)
-# Si lo defines sin comillas el bot fallará con un error
-phone_number = "573001234567"   # ✅ Correcto
-# phone_number = 573001234567   # ❌ Incorrecto → ERROR
+Si prefieres no usar el wizard, puedes cerrar ese diálogo y llenar los campos manualmente.
 
-# Ubicación
-current_city = "XXXXX"         # Si lo dejas "" usa la ciudad del empleo
-state        = "XXXXXXX"
-zipcode      = "XXXXXX"         # También debe ser string (con comillas)
-country      = "XXXXXX"
+### Paso 2 — Panel de configuración
+El panel de configuración se abre automáticamente con cuatro secciones:
 
-# Educación
-university         = "Universidad XXXXX"
-degree             = "Bachelor's"    # "High School", "Associate's", "Bachelor's", "Master's", "Doctorate" o "Other"
-graduation_year    = "2021"          # Año de graduación (string con comillas)
-field_of_study     = "Computer Science"  # Área de estudio / Major
+| Sección | Qué configuras |
+|---|---|
+| **Datos personales** | Nombre, teléfono, ciudad, educación, igualdad de oportunidades |
+| **Credenciales / IA** | Email y contraseña de LinkedIn, proveedor de IA y clave API |
+| **Búsqueda** | Términos de búsqueda, ubicación, filtros, palabras prohibidas |
+| **CV y respuestas** | Ruta del CV, años de experiencia, salario esperado, visa, etc. |
 
-# Preguntas de igualdad de oportunidades (EEO) — principalmente para empresas de EE.UU.
-# Déjalas como "" si no quieres responderlas
-ethnicity         = "Hispanic/Latino"   # o ""
-gender            = "Male"              # o "" o "Female"
-disability_status = "No"
-veteran_status    = "No"
+### Paso 3 — El bot arranca solo
+Una vez que el nombre y la clave API están configurados, el bot detecta el cambio automáticamente, cierra el panel y empieza a buscar empleos sin que tengas que hacer nada más.
 
-# Número de documento — deja "" si no quieres incluirlo
-identification_number = ""
-```
+> **Para volver a la configuración en cualquier momento:** haz clic en el botón **⚙ Configuración** de la ventana de control flotante.
 
 ---
 
-### 2. `config/secrets.py` — Credenciales e IA
+## 📖 Referencia de campos de configuración
 
-```python
-# Credenciales de LinkedIn
-username = "tu_correo@gmail.com"
-password = "tu_contraseña"
+Esta sección es una referencia de todos los campos que aparecen en el panel de configuración de la UI. No necesitas editar ningún archivo Python.
 
-# ¿Quieres usar IA para responder preguntas y filtrar empleos?
-use_AI = True   # True o False
+### Datos personales
 
-# Proveedor de IA: "openai", "deepseek" o "gemini"
-ai_provider = "gemini"
+| Campo | Descripción |
+|---|---|
+| `first_name` / `last_name` | Tu nombre completo tal como aparece en LinkedIn |
+| `phone_number` | Número de teléfono **con código de país** (ej: `573001234567`) — siempre en formato texto |
+| `current_city` | Ciudad actual. Si se deja vacío, el bot usa la ciudad del empleo |
+| `state` / `zipcode` / `country` | Dirección de residencia |
+| `university` | Institución educativa (colegio o universidad) |
+| `degree` | Nivel educativo: `High School`, `Associate's`, `Bachelor's`, `Master's`, `Doctorate` o `Other` |
+| `graduation_year` | Año de graduación en texto (ej: `"2021"`) |
+| `field_of_study` | Área de estudio o major (ej: `Computer Science`, `IT Support`) |
+| `ethnicity` | Opcional. Para preguntas EEO de empresas en EE.UU. Deja vacío para omitir |
+| `gender` | Opcional. `Male`, `Female` o vacío |
+| `disability_status` | `No` por defecto. Solo cambia si aplica |
+| `veteran_status` | `No` por defecto |
 
-# URL base de la API (solo cambia si usas un modelo local)
-llm_api_url = "https://generativelanguage.googleapis.com/"
+### Credenciales e IA
 
-# Tu clave API del proveedor elegido
-llm_api_key = "TU_CLAVE_API_AQUI"
+| Campo | Descripción |
+|---|---|
+| `username` | Tu correo de LinkedIn |
+| `password` | Tu contraseña de LinkedIn |
+| `use_AI` | Activa o desactiva el uso de IA para responder preguntas |
+| `ai_provider` | `openai`, `deepseek` o `gemini` |
+| `llm_api_key` | Clave API del proveedor elegido |
+| `llm_model` | Modelo a usar (ej: `gemini-2.5-flash`, `gpt-4o`, `deepseek-chat`) |
 
-# Modelo a usar
-# Ejemplos: "gpt-4o", "gemini-2.5-flash", "deepseek-chat"
-llm_model = "gemini-2.5-flash"
+**¿Dónde obtener la clave API?**
 
-# Debe coincidir con ai_provider
-llm_spec = "gemini"   # "openai", "deepseek" o "gemini"
-
-# ¿Mostrar la respuesta de la IA en tiempo real?
-stream_output = False
-```
-
-**¿Cómo obtener tu clave API?**
-
-| Proveedor | Dónde obtenerla |
+| Proveedor | Enlace |
 |---|---|
 | OpenAI | https://platform.openai.com/api-keys |
 | Google Gemini | https://aistudio.google.com/app/apikey |
 | DeepSeek | https://platform.deepseek.com/ |
 
----
+### Búsqueda de empleos
 
-### 3. `config/search.py` — Preferencias de búsqueda
+| Campo | Descripción |
+|---|---|
+| `search_terms` | Lista de puestos a buscar (ej: `Software Engineer`, `Python Developer`) |
+| `search_location` | Ciudad o región. Vacío = todo el mundo |
+| `switch_number` | Cuántas aplicaciones hacer por término antes de pasar al siguiente |
+| `date_posted` | Antigüedad máxima de la oferta: `Past 24 hours`, `Past week`, `Past month` |
+| `sort_by` | `Most recent` o `Most relevant` |
+| `experience_level` | Filtro de nivel: `Entry level`, `Mid-Senior level`, etc. |
+| `job_type` | `Full-time`, `Part-time`, `Contract`, `Internship`, etc. |
+| `on_site` | `On-site`, `Remote`, `Hybrid` |
+| `bad_words` | Palabras que si aparecen en la descripción hacen que el bot ignore el empleo |
+| `current_experience` | Años máximos de experiencia que acepta el bot. `-1` = sin límite |
 
-Define qué empleos busca el bot y con qué filtros.
+### CV y respuestas
 
-```python
-# Términos de búsqueda — el bot los buscará uno por uno en LinkedIn
-search_terms = [
-    "Software Engineer",
-    "Backend Developer",
-    "Python Developer",
-]
-
-# Ciudad o región donde buscar empleos
-search_location = "tu_ciudad"   # Deja "" para buscar en todo el mundo
-
-# ¿Cuántas aplicaciones hacer por término antes de pasar al siguiente?
-switch_number = 10
-
-# ¿Buscar solo empleos con "Easy Apply"?
-easy_apply_only = True
-
-# Filtros adicionales (deja [] o "" para no filtrar)
-date_posted      = "Past week"    # "", "Past 24 hours", "Past week", "Past month"
-sort_by          = "Most recent"  # "", "Most recent", "Most relevant"
-experience_level = []             # ["Entry level", "Associate", "Mid-Senior level", ...]
-job_type         = []             # ["Full-time", "Part-time", "Contract", "Internship", ...]
-on_site          = []             # ["On-site", "Remote", "Hybrid"]
-
-# Palabras prohibidas — si aparecen en la descripción del empleo, el bot lo omite
-bad_words = [
-    "US Citizen",
-    "Security Clearance",
-    # Agrega las que necesites
-]
-
-# Empresas a evitar
-about_company_bad_words = []   # Ej: ["Crossover"]
-
-# Años de experiencia máximos que acepta el bot
-# -1 = sin límite (aplica a todos sin importar experiencia requerida)
-current_experience = 3
-
-# ─── Filtro de relevancia de título (opcional) ───
-# Si está activado, el bot solo aplica a empleos cuyo título
-# coincida con alguna de las palabras clave definidas abajo.
-enable_job_focus_filter = False   # Cambia a True para activarlo
-
-# Aplica siempre que el título contenga alguna de estas palabras
-primary_focus_keywords = [
-    "developer",
-    "engineer",
-    "backend",
-]
-
-# Aplica solo si el empleo es Remote o Hybrid
-secondary_focus_keywords = [
-    "analyst",
-    "consultant",
-]
-```
-
----
-
-### 4. `config/questions.py` — CV y respuestas comunes
-
-```python
-# Ruta a tu CV en PDF (relativa a la raíz del proyecto)
-default_resume_path = "all resumes/Mi_CV.pdf"
-
-# Años de experiencia laboral
-years_of_experience = 2
-
-# ¿Necesitas visa de trabajo?
-require_visa = "No"   # "Yes" o "No"
-
-# Enlace a tu portafolio (deja "" si no tienes)
-website = ""
-
-# Enlace a tu perfil de LinkedIn
-linkedIn = "https://www.linkedin.com/in/tu-usuario/"
-
-# Salario esperado (en números, sin puntos ni comas)
-desired_salary = 5000000
-
-# CTC actual
-current_ctc = 0
-
-# Días de preaviso para dejar tu empleo actual
-notice_period = 30
-```
-
----
-
-### 5. `config/settings.py` — Comportamiento del bot
-
-```python
-# ¿Correr el bot sin abrir ventana de Chrome?
-run_in_background = False   # True = headless (sin interfaz visual)
-
-# Modo sigiloso para evitar detección de LinkedIn
-stealth_mode = True   # Recomendado dejarlo en True
-
-# ¿Pausar antes de enviar cada aplicación para revisión manual?
-pause_before_submit = True   # Recomendado True al inicio
-
-# ¿Pausar si la IA no puede responder una pregunta del formulario?
-pause_at_failed_question = True
-
-# ¿Correr sin parar hasta que lo detengas manualmente?
-run_non_stop = False
-
-# ¿Seguir a las empresas al aplicar?
-follow_companies = False
-```
+| Campo | Descripción |
+|---|---|
+| `default_resume_path` | Ruta al CV en PDF (relativa a la raíz del proyecto) |
+| `years_of_experience` | Años de experiencia laboral general |
+| `require_visa` | `Yes` o `No` según necesites visa de trabajo |
+| `desired_salary` | Salario esperado en números |
+| `notice_period` | Días de preaviso para dejar tu trabajo actual |
+| `linkedIn` | URL de tu perfil de LinkedIn |
+| `website` | Portafolio o sitio web personal (opcional) |
+| `pause_before_submit` | `True` = el bot pausa antes de enviar cada aplicación para revisión manual |
+| `pause_at_failed_question` | `True` = pausa si la IA no puede responder una pregunta |
 
 ---
 
@@ -275,19 +168,17 @@ follow_companies = False
 CVSniper/
 │
 ├── runAiBot.py                  ← Punto de entrada — ejecuta esto
-├── app.py                       ← Servidor Flask + interfaz gráfica (UI)
-├── compress_pdf.py              ← Utilidad para comprimir PDFs del CV
-├── merge_resumes.py             ← Combina múltiples CVs en uno solo
 │
-├── config/                      ← ⚙️ Configura estos archivos antes de ejecutar
-│   ├── personals.py             ← Tus datos personales (nombre, teléfono, ciudad...)
-│   ├── secrets.py               ← Credenciales de LinkedIn y clave API de IA
-│   ├── search.py                ← Qué empleos buscar y con qué filtros
-│   ├── settings.py              ← Comportamiento general del bot
-│   └── questions.py             ← Ruta del CV y respuestas a preguntas comunes
+├── config/                      ← Archivos generados automáticamente al primer inicio
+│   ├── personals.py             ← Datos personales (gestionados por la UI)
+│   ├── secrets.py               ← Credenciales e IA (gestionados por la UI)
+│   ├── search.py                ← Preferencias de búsqueda (gestionadas por la UI)
+│   ├── settings.py              ← Comportamiento del bot (gestionado por la UI)
+│   └── questions.py             ← CV y respuestas comunes (gestionados por la UI)
 │
-├── modules/                     ← Lógica interna (no necesitas tocar esto)
-│   ├── bot_ui.py                ← Ventana flotante de control del bot
+├── modules/                     ← Lógica interna
+│   ├── bot_ui.py                ← Ventana flotante de control + panel de configuración
+│   ├── cv_wizard.py             ← Wizard de configuración automática desde CV
 │   ├── helpers.py               ← Funciones utilitarias (logs, JSON, directorios)
 │   ├── open_chrome.py           ← Inicialización de Chrome con Selenium
 │   ├── clickers_and_finders.py  ← Interacciones con el DOM de LinkedIn
@@ -303,7 +194,7 @@ CVSniper/
 ├── all resumes/                 ← Coloca aquí tu CV en PDF
 ├── all excels/                  ← Salidas: historial CSV, base de datos QA
 ├── logs/                        ← Logs detallados de cada sesión
-├── templates/                   ← Plantillas HTML del panel web
+├── templates/                   ← Panel web de configuración (index.html)
 └── setup/                       ← Scripts de instalación por sistema operativo
 ```
 
@@ -315,18 +206,18 @@ Cuando corres `python runAiBot.py` el bot sigue este proceso:
 
 ```
 1. INICIO
-   ├─ Carga y valida todos los archivos de config/
+   ├─ Auto-copia los templates de config/ si es primer inicio
    ├─ Abre Chrome con Selenium
-   ├─ Lanza la ventana de control (bot_ui.py)
-   └─ Conecta con el proveedor de IA configurado
+   ├─ Lanza la ventana de control flotante
+   └─ Si no hay datos → abre CV Wizard + panel de configuración
 
 2. LOGIN EN LINKEDIN
    ├─ Navega a linkedin.com/feed
-   └─ Inicia sesión con las credenciales de secrets.py
+   └─ Inicia sesión con las credenciales configuradas
 
 3. BÚSQUEDA DE EMPLEOS
    └─ Para cada término en search_terms:
-       ├─ Aplica los filtros de search.py
+       ├─ Aplica los filtros configurados
        └─ Itera sobre los resultados página por página
 
 4. EVALUACIÓN DE CADA EMPLEO
@@ -337,8 +228,8 @@ Cuando corres `python runAiBot.py` el bot sigue este proceso:
 
 5. APLICACIÓN (Easy Apply)
    ├─ Clic en "Easy Apply"
-   ├─ Paso 1: datos personales de personals.py
-   ├─ Paso 2: preguntas conocidas de questions.py
+   ├─ Paso 1: datos personales de la configuración
+   ├─ Paso 2: preguntas conocidas de la configuración
    ├─ Paso 3: preguntas nuevas → IA las responde y las guarda en qa_database.json
    ├─ Revisión manual (si pause_before_submit = True)
    └─ Envío de la solicitud
@@ -352,7 +243,7 @@ Cuando corres `python runAiBot.py` el bot sigue este proceso:
 
 ## 🤖 Módulos de IA
 
-El bot soporta tres proveedores de IA intercambiables. Se selecciona con `ai_provider` en `secrets.py`.
+El bot soporta tres proveedores de IA intercambiables. Se selecciona desde el panel de configuración en el campo `ai_provider`.
 
 | Función | Qué hace |
 |---|---|
@@ -370,6 +261,8 @@ Todas las respuestas generadas por la IA se guardan en `all excels/qa_database.j
 Al ejecutar el bot aparece una ventana flotante en la esquina de la pantalla con:
 
 - **Panel de logs** con lo que hace el bot en tiempo real
+- Botón **⚙ Configuración** — abre el panel web con todos los ajustes
+- Botón **OPTIMIZAR CV** — lanza el wizard de optimización del CV con IA
 - Botón **PAUSE** — pausa el bot entre acciones de forma segura
 - Botón **STOP** — detiene la ejecución completamente
   - Requiere doble clic de confirmación (el botón cambia a naranja tras el primer clic)
@@ -397,34 +290,26 @@ Todos los archivos se generan automáticamente en `all excels/`:
 
 | Error | Causa | Solución |
 |---|---|---|
-| `Invalid input for phone_number. Expecting a String!` | `phone_number` o `zipcode` definidos sin comillas | Agregar comillas: `phone_number = "573001234567"` |
-| `ImportError: cannot import name 'ai_evaluate_job'` | Función faltante en módulo de IA | Revisar que `openaiConnections.py` esté actualizado |
-| `Import "modules.ai.qa_database" could not be resolved` | Archivo `qa_database.py` no existe | Crear el archivo en `modules/ai/` |
-| `Import "selenium..." could not be resolved` en el IDE | Selenium no instalado en el entorno activo | `pip install selenium` con el intérprete correcto del IDE |
-| El bot cierra el navegador sin aplicar | Error en validación de config al inicio | Revisar `logs/` para ver el detalle del error |
-| LinkedIn pide verificación / CAPTCHA | LinkedIn detectó actividad automatizada | Activar `stealth_mode = True` y reducir velocidad |
+| `Invalid input for phone_number. Expecting a String!` | `phone_number` o `zipcode` definidos sin comillas | Corregirlo en el panel de configuración de la UI |
+| Bot cierra navegador sin aplicar | Error en validación de configuración | Revisar `logs/` para ver el detalle del error |
+| LinkedIn pide verificación / CAPTCHA | LinkedIn detectó actividad automatizada | Activar `stealth_mode = True` en configuración y reducir velocidad |
+| El botón Stop no responde | Chrome/chromedriver colgado durante llamada a API | Espera hasta 5 segundos — el proceso se fuerza a cerrar automáticamente |
+| CV Wizard no extrae datos correctamente | CV en formato imagen o sin texto seleccionable | Usa un PDF con texto real (no escaneado) |
 
 ---
 
 ## 🔒 Seguridad
 
-- **Nunca subas `config/secrets.py` ni `config/personals.py` a GitHub** con tus datos reales.
-- Agrega estas líneas a tu `.gitignore`:
-  ```
-  config/secrets.py
-  config/personals.py
-  all excels/
-  logs/
-  all resumes/
-  ```
-- Cada colaborador del proyecto debe crear sus propios archivos de config localmente a partir de los templates incluidos.
+- **Nunca subas tus archivos de configuración a GitHub.** Los archivos `config/secrets.py` y `config/personals.py` están en `.gitignore` por defecto.
+- Cada colaborador del proyecto configura sus propios datos localmente desde la UI.
+- Los archivos `config/*.default.py` son plantillas vacías incluidas en el repo para que el bot pueda copiarlas al primer inicio.
 
 ---
 
 ## 📌 Notas Finales
 
 - El bot está diseñado exclusivamente para **Easy Apply** de LinkedIn. Empleos con formulario externo se registran pero no se completan automáticamente.
-- Usa `pause_before_submit = True` al principio para revisar cada aplicación antes de enviarla.
+- Usa `pause_before_submit = True` en la configuración al principio para revisar cada aplicación antes de enviarla.
 - LinkedIn puede detectar y suspender cuentas por actividad automatizada excesiva. Usa el bot con moderación.
 
 ---
@@ -432,15 +317,18 @@ Todos los archivos se generan automáticamente en `all excels/`:
 ## 🆕 Novedades
 
 ### Formularios — campos condicionales "If YES" resueltos
-Algunos formularios de Easy Apply muestran campos de texto adicionales que solo aparecen en el DOM cuando el usuario selecciona "Yes" en un radio previo (ej: *"If your answer is YES, please provide the name of the referring staff member"*). El bot ahora los maneja automáticamente:
-- Si la respuesta final al radio es **"No"**, el bot primero hace clic en **"Yes"** para que React monte los campos condicionales en el DOM, les escribe **"N/A"** usando el setter nativo de React, y luego hace clic en **"No"**. Esto evita que los campos obligatorios queden vacíos y bloqueen el envío del formulario.
+Algunos formularios de Easy Apply muestran campos de texto adicionales que solo aparecen cuando el usuario selecciona "Yes" en un radio previo (ej: *"If your answer is YES, please provide the name of the referring staff member"*). El bot ahora los maneja automáticamente:
+- Si la respuesta final al radio es **"No"**, el bot primero hace clic en **"Yes"** para que React monte los campos condicionales en el DOM, les escribe **"N/A"** y luego hace clic en **"No"**. Esto evita que los campos obligatorios queden vacíos y bloqueen el envío del formulario.
 
 ### Prompts de IA mejorados
 - Reglas explícitas para responder **"N/A"** en preguntas de referidos, conflictos de interés y campos condicionales follow-up.
 - Evaluación de empleo más permisiva: solo rechaza candidatos claramente descalificados (gran brecha de experiencia, dominio completamente distinto, requisito legal inamovible o vacante exclusiva para personas con discapacidad).
 
-### Nuevos campos de educación en `personals.py`
-Se agregaron `degree`, `graduation_year` y `field_of_study` para que el bot pueda responder preguntas académicas en formularios sin depender de la IA.
+### Nuevos campos de educación
+Se agregaron `degree`, `graduation_year` y `field_of_study` al panel de configuración para que el bot pueda responder preguntas académicas en formularios sin depender de la IA.
+
+### CV Wizard
+En el primer inicio, el bot ofrece subir tu CV en PDF para que la IA extraiga automáticamente tus datos y rellene todos los campos de configuración. Ideal para usuarios que instalan el ejecutable sin conocimientos técnicos.
 
 ### Botón Stop — fuerza de salida garantizada
-Se corrigió un bug donde el botón Stop dejaba de funcionar cuando Chrome/chromedriver estaba colgado (por ejemplo, durante una llamada larga a la API de Gemini). Ahora, al confirmar el Stop, se lanza un hilo de seguridad que fuerza `os._exit(0)` después de 5 segundos, sin importar el estado del driver.
+Se corrigió un bug donde el botón Stop dejaba de funcionar cuando Chrome/chromedriver estaba colgado. Ahora el proceso se fuerza a cerrar después de 5 segundos sin importar el estado del driver.

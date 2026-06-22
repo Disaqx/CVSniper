@@ -13,20 +13,22 @@ from ctypes import wintypes
 from modules.i18n import T, get_language
 
 def _fix_window_rendering(widget):
-    """Remove WS_EX_LAYERED from a Tkinter window handle.
-    Tkinter can set this flag internally for overrideredirect windows on Windows,
-    causing them to appear as black/transparent squares in screen captures and streams.
+    """Strip WS_EX_LAYERED after the window is fully shown via after().
+    Without this, overrideredirect windows appear black/invisible in screenshots on some GPU drivers.
+    Uses after() so it runs after widgets are drawn, not during init (which caused gray blank windows).
     """
-    try:
-        GWL_EXSTYLE  = -20
-        WS_EX_LAYERED = 0x00080000
-        widget.update_idletasks()
-        hwnd = widget.winfo_id()
-        style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
-        if style & WS_EX_LAYERED:
-            ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style & ~WS_EX_LAYERED)
-    except Exception:
-        pass
+    def _do_fix():
+        try:
+            GWL_EXSTYLE   = -20
+            WS_EX_LAYERED = 0x00080000
+            hwnd = widget.winfo_id()
+            if hwnd:
+                style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+                if style & WS_EX_LAYERED:
+                    ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style & ~WS_EX_LAYERED)
+        except Exception:
+            pass
+    widget.after(100, _do_fix)
 
 # ── Flask Dashboard ────────────────────────────────────────────────────────────
 FLASK_PORT = 5000
@@ -115,18 +117,11 @@ class WindowCompositionAttributeData(Structure):
     ]
 
 def enable_acrylic_blur(hwnd, color_abgr=0x88080808):
-    try:
-        policy = AccentPolicy(4, 2, color_abgr, 0)
-        data = WindowCompositionAttributeData(
-            19,
-            ctypes.cast(pointer(policy), c_void_p),
-            sizeof(policy)
-        )
-        windll.user32.SetWindowCompositionAttribute.restype = c_int
-        windll.user32.SetWindowCompositionAttribute.argtypes = [c_void_p, c_void_p]
-        windll.user32.SetWindowCompositionAttribute(hwnd, pointer(data))
-    except Exception as e:
-        print("[BotUI] Blur error:", e)
+    # Acrylic blur (ACCENT_ENABLE_ACRYLICBLURBEHIND) places the window in a
+    # separate DWM composition surface. On some GPU drivers this causes widgets
+    # to appear gray/blank on-screen while still showing in DWM-based captures.
+    # Disabled to ensure consistent rendering across all hardware.
+    pass
 
 def get_dpi_scaling():
     try:

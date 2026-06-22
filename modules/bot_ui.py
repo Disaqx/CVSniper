@@ -224,7 +224,7 @@ class GlassAlert(tk.Toplevel):
         scaling = get_dpi_scaling()
         self.overrideredirect(True)
         self.attributes("-topmost", True)
-        self.attributes("-alpha", 1.0)
+
         self.configure(bg="#050505")
         sw = self.winfo_screenwidth()
         sh = self.winfo_screenheight()
@@ -269,7 +269,7 @@ class GlassConfirm(tk.Toplevel):
         scaling = get_dpi_scaling()
         self.overrideredirect(True)
         self.attributes("-topmost", True)
-        self.attributes("-alpha", 1.0)
+
         self.configure(bg="#050505")
         sw = self.winfo_screenwidth()
         sh = self.winfo_screenheight()
@@ -449,7 +449,7 @@ class GlassSettings(tk.Toplevel):
         super().__init__(parent)
         self.overrideredirect(True)
         self.attributes("-topmost", True)
-        self.attributes("-alpha", 1.0)
+
         self.configure(bg="#050505")
         self.resizable(True, True)
 
@@ -884,7 +884,7 @@ class BotUIApp:
         root.withdraw()
         root.overrideredirect(True)
         root.attributes("-topmost", True)
-        root.attributes("-alpha", 1.0)
+
         root.configure(bg="#050505")
 
         sw = root.winfo_screenwidth()

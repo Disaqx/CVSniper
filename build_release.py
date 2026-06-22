@@ -128,9 +128,29 @@ if (Test-Path $PyExe) {{
 
 # ── Paso 2: Dependencias ───────────────────────────────────────────────────────
 Write-Step 2 "Instalando dependencias de Python..."
-& $PyExe -m pip install -r "$Root\\requirements.txt" --no-warn-script-location --quiet
-if ($LASTEXITCODE -ne 0) {{
-    Write-Host "[ERROR] Fallo la instalacion de dependencias." -ForegroundColor Red
+
+$maxRetries = 3
+$attempt    = 0
+$success    = $false
+
+while (-not $success -and $attempt -lt $maxRetries) {{
+    $attempt++
+    if ($attempt -gt 1) {{
+        Write-Host "  Reintentando ($attempt/$maxRetries)..." -ForegroundColor Yellow
+        Start-Sleep -Seconds 3
+    }}
+    & $PyExe -m pip install -r "$Root\\requirements.txt" `
+        --no-warn-script-location `
+        --retries 5 `
+        --timeout 60 `
+        --quiet
+    if ($LASTEXITCODE -eq 0) {{ $success = $true }}
+}}
+
+if (-not $success) {{
+    Write-Host ""
+    Write-Host "[ERROR] Fallo la instalacion de dependencias despues de $maxRetries intentos." -ForegroundColor Red
+    Write-Host "Verifica tu conexion a internet y vuelve a correr SETUP.bat." -ForegroundColor Yellow
     exit 1
 }}
 Write-Host "  Dependencias instaladas." -ForegroundColor Green

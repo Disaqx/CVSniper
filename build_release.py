@@ -72,19 +72,38 @@ SETUP_PS1 = f"""# SETUP.ps1 - Instala CVSniper (Python completo, incluye tkinter
 $ErrorActionPreference = "Stop"
 $Root      = $PSScriptRoot
 $PyVersion = "{PYTHON_VERSION}"
-$PyDir     = "$Root\\python"
-$PyExe     = "$PyDir\\python.exe"
+$PyExe     = $null
 
 function Write-Step($n, $msg) {{
     Write-Host ""
     Write-Host "[$n/3] $msg" -ForegroundColor Cyan
 }}
 
-# ── Paso 1: Python completo (incluye tkinter) ─────────────────────────────────
-Write-Step 1 "Instalando Python $PyVersion..."
+function Find-Python {{
+    # 1) py launcher (lo mas confiable en Windows)
+    try {{
+        $p = & py -3.12 -c "import sys; print(sys.executable)" 2>$null
+        if ($p -and (Test-Path $p)) {{ return $p }}
+    }} catch {{}}
+    # 2) Ubicaciones tipicas del instalador de usuario
+    $candidates = @(
+        "$env:LOCALAPPDATA\\Programs\\Python\\Python312\\python.exe",
+        "$env:ProgramFiles\\Python312\\python.exe",
+        "C:\\Python312\\python.exe"
+    )
+    foreach ($c in $candidates) {{
+        if (Test-Path $c) {{ return $c }}
+    }}
+    return $null
+}}
 
-if (Test-Path $PyExe) {{
-    Write-Host "  Python ya esta instalado, saltando descarga." -ForegroundColor Green
+# ── Paso 1: Python completo (incluye tkinter) ─────────────────────────────────
+Write-Step 1 "Buscando / instalando Python $PyVersion..."
+
+$PyExe = Find-Python
+
+if ($PyExe) {{
+    Write-Host "  Python ya esta instalado: $PyExe" -ForegroundColor Green
 }} else {{
     $installer = "$Root\\python_setup.exe"
     $url = "https://www.python.org/ftp/python/$PyVersion/python-$PyVersion-amd64.exe"
@@ -96,24 +115,21 @@ if (Test-Path $PyExe) {{
         exit 1
     }}
 
-    Write-Host "  Instalando Python en la carpeta del app (sin afectar el sistema)..."
-    # Pasar como string unico — arrays con = y comillas fallan en Start-Process
-    $installArgs = "/quiet InstallAllUsers=0 TargetDir=`"$PyDir`" Include_tcltk=1 Include_pip=1 Include_test=0 Include_doc=0 PrependPath=0 Shortcuts=0"
+    Write-Host "  Instalando Python (puede tardar un minuto)..."
+    # Sin TargetDir — instala al path por defecto del usuario (AppData\\Local\\Programs\\Python)
+    $installArgs = "/quiet InstallAllUsers=0 Include_tcltk=1 Include_pip=1 Include_test=0 Include_doc=0 PrependPath=0 Shortcuts=0"
     $proc = Start-Process -FilePath $installer -ArgumentList $installArgs -Wait -PassThru
     Remove-Item $installer -ErrorAction SilentlyContinue
 
-    if ($proc.ExitCode -ne 0) {{
-        Write-Host "[ERROR] Fallo la instalacion de Python (codigo $($proc.ExitCode))." -ForegroundColor Red
-        Write-Host "Intenta correr SETUP.bat como Administrador." -ForegroundColor Yellow
+    $PyExe = Find-Python
+    if (-not $PyExe) {{
+        Write-Host "[ERROR] Python no se pudo instalar automaticamente." -ForegroundColor Red
+        Write-Host "Instala Python 3.12 manualmente desde https://www.python.org/downloads/" -ForegroundColor Yellow
+        Write-Host "Luego vuelve a correr SETUP.bat." -ForegroundColor Yellow
+        pause
         exit 1
     }}
-
-    if (-not (Test-Path $PyExe)) {{
-        Write-Host "[ERROR] Python no se instalo en $PyDir" -ForegroundColor Red
-        Write-Host "Intenta correr SETUP.bat haciendo clic derecho -> Ejecutar como Administrador." -ForegroundColor Yellow
-        exit 1
-    }}
-    Write-Host "  Python instalado con tkinter." -ForegroundColor Green
+    Write-Host "  Python instalado: $PyExe" -ForegroundColor Green
 }}
 
 # ── Paso 2: Dependencias ───────────────────────────────────────────────────────

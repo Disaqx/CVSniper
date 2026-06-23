@@ -9,18 +9,55 @@ import os
 import json
 from modules.i18n import T
 
-_BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_BASE   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _PERS   = os.path.join(_BASE, "config", "personals.py")
 _QUEST  = os.path.join(_BASE, "config", "questions.py")
 _SEARCH = os.path.join(_BASE, "config", "search.py")
 _SECR   = os.path.join(_BASE, "config", "secrets.py")
 
+_LATAM_COUNTRIES = [
+    "colombia", "venezuela", "mexico", "peru", "ecuador", "bolivia",
+    "argentina", "chile", "paraguay", "uruguay", "cuba", "panama",
+    "guatemala", "honduras", "el salvador", "costa rica", "nicaragua",
+    "dominican republic", "republica dominicana", "puerto rico", "brazil", "brasil",
+]
+
 _CV_EXTRACT_PROMPT = """\
-You are a professional resume parser. Extract structured information from the CV below.
+You are a professional resume parser for a LinkedIn job application bot.
+Extract structured information from the CV below.
 Return ONLY a valid JSON object — no markdown, no explanation, nothing else.
 
-Fields to extract (use "" or [] or 0 if not found — never omit a field):
-{{
+=== CRITICAL NAME PARSING RULES ===
+Latin American names often have compound given names and compound surnames.
+Example: "Camilo Andres Garcia Lopez"
+  first_name  = "Camilo"         (ONLY the very first given name)
+  middle_name = "Andres"         (all remaining given names)
+  last_name   = "Garcia Lopez"   (all surnames — compound is correct)
+NEVER put multiple given names in first_name. NEVER concatenate all names into one field.
+
+=== ETHNICITY INFERENCE RULE ===
+If country/location is from ANY Spanish-speaking Latin American country or Brazil
+(Colombia, Venezuela, Mexico, Peru, Ecuador, Bolivia, Argentina, Chile, Paraguay,
+Uruguay, Cuba, Panama, Guatemala, Honduras, El Salvador, Costa Rica, Nicaragua,
+Dominican Republic, Puerto Rico, Brazil) → set ethnicity to
+"Hispanic or Latino(a) or Spanish Origin"
+If from Spain → "White"
+If unknown or other → ""
+
+=== JOB SEARCH TERMS RULE ===
+Based on their actual profession, skills and work experience, generate 6-10 specific
+LinkedIn job titles they could realistically apply for. Be specific and match their field.
+Examples:
+  Psychologist  → ["Clinical Psychologist", "School Psychologist", "Organizational Psychologist",
+                    "Mental Health Counselor", "HR Psychologist", "Child Psychologist"]
+  System Admin  → ["System Administrator", "IT Support Specialist", "Network Administrator",
+                    "Help Desk Technician", "Technical Support Engineer"]
+  Accountant    → ["Accountant", "Financial Analyst", "Accounting Analyst",
+                    "Tax Accountant", "Bookkeeper", "Finance Assistant"]
+
+=== FIELDS TO EXTRACT ===
+Use "" or [] or 0 if not found. Never omit a field.
+{
   "first_name": "",
   "last_name": "",
   "middle_name": "",
@@ -29,6 +66,8 @@ Fields to extract (use "" or [] or 0 if not found — never omit a field):
   "state": "",
   "country": "",
   "zipcode": "",
+  "ethnicity": "",
+  "gender": "",
   "university": "",
   "degree": "",
   "graduation_year": "",
@@ -36,6 +75,8 @@ Fields to extract (use "" or [] or 0 if not found — never omit a field):
   "linkedIn": "",
   "website": "",
   "years_of_experience": 0,
+  "desired_salary": 0,
+  "require_visa": "",
   "recent_employer": "",
   "linkedin_headline": "",
   "linkedin_summary": "",
@@ -44,21 +85,18 @@ Fields to extract (use "" or [] or 0 if not found — never omit a field):
   "search_location": "",
   "primary_focus_keywords": [],
   "secondary_focus_keywords": []
-}}
+}
 
-Rules:
-- university: name of the institution they attended
-- degree: highest level completed, one of: "High School", "Associate's", "Bachelor's", "Master's", "Doctorate", "Other"
-- graduation_year: year of most recent graduation (string, e.g. "2021")
-- field_of_study: their main area of study or major (e.g. "Computer Science", "IT Support", "Business Administration")
-- years_of_experience: integer, estimate from total work history
-- linkedin_headline: 6-10 word professional title (e.g. "IT Support Specialist | M365 | Active Directory")
-- linkedin_summary: 3-4 sentence professional summary for LinkedIn
-- user_information_all: complete 200-300 word professional profile (name, skills, experience, education, achievements) — the AI will use this to answer job screening questions
-- search_terms: 5-8 specific LinkedIn job titles matching their profile (e.g. ["IT Support Specialist", "Help Desk Technician", "Technical Support Engineer"])
-- search_location: city + country for LinkedIn search (e.g. "Bogota, Colombia")
-- primary_focus_keywords: 6-12 lowercase keywords from their main job titles/roles for filtering job listings
-- secondary_focus_keywords: 3-6 lowercase keywords for adjacent roles they could do remotely
+degree must be one of: "High School", "Associate's", "Bachelor's", "Master's", "Doctorate", "Other"
+require_visa: "Yes" or "No" if inferable from citizenship/country, else ""
+gender: "Male" or "Female" only if explicitly mentioned, else ""
+years_of_experience: integer estimate from total work history dates
+linkedin_headline: 6-10 word professional title
+linkedin_summary: 3-4 sentence professional summary for LinkedIn
+user_information_all: 200-300 word complete profile (name, skills, experience, education) the AI uses to answer job screening questions
+search_location: city + country for LinkedIn search (e.g. "Bogota, Colombia")
+primary_focus_keywords: 6-12 lowercase keywords from main job titles/roles
+secondary_focus_keywords: 3-6 lowercase keywords for adjacent roles they could do remotely
 
 CV TEXT:
 {cv_text}
@@ -72,7 +110,6 @@ def run_cv_wizard() -> bool:
     """
     from modules.bot_ui import ui_confirm, ui_alert, ui_update_status, _is_api_key_missing
 
-    # If API key is not yet configured, can't use AI — guide user to settings first
     if _is_api_key_missing():
         ui_alert(T("wiz_api_key_title"), T("wiz_api_key_msg"))
         return False
@@ -103,9 +140,10 @@ def run_cv_wizard() -> bool:
         ui_alert(T("wiz_err_ai_title"), T("wiz_err_ai_msg"))
         return False
 
+    # Write what the AI extracted
     _write_data_to_configs(data, file_path)
 
-    # Ask one-by-one for any critical fields the AI couldn't extract
+    # Ask one-by-one for every field the AI couldn't fill
     data = _ask_missing_fields(data)
     _write_data_to_configs(data, file_path)
 
@@ -128,25 +166,162 @@ def run_cv_wizard() -> bool:
 # ─── Ask missing fields one by one ───────────────────────────────────────────
 
 def _ask_missing_fields(data: dict) -> dict:
-    """For each critical field the AI left empty, ask the user directly."""
-    from modules.bot_ui import ui_ask_text
+    """
+    For every important field the AI left blank, ask the user directly.
+    Uses ui_ask_text for free text and ui_confirm for fixed choices.
+    """
+    from modules.bot_ui import ui_ask_text, ui_confirm
 
-    CRITICAL = [
-        ("first_name",      "Tu nombre (first name):",          ""),
-        ("last_name",       "Tu apellido (last name):",         ""),
-        ("phone_number",    "Tu telefono con codigo de pais\n(ej: 573001234567):", ""),
-        ("current_city",    "Tu ciudad actual (ej: Bogota):",   ""),
-        ("search_location", "Ciudad donde buscas trabajo\n(ej: Bogota, Colombia):", ""),
-    ]
+    title = "Completar configuracion"
 
-    wizard_title = "Completar informacion"
-    for key, question, default in CRITICAL:
+    def _missing(key):
         val = data.get(key)
-        if val and str(val).strip():
-            continue  # AI already filled it
-        answer = ui_ask_text(wizard_title, question, default)
-        if answer:
-            data[key] = answer
+        if val is None or val == "" or val == [] or val == 0:
+            return True
+        if isinstance(val, str) and not val.strip():
+            return True
+        return False
+
+    def _ask(key, question, placeholder=""):
+        if _missing(key):
+            v = ui_ask_text(title, question, placeholder)
+            if v:
+                data[key] = v
+
+    def _choose(key, question, options):
+        if _missing(key):
+            choice = ui_confirm(title, question, options[:3])
+            if choice:
+                data[key] = choice
+
+    # ── 1. Nombre ─────────────────────────────────────────────────────────────
+    _ask("first_name",
+         "¿Cuál es tu PRIMER nombre?\n"
+         "(solo el primero — ej: Camilo)")
+
+    _ask("last_name",
+         "¿Cuáles son tus APELLIDOS?\n"
+         "(uno o dos apellidos — ej: García López)")
+
+    if _missing("middle_name"):
+        v = ui_ask_text(title,
+            "¿Tienes segundo nombre? (puedes saltar)", "")
+        if v:
+            data["middle_name"] = v
+
+    # ── 2. Contacto ───────────────────────────────────────────────────────────
+    _ask("phone_number",
+         "Número de teléfono con código de país:\n"
+         "(ej: 573001234567 para Colombia)")
+
+    # ── 3. Ubicación ──────────────────────────────────────────────────────────
+    _ask("current_city",
+         "¿En qué ciudad vives actualmente?\n"
+         "(ej: Bogotá)")
+
+    _ask("country",
+         "¿En qué país vives?\n"
+         "(ej: Colombia)")
+
+    if _missing("search_location"):
+        city    = data.get("current_city", "")
+        country = data.get("country", "")
+        default = f"{city}, {country}".strip(", ") if (city or country) else ""
+        v = ui_ask_text(title,
+            "¿En qué ciudad/país buscas trabajo?\n"
+            "(ej: Bogota, Colombia)",
+            default)
+        if v:
+            data["search_location"] = v
+
+    # ── 4. Cargos a buscar ────────────────────────────────────────────────────
+    if _missing("search_terms"):
+        v = ui_ask_text(title,
+            "¿Qué cargos buscas en LinkedIn?\n"
+            "Escribe separados por comas:\n"
+            "(ej: Psicólogo clínico, Psicólogo escolar, Psicólogo organizacional)")
+        if v:
+            data["search_terms"] = [t.strip() for t in v.split(",") if t.strip()]
+
+    # ── 5. Experiencia ────────────────────────────────────────────────────────
+    if _missing("years_of_experience"):
+        v = ui_ask_text(title, "¿Cuántos años de experiencia laboral tienes?\n(número)")
+        if v:
+            try:
+                data["years_of_experience"] = int(v)
+            except Exception:
+                data["years_of_experience"] = v
+
+    # ── 6. Educación ──────────────────────────────────────────────────────────
+    _ask("university",
+         "¿En qué institución estudiaste?\n"
+         "(universidad o colegio — ej: Universidad Nacional de Colombia)")
+
+    if _missing("degree"):
+        choice = ui_confirm(title, "Nivel educativo más alto completado:",
+                            ["Bachelor's", "Master's", "Doctorate"])
+        if choice:
+            data["degree"] = choice
+        else:
+            v = ui_ask_text(title,
+                "Nivel educativo:\n"
+                "High School / Associate's / Bachelor's / Master's / Doctorate / Other")
+            if v:
+                data["degree"] = v
+
+    _ask("field_of_study",
+         "¿Cuál fue tu área de estudio o carrera?\n"
+         "(ej: Psicología, Administración de Empresas, Ingeniería de Sistemas)")
+
+    _ask("graduation_year",
+         "¿En qué año te graduaste? (ej: 2020)")
+
+    # ── 7. EEO — Etnia ────────────────────────────────────────────────────────
+    if _missing("ethnicity"):
+        # Pre-suggest based on country
+        country_lower = str(data.get("country", "")).lower()
+        suggestion = ""
+        if any(c in country_lower for c in _LATAM_COUNTRIES):
+            suggestion = "Hispanic or Latino(a) or Spanish Origin"
+
+        v = ui_ask_text(title,
+            "Origen étnico (para formularios EEO de empleadores):\n"
+            "• Hispanic or Latino(a) or Spanish Origin\n"
+            "• White\n"
+            "• Black or African American\n"
+            "• Asian\n"
+            "• Prefer not to say\n"
+            "(puedes saltar si prefieres)",
+            suggestion)
+        if v and v.strip().lower() not in ("saltar", "skip"):
+            data["ethnicity"] = v.strip()
+
+    # ── 8. Género ─────────────────────────────────────────────────────────────
+    if _missing("gender"):
+        choice = ui_confirm(title,
+            "Género (para formularios EEO, puedes saltar):",
+            ["Male", "Female", "Prefer not to say"])
+        if choice:
+            data["gender"] = choice
+
+    # ── 9. Visa ───────────────────────────────────────────────────────────────
+    if _missing("require_visa"):
+        choice = ui_confirm(title,
+            "¿Necesitas visa de trabajo para el país donde vas a aplicar?\n"
+            "(si aplicas a empleos remotos internacionales responde Yes)",
+            ["No", "Yes"])
+        if choice:
+            data["require_visa"] = choice
+
+    # ── 10. Salario deseado ───────────────────────────────────────────────────
+    if _missing("desired_salary"):
+        v = ui_ask_text(title,
+            "Salario deseado en números (puedes dejar 0 para saltar):", "0")
+        if v and v.strip() != "0":
+            try:
+                data["desired_salary"] = int(v)
+            except Exception:
+                data["desired_salary"] = v
 
     return data
 
@@ -177,7 +352,7 @@ def _call_ai(cv_text: str) -> dict | None:
     model    = str(_read_py_var(_SECR, "llm_model") or "")
     api_url  = str(_read_py_var(_SECR, "llm_api_url") or "")
 
-    prompt = _CV_EXTRACT_PROMPT.format(cv_text=cv_text[:12000])  # cap at ~12k chars
+    prompt = _CV_EXTRACT_PROMPT.format(cv_text=cv_text[:12000])
 
     try:
         if provider == "gemini":
@@ -227,34 +402,37 @@ def _call_openai_compat(api_key: str, base_url: str, model: str, prompt: str) ->
 
 # ─── Write to config files ────────────────────────────────────────────────────
 
-def _write_data_to_configs(data: dict, cv_path: str):
+def _write_data_to_configs(data: dict, cv_path: str = ""):
     from modules.bot_ui import _write_py_var
 
     def _set(filepath, varname, value):
         if value not in (None, "", [], 0):
             _write_py_var(filepath, varname, value)
 
-    # personals.py
-    _set(_PERS, "first_name",   data.get("first_name", ""))
-    _set(_PERS, "last_name",    data.get("last_name", ""))
-    _set(_PERS, "middle_name",  data.get("middle_name", ""))
-    _set(_PERS, "phone_number", data.get("phone_number", ""))
-    _set(_PERS, "current_city", data.get("current_city", ""))
-    _set(_PERS, "state",        data.get("state", ""))
-    _set(_PERS, "country",      data.get("country", ""))
-    _set(_PERS, "zipcode",      data.get("zipcode", ""))
-    _set(_PERS, "university",      data.get("university", ""))
-    _set(_PERS, "degree",          data.get("degree", ""))
-    _set(_PERS, "graduation_year", data.get("graduation_year", ""))
-    _set(_PERS, "field_of_study",  data.get("field_of_study", ""))
+    # ── personals.py ──────────────────────────────────────────────────────────
+    _set(_PERS, "first_name",        data.get("first_name", ""))
+    _set(_PERS, "last_name",         data.get("last_name", ""))
+    _set(_PERS, "middle_name",       data.get("middle_name", ""))
+    _set(_PERS, "phone_number",      data.get("phone_number", ""))
+    _set(_PERS, "current_city",      data.get("current_city", ""))
+    _set(_PERS, "state",             data.get("state", ""))
+    _set(_PERS, "country",           data.get("country", ""))
+    _set(_PERS, "zipcode",           data.get("zipcode", ""))
+    _set(_PERS, "university",        data.get("university", ""))
+    _set(_PERS, "degree",            data.get("degree", ""))
+    _set(_PERS, "graduation_year",   data.get("graduation_year", ""))
+    _set(_PERS, "field_of_study",    data.get("field_of_study", ""))
+    _set(_PERS, "ethnicity",         data.get("ethnicity", ""))
+    _set(_PERS, "gender",            data.get("gender", ""))
 
-    # questions.py
-    _set(_QUEST, "linkedIn",           data.get("linkedIn", ""))
-    _set(_QUEST, "website",            data.get("website", ""))
-    _set(_QUEST, "linkedin_headline",  data.get("linkedin_headline", ""))
-    _set(_QUEST, "linkedin_summary",   data.get("linkedin_summary", ""))
+    # ── questions.py ──────────────────────────────────────────────────────────
+    _set(_QUEST, "linkedIn",             data.get("linkedIn", ""))
+    _set(_QUEST, "website",              data.get("website", ""))
+    _set(_QUEST, "linkedin_headline",    data.get("linkedin_headline", ""))
+    _set(_QUEST, "linkedin_summary",     data.get("linkedin_summary", ""))
     _set(_QUEST, "user_information_all", data.get("user_information_all", ""))
-    _set(_QUEST, "recent_employer",    data.get("recent_employer", ""))
+    _set(_QUEST, "recent_employer",      data.get("recent_employer", ""))
+    _set(_QUEST, "require_visa",         data.get("require_visa", ""))
 
     yoe = data.get("years_of_experience")
     if yoe and yoe != 0:
@@ -263,13 +441,20 @@ def _write_data_to_configs(data: dict, cv_path: str):
         except Exception:
             pass
 
+    sal = data.get("desired_salary")
+    if sal and sal != 0:
+        try:
+            _write_py_var(_QUEST, "desired_salary", int(sal))
+        except Exception:
+            pass
+
     if cv_path:
         _write_py_var(_QUEST, "default_resume_path", os.path.normpath(cv_path))
 
-    # search.py
-    _set(_SEARCH, "search_terms",            data.get("search_terms", []))
-    _set(_SEARCH, "search_location",         data.get("search_location", ""))
-    _set(_SEARCH, "primary_focus_keywords",  data.get("primary_focus_keywords", []))
+    # ── search.py ─────────────────────────────────────────────────────────────
+    _set(_SEARCH, "search_terms",             data.get("search_terms", []))
+    _set(_SEARCH, "search_location",          data.get("search_location", ""))
+    _set(_SEARCH, "primary_focus_keywords",   data.get("primary_focus_keywords", []))
     _set(_SEARCH, "secondary_focus_keywords", data.get("secondary_focus_keywords", []))
 
     if data.get("primary_focus_keywords"):

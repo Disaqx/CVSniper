@@ -92,7 +92,7 @@ TRANSLATIONS = {
 
         # CV Wizard
         "wiz_api_key_title":    "Configurar API Key primero",
-        "wiz_api_key_msg":      "Para la configuracion automatica con IA necesitas\nuna API Key de Groq (100% gratis):\n\n  1. Ve a console.groq.com\n  2. Inicia sesion → API Keys → Create key\n  3. En los ajustes (⚙) → tab Bot → IA Settings\n     pega tu key y guarda\n  4. Reinicia el bot para usar la configuracion automatica\n\nO configura manualmente en los ajustes.",
+        "wiz_api_key_msg":      "Para la configuracion automatica con IA necesitas\nuna API Key de Groq (100% gratis):\n\n  1. Ve a console.groq.com\n  2. Inicia sesion → API Keys → Create key\n  3. En los ajustes → tab Bot → IA Settings\n     pega tu key y haz clic en Guardar\n\nAl guardar, el asistente se abrira automaticamente\npara leer tu hoja de vida y configurar el bot.",
         "wiz_title":            "Configuracion Automatica",
         "wiz_msg":              "Bienvenido a CVSniper!\n\nPuedo leer tu hoja de vida (CV en PDF) y configurar\nel bot automaticamente:\n\n  • Tu nombre, ciudad, telefono\n  • Terminos de busqueda segun tu perfil\n  • Informacion para responder formularios\n  • Ruta de tu CV guardada\n\nSi no tienes tu CV a mano, puedes configurar manualmente.",
         "wiz_btn_upload":       "SUBIR MI CV",
@@ -210,7 +210,7 @@ TRANSLATIONS = {
 
         # CV Wizard
         "wiz_api_key_title":    "Set up API Key first",
-        "wiz_api_key_msg":      "To use the automatic AI configuration you need\na Groq API Key (100% free):\n\n  1. Go to console.groq.com\n  2. Sign in → API Keys → Create key\n  3. In settings (⚙) → Bot tab → IA Settings\n     paste your key and save\n  4. Restart the bot to use automatic configuration\n\nOr configure manually in settings.",
+        "wiz_api_key_msg":      "To use the automatic AI configuration you need\na Groq API Key (100% free):\n\n  1. Go to console.groq.com\n  2. Sign in → API Keys → Create key\n  3. In settings → Bot tab → IA Settings\n     paste your key and click Save\n\nAfter saving, the wizard will open automatically\nto read your resume and configure the bot.",
         "wiz_title":            "Automatic Setup",
         "wiz_msg":              "Welcome to CVSniper!\n\nI can read your resume (PDF) and configure\nthe bot automatically:\n\n  • Your name, city, phone\n  • Job search terms based on your profile\n  • Information to answer application forms\n  • Your resume path saved\n\nIf you don't have your resume handy, you can configure manually.",
         "wiz_btn_upload":       "UPLOAD MY RESUME",

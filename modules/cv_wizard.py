@@ -105,6 +105,10 @@ def run_cv_wizard() -> bool:
 
     _write_data_to_configs(data, file_path)
 
+    # Ask one-by-one for any critical fields the AI couldn't extract
+    data = _ask_missing_fields(data)
+    _write_data_to_configs(data, file_path)
+
     name  = f"{data.get('first_name', '')} {data.get('last_name', '')}".strip() or "?"
     terms = data.get("search_terms", [])
     city  = data.get("current_city", "") or data.get("search_location", "") or "?"
@@ -119,6 +123,32 @@ def run_cv_wizard() -> bool:
         f"{T('wiz_done_footer')}"
     )
     return True
+
+
+# ─── Ask missing fields one by one ───────────────────────────────────────────
+
+def _ask_missing_fields(data: dict) -> dict:
+    """For each critical field the AI left empty, ask the user directly."""
+    from modules.bot_ui import ui_ask_text
+
+    CRITICAL = [
+        ("first_name",      "Tu nombre (first name):",          ""),
+        ("last_name",       "Tu apellido (last name):",         ""),
+        ("phone_number",    "Tu telefono con codigo de pais\n(ej: 573001234567):", ""),
+        ("current_city",    "Tu ciudad actual (ej: Bogota):",   ""),
+        ("search_location", "Ciudad donde buscas trabajo\n(ej: Bogota, Colombia):", ""),
+    ]
+
+    wizard_title = "Completar informacion"
+    for key, question, default in CRITICAL:
+        val = data.get(key)
+        if val and str(val).strip():
+            continue  # AI already filled it
+        answer = ui_ask_text(wizard_title, question, default)
+        if answer:
+            data[key] = answer
+
+    return data
 
 
 # ─── PDF Extraction ───────────────────────────────────────────────────────────

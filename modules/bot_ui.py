@@ -319,6 +319,52 @@ class GlassConfirm(tk.Toplevel):
         self.destroy()
 
 
+# Simple text-input dialog used by CV wizard for missing fields
+class GlassAskText(tk.Toplevel):
+    def __init__(self, parent, title, question, placeholder, response_queue):
+        super().__init__(parent)
+        self.response_queue = response_queue
+        scaling = get_dpi_scaling()
+        self.overrideredirect(True)
+        self.attributes("-topmost", True)
+        _fix_window_rendering(self)
+        self.configure(bg="#050505")
+        sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
+        w, h = int(440 * scaling), int(200 * scaling)
+        self.geometry(f"{w}x{h}+{(sw-w)//2}+{(sh-h)//2}")
+        self.drag = DragManager(self)
+        frame = tk.Frame(self, bg="#0a0a0c", bd=1, highlightbackground="#333339", highlightthickness=1)
+        frame.place(x=1, y=1, width=w-2, height=h-2)
+        tk.Label(frame, text=title.upper(), fg="#7F5AF0", bg="#0a0a0c",
+                 font=("Segoe UI Semibold", 10), anchor="w").pack(fill="x", padx=15, pady=(14, 2))
+        tk.Label(frame, text=question, fg="#E6E6E8", bg="#0a0a0c",
+                 font=("Segoe UI", 9), anchor="w").pack(fill="x", padx=15, pady=(2, 6))
+        self._var = tk.StringVar(value=placeholder)
+        entry = tk.Entry(frame, textvariable=self._var, fg="#E6E6E8", bg="#1a1a1f",
+                         insertbackground="#E6E6E8", bd=0, font=("Segoe UI", 10),
+                         highlightbackground="#444", highlightthickness=1)
+        entry.pack(fill="x", padx=15, ipady=6)
+        entry.focus_set()
+        entry.select_range(0, "end")
+        btn_f = tk.Frame(frame, bg="#0a0a0c")
+        btn_f.pack(fill="x", side="bottom", pady=12)
+        tk.Button(btn_f, text="SALTAR", fg="#888", bg="#0a0a0c", bd=0,
+                  font=("Segoe UI", 9), command=self._skip, cursor="hand2").pack(side="left", padx=20)
+        tk.Button(btn_f, text="GUARDAR", fg="#FFFFFE", bg="#7F5AF0", activebackground="#9270F2",
+                  bd=0, padx=20, pady=6, font=("Segoe UI Bold", 9),
+                  command=self._save, cursor="hand2").pack(side="right", padx=20)
+        self.bind("<Return>", lambda e: self._save())
+        self.bell()
+
+    def _save(self):
+        self.response_queue.put(self._var.get().strip())
+        self.destroy()
+
+    def _skip(self):
+        self.response_queue.put("")
+        self.destroy()
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # SETTINGS PANEL
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1238,14 +1284,18 @@ class BotUIApp:
         # 2. Process alert / confirm requests
         while not alert_queue.empty():
             item = alert_queue.get()
-            self.add_log("Alert", f"Action required: {item[0]}", "status")
-            if len(item) == 4:
+            self.dot_canvas.itemconfig(self.status_dot, fill="#F1C40F")
+            if item[0] == "__ask_text__":
+                _, title, question, placeholder, resp_q = item
+                self.add_log("Setup", question, "status")
+                GlassAskText(self.root, title, question, placeholder, resp_q)
+            elif len(item) == 4:
                 title, message, resp_q, buttons = item
-                self.dot_canvas.itemconfig(self.status_dot, fill="#F1C40F")
+                self.add_log("Alert", f"Action required: {title}", "status")
                 GlassConfirm(self.root, title, message, buttons, resp_q)
             else:
                 title, message, resp_q = item
-                self.dot_canvas.itemconfig(self.status_dot, fill="#F1C40F")
+                self.add_log("Alert", f"Action required: {title}", "status")
                 GlassAlert(self.root, title, message, resp_q)
 
         # 3. Process pending actions from the action_queue
@@ -1350,6 +1400,13 @@ def ui_confirm(title, message, buttons):
     status_queue.put(("details", current_ui_details))
     return val
 
+def ui_ask_text(title, question, placeholder=""):
+    """Show a text-input dialog and return the entered string (empty string = skipped)."""
+    resp_q = queue.Queue()
+    alert_queue.put(("__ask_text__", title, question, placeholder, resp_q))
+    val = resp_q.get()
+    return val or ""
+
 def ui_pause_check():
     """Called by the bot thread to check/block on pause state."""
     global is_paused, is_stopped
@@ -1424,11 +1481,20 @@ def ui_enforce_configuration():
 
         action_queue.put("open_settings")
 
+        _wizard_offered_after_key = False
         while is_paused:
             time.sleep(0.5)
             new_first_name = _read_py_var(_PERS, "first_name")
             name_ok = bool(new_first_name and str(new_first_name).strip())
             key_ok  = not _is_api_key_missing()
+            # Once API key is set but name still missing, offer CV wizard
+            if key_ok and not name_ok and not _wizard_offered_after_key:
+                _wizard_offered_after_key = True
+                try:
+                    from modules.cv_wizard import run_cv_wizard
+                    run_cv_wizard()
+                except Exception as _wiz_err:
+                    print(f"[Setup] CV wizard retry error: {_wiz_err}")
             if name_ok and key_ok:
                 is_paused = False
                 ui_update_status(T("status_configured"), T("msg_bot_ready"))

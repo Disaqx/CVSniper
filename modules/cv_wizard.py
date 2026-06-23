@@ -352,7 +352,7 @@ def _call_ai(cv_text: str) -> dict | None:
     model    = str(_read_py_var(_SECR, "llm_model") or "")
     api_url  = str(_read_py_var(_SECR, "llm_api_url") or "")
 
-    prompt = _CV_EXTRACT_PROMPT.format(cv_text=cv_text[:12000])
+    prompt = _CV_EXTRACT_PROMPT.replace("{cv_text}", cv_text[:12000])
 
     try:
         if provider == "gemini":

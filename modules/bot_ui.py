@@ -749,16 +749,16 @@ class GlassSettings(tk.Toplevel):
             getattr(self, f"_build_tab_{key}")(inner)
 
     def _build_tab_search(self, p):
-        _section_title(p, "Terminos de busqueda y foco")
+        _section_title(p, T("cfg_sec_search_main"))
         self._add_list(p, "search_terms", "Términos de búsqueda (search_terms)", self._SEARCH, "search_terms", height=5)
         self._add_entry(p, "search_location", "Ubicación (search_location)", self._SEARCH, "search_location")
 
-        _section_title(p, "Filtro de Relevancia")
+        _section_title(p, T("cfg_sec_relevance"))
         self._add_list(p, "primary_focus_keywords", "Palabras clave PRINCIPALES (Help Desk, Tech Support...)", self._SEARCH, "primary_focus_keywords", height=3)
         self._add_list(p, "secondary_focus_keywords", "Palabras clave SECUNDARIAS (solo Remote/Hybrid)", self._SEARCH, "secondary_focus_keywords", height=3)
         self._add_bool(p, "enable_job_focus_filter", "Activar filtro de relevancia (skip trabajos irrelevantes)", self._SEARCH, "enable_job_focus_filter")
 
-        _section_title(p, "Filtros LinkedIn")
+        _section_title(p, T("cfg_sec_filters"))
         self._add_entry(p, "switch_number", "Cambiar búsqueda cada N aplicaciones", self._SEARCH, "switch_number", width=10)
         self._add_dropdown(p, "date_posted", "Fecha publicada", self._SEARCH, "date_posted",
                            ["Past week", "Past 24 hours", "Past month", "Any time"])
@@ -773,13 +773,13 @@ class GlassSettings(tk.Toplevel):
         self._add_bool(p, "easy_apply_only", "Solo Easy Apply", self._SEARCH, "easy_apply_only")
         self._add_bool(p, "randomize_search_order", "Aleatorizar orden de búsqueda", self._SEARCH, "randomize_search_order")
 
-        _section_title(p, "Palabras a evitar")
+        _section_title(p, T("cfg_sec_avoid"))
         self._add_list(p, "bad_words", "Palabras malas en descripción (bad_words)", self._SEARCH, "bad_words", height=3)
         self._add_list(p, "about_company_bad_words", "Palabras malas en empresa", self._SEARCH, "about_company_bad_words", height=2)
         self._add_entry(p, "current_experience", "Experiencia actual en años (-1 = ignorar)", self._SEARCH, "current_experience", width=10)
 
     def _build_tab_personal(self, p):
-        _section_title(p, "Datos personales")
+        _section_title(p, T("cfg_sec_personal"))
         self._add_entry(p, "first_name", "Nombre (first_name)", self._PERS, "first_name")
         self._add_entry(p, "middle_name", "Segundo nombre (middle_name)", self._PERS, "middle_name")
         self._add_entry(p, "last_name", "Apellido (last_name)", self._PERS, "last_name")
@@ -796,7 +796,7 @@ class GlassSettings(tk.Toplevel):
         self._add_entry(p, "field_of_study", "Campo de estudio / Major (field_of_study)", self._PERS, "field_of_study")
         self._add_entry(p, "identification_number", "Número de identificación", self._PERS, "identification_number")
 
-        _section_title(p, "Igualdad de Oportunidades")
+        _section_title(p, T("cfg_sec_eeo"))
         self._add_dropdown(p, "gender", "Género", self._PERS, "gender",
                            ["Decline to self identify", "Male", "Female", "Other", "Non-binary"])
         self._add_entry(p, "ethnicity", "Etnia", self._PERS, "ethnicity")
@@ -808,7 +808,7 @@ class GlassSettings(tk.Toplevel):
                             "Decline to self identify"])
 
     def _build_tab_responses(self, p):
-        _section_title(p, "Experiencia & Salario")
+        _section_title(p, T("cfg_sec_exp"))
         self._add_entry(p, "years_of_experience", "Años de experiencia a reportar", self._QUEST, "years_of_experience", width=10)
         self._add_entry(p, "desired_salary", "Salario deseado (número)", self._QUEST, "desired_salary", width=16)
         self._add_entry(p, "current_ctc", "CTC actual (número)", self._QUEST, "current_ctc", width=16)
@@ -819,11 +819,11 @@ class GlassSettings(tk.Toplevel):
         self._add_entry(p, "confidence_level", "Nivel de confianza 1-10", self._QUEST, "confidence_level", width=10)
         self._add_entry(p, "us_citizenship", "Ciudadanía US", self._QUEST, "us_citizenship")
 
-        _section_title(p, "Links")
+        _section_title(p, T("cfg_sec_links"))
         self._add_entry(p, "linkedIn", "URL de LinkedIn", self._QUEST, "linkedIn")
         self._add_entry(p, "website", "Portfolio / Website", self._QUEST, "website")
 
-        _section_title(p, "Textos largos")
+        _section_title(p, T("cfg_sec_texts"))
         self._add_entry(p, "linkedin_headline", "Titular de LinkedIn", self._QUEST, "linkedin_headline")
         self._add_text(p, "linkedin_summary", "Resumen de LinkedIn", self._QUEST, "linkedin_summary", height=5)
         self._add_text(p, "cover_letter", "Carta de presentación", self._QUEST, "cover_letter", height=8)
@@ -831,7 +831,11 @@ class GlassSettings(tk.Toplevel):
         self._add_entry(p, "default_resume_path", "Ruta del CV (PDF)", self._QUEST, "default_resume_path", browse=True)
 
     def _build_tab_bot(self, p):
-        _section_title(p, "Comportamiento del Bot")
+        _section_title(p, T("cfg_sec_linkedin"))
+        self._add_entry(p, "username", "Email de LinkedIn (usuario)", self._SECR, "username")
+        self._add_entry(p, "password", "Contraseña de LinkedIn", self._SECR, "password")
+
+        _section_title(p, T("cfg_sec_behavior"))
         self._add_bool(p, "pause_before_submit", "Pausar antes de enviar cada aplicación", self._QUEST, "pause_before_submit")
         self._add_bool(p, "pause_at_failed_question", "Pausar si no puede responder una pregunta", self._QUEST, "pause_at_failed_question")
         self._add_bool(p, "overwrite_previous_answers", "Sobreescribir respuestas anteriores", self._QUEST, "overwrite_previous_answers")
@@ -839,7 +843,7 @@ class GlassSettings(tk.Toplevel):
         self._add_bool(p, "follow_companies", "Seguir empresas al aplicar", self._SETT, "follow_companies")
         self._add_bool(p, "close_tabs", "Cerrar tabs de aplicaciones externas", self._SETT, "close_tabs")
 
-        _section_title(p, "Navegador & Performance")
+        _section_title(p, T("cfg_sec_browser"))
         self._add_entry(p, "click_gap", "Pausa entre clicks (seg)", self._SETT, "click_gap", width=10)
         self._add_bool(p, "run_in_background", "Correr en fondo (sin Chrome visible)", self._SETT, "run_in_background")
         self._add_bool(p, "smooth_scroll", "Scroll suave", self._SETT, "smooth_scroll")
@@ -847,7 +851,7 @@ class GlassSettings(tk.Toplevel):
         self._add_bool(p, "safe_mode", "Modo seguro (perfil invitado)", self._SETT, "safe_mode")
         self._add_bool(p, "keep_screen_awake", "Mantener pantalla activa", self._SETT, "keep_screen_awake")
 
-        _section_title(p, "Ciclos de Busqueda")
+        _section_title(p, T("cfg_sec_cycles"))
         self._add_bool(p, "alternate_sortby", "Alternar orden de resultados", self._SETT, "alternate_sortby")
         self._add_bool(p, "cycle_date_posted", "Ciclar filtro de fecha automáticamente", self._SETT, "cycle_date_posted")
         self._add_bool(p, "stop_date_cycle_at_24hr", "Parar ciclo al llegar a 24h", self._SETT, "stop_date_cycle_at_24hr")
@@ -856,7 +860,7 @@ class GlassSettings(tk.Toplevel):
         self._add_dropdown(p, "ui_language", T("lang_label"), self._SETT, "ui_language",
                            ["es", "en"])
 
-        _section_title(p, "Inteligencia Artificial")
+        _section_title(p, T("cfg_sec_ai"))
         _styled_label(p, "Proveedor:  groq (gratis) | gemini | openai | deepseek", small=True).pack(anchor="w", padx=14, pady=(2, 1))
         self._add_entry(p, "ai_provider", "Proveedor de IA (ai_provider)", self._SECR, "ai_provider", width=16)
         self._add_entry(p, "llm_api_key", "API Key (groq.com → API Keys → Create key)", self._SECR, "llm_api_key", width=38)
@@ -1459,11 +1463,14 @@ def ui_enforce_configuration():
     _BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     _PERS = os.path.join(_BASE, "config", "personals.py")
 
+    _SECR_PATH = os.path.join(_BASE, "config", "secrets.py")
     first_name = _read_py_var(_PERS, "first_name")
+    username   = _read_py_var(_SECR_PATH, "username")
     missing_name = not first_name or str(first_name).strip() == ""
     missing_key  = _is_api_key_missing()
+    missing_creds = not username or len(str(username).strip()) < 5
 
-    if missing_name or missing_key:
+    if missing_name or missing_key or missing_creds:
         ui_update_status(T("status_config_req"), T("msg_config_req"))
         is_paused = True
 
@@ -1495,7 +1502,9 @@ def ui_enforce_configuration():
                     run_cv_wizard()
                 except Exception as _wiz_err:
                     print(f"[Setup] CV wizard retry error: {_wiz_err}")
-            if name_ok and key_ok:
+            _u = _read_py_var(_SECR_PATH, "username")
+            creds_ok = bool(_u and len(str(_u).strip()) >= 5)
+            if name_ok and key_ok and creds_ok:
                 is_paused = False
                 ui_update_status(T("status_configured"), T("msg_bot_ready"))
                 break

@@ -97,7 +97,8 @@ Use "" or [] or 0 if not found. Never omit a field.
 degree must be one of: "High School", "Associate's", "Bachelor's", "Master's", "Doctorate", "Other"
 require_visa: "Yes" or "No" if inferable from citizenship/country, else ""
 gender: "Male" or "Female" only if explicitly mentioned, else ""
-years_of_experience: integer estimate from total work history dates
+years_of_experience: carefully sum each job duration in years (round DOWN, be conservative). List each position start→end, compute months, total. Do NOT use graduation year. If dates unclear, round down.
+search_terms: generate in the SAME LANGUAGE as the CV (Spanish if CV is in Spanish, English if in English)
 linkedin_headline: 6-10 word professional title
 linkedin_summary: 3-4 sentence professional summary for LinkedIn
 user_information_all: 200-300 word complete profile (name, skills, experience, education) the AI uses to answer job screening questions
@@ -284,6 +285,14 @@ def _ask_missing_fields(data: dict) -> dict:
          "¿En qué país vives?\n"
          "(ej: Colombia)")
 
+    _ask("state",
+         "¿En qué departamento o estado vives?\n"
+         "(ej: Cundinamarca, Antioquia)")
+
+    _ask("zipcode",
+         "¿Cuál es tu código postal?\n"
+         "(puedes dejarlo vacío si no lo sabes)", "")
+
     if _missing("search_location"):
         city    = data.get("current_city", "")
         country = data.get("country", "")
@@ -398,6 +407,23 @@ def _ask_missing_fields(data: dict) -> dict:
                 data["desired_salary"] = int(v)
             except Exception:
                 data["desired_salary"] = v
+
+    # ── LinkedIn credentials ──────────────────────────────────────────────────
+    from modules.bot_ui import _read_py_var as _rpv
+    _BASE2 = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    _secr = os.path.join(_BASE2, "config", "secrets.py")
+    _existing_user = str(_rpv(_secr, "username") or "").strip()
+    if len(_existing_user) < 5:
+        v = ui_ask_text(T("wiz_cred_title"),
+                        T("wiz_cred_email"), "")
+        if v and v.strip():
+            from modules.bot_ui import _write_py_var as _wpv
+            _wpv(_secr, "username", v.strip())
+        v2 = ui_ask_text(T("wiz_cred_title"),
+                         T("wiz_cred_pass"), "")
+        if v2 and v2.strip():
+            from modules.bot_ui import _write_py_var as _wpv2
+            _wpv2(_secr, "password", v2.strip())
 
     return data
 

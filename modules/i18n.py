@@ -45,6 +45,27 @@ TRANSLATIONS = {
         "cv_error_opt":         "Error al optimizar CV. Revisa la consola para mas detalles.",
         "cv_error_gen":         "Error al generar CV desde cero. Revisa la consola.",
 
+        # Settings panel section titles
+        "cfg_sec_linkedin":     "Cuenta LinkedIn",
+        "cfg_sec_search_main":  "Terminos de busqueda",
+        "cfg_sec_relevance":    "Filtro de relevancia",
+        "cfg_sec_filters":      "Filtros LinkedIn",
+        "cfg_sec_avoid":        "Palabras a evitar",
+        "cfg_sec_personal":     "Datos personales",
+        "cfg_sec_eeo":          "Igualdad de oportunidades",
+        "cfg_sec_exp":          "Experiencia y salario",
+        "cfg_sec_links":        "Links",
+        "cfg_sec_texts":        "Textos largos",
+        "cfg_sec_behavior":     "Comportamiento del bot",
+        "cfg_sec_browser":      "Navegador y performance",
+        "cfg_sec_cycles":       "Ciclos de busqueda",
+        "cfg_sec_ai":           "Inteligencia Artificial",
+
+        # Wizard — LinkedIn credentials
+        "wiz_cred_title":       "Cuenta de LinkedIn",
+        "wiz_cred_email":       "Correo de LinkedIn (usuario):\n(el mismo email con el que inicias sesion)",
+        "wiz_cred_pass":        "Contrasena de LinkedIn:",
+
         # Configuration panel
         "cfg_title":            "CONFIGURACION",
         "cfg_tab_search":       "Busqueda",
@@ -170,6 +191,27 @@ TRANSLATIONS = {
         "cv_saved":             "CV saved to 'all resumes/'.",
         "cv_error_opt":         "Error optimizing CV. Check the console for details.",
         "cv_error_gen":         "Error generating CV from scratch. Check the console.",
+
+        # Settings panel section titles
+        "cfg_sec_linkedin":     "LinkedIn Account",
+        "cfg_sec_search_main":  "Search terms",
+        "cfg_sec_relevance":    "Relevance filter",
+        "cfg_sec_filters":      "LinkedIn filters",
+        "cfg_sec_avoid":        "Words to avoid",
+        "cfg_sec_personal":     "Personal data",
+        "cfg_sec_eeo":          "Equal opportunity",
+        "cfg_sec_exp":          "Experience & salary",
+        "cfg_sec_links":        "Links",
+        "cfg_sec_texts":        "Long text fields",
+        "cfg_sec_behavior":     "Bot behavior",
+        "cfg_sec_browser":      "Browser & performance",
+        "cfg_sec_cycles":       "Search cycles",
+        "cfg_sec_ai":           "Artificial Intelligence",
+
+        # Wizard — LinkedIn credentials
+        "wiz_cred_title":       "LinkedIn Account",
+        "wiz_cred_email":       "LinkedIn email (username):\n(same email you use to log in)",
+        "wiz_cred_pass":        "LinkedIn password:",
 
         # Configuration panel
         "cfg_title":            "SETTINGS",

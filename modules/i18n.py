@@ -110,9 +110,17 @@ TRANSLATIONS = {
         "wiz_done_city":        "Ciudad",
         "wiz_done_exp":         "Experiencia",
         "wiz_done_terms":       "Busquedas",
-        "wiz_done_suffix_exp":  "anios",
+        "wiz_done_suffix_exp":  "años",
         "wiz_done_suffix_terms": "terminos configurados",
         "wiz_done_footer":      "Revisa y completa tus datos en los ajustes (boton ⚙).\nPresta atencion al tab Respuestas y al tab Busqueda.",
+
+        # Job Terms Wizard
+        "job_terms_wiz_title":  "Cargos de busqueda vacios",
+        "job_terms_wiz_msg":    "No tienes cargos configurados para buscar en LinkedIn.\n\n¿Quieres que analice tu CV con IA para generar los mejores cargos automaticamente?",
+        "job_terms_btn_yes":    "Si, analizar CV",
+        "job_terms_btn_no":     "No, configurar manualmente",
+        "job_terms_done_title": "Cargos Generados",
+        "job_terms_done_msg":   "Se generaron los siguientes cargos de busqueda:\n\n",
 
         # CV Optimizer (optimize_cv_flow)
         "cv_opt_btn_existing":  "EXISTENTE",
@@ -231,6 +239,14 @@ TRANSLATIONS = {
         "wiz_done_suffix_exp":  "years",
         "wiz_done_suffix_terms": "terms configured",
         "wiz_done_footer":      "Review and complete your data in settings (⚙ button).\nPay attention to the Responses and Search tabs.",
+
+        # Job Terms Wizard
+        "job_terms_wiz_title":  "Job search terms empty",
+        "job_terms_wiz_msg":    "You have no job search terms configured for LinkedIn.\n\nDo you want me to analyze your resume with AI to automatically generate the best positions?",
+        "job_terms_btn_yes":    "Yes, analyze resume",
+        "job_terms_btn_no":     "No, configure manually",
+        "job_terms_done_title": "Job Terms Generated",
+        "job_terms_done_msg":   "The following job search terms were generated:\n\n",
 
         # CV Optimizer (optimize_cv_flow)
         "cv_opt_btn_existing":  "EXISTING",

@@ -1499,3 +1499,11 @@ def ui_enforce_configuration():
                 is_paused = False
                 ui_update_status(T("status_configured"), T("msg_bot_ready"))
                 break
+
+    # ── Check for empty search_terms even when name and key are already set ──
+    if not _is_api_key_missing():
+        try:
+            from modules.cv_wizard import run_job_terms_wizard
+            run_job_terms_wizard()
+        except Exception as _e:
+            print(f"[Setup] Job terms wizard error: {_e}")

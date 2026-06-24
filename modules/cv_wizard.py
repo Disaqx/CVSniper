@@ -28,12 +28,17 @@ Extract structured information from the CV below.
 Return ONLY a valid JSON object — no markdown, no explanation, nothing else.
 
 === CRITICAL NAME PARSING RULES ===
-Latin American names often have compound given names and compound surnames.
-Example: "Camilo Andres Garcia Lopez"
-  first_name  = "Camilo"         (ONLY the very first given name)
-  middle_name = "Andres"         (all remaining given names)
-  last_name   = "Garcia Lopez"   (all surnames — compound is correct)
-NEVER put multiple given names in first_name. NEVER concatenate all names into one field.
+Latin American names follow: [given name(s)] [paternal surname] [maternal surname]
+A 3-word name is almost always: given_name + paternal_surname + maternal_surname — NOT given + middle + surname.
+A 4-word name is almost always: given_name + middle_given_name + paternal_surname + maternal_surname.
+
+Examples:
+  "Camilo Villarraga Sandoval"      → first_name="Camilo"  middle_name=""        last_name="Villarraga Sandoval"
+  "Camilo Andres Villarraga Sandoval" → first_name="Camilo" middle_name="Andres"  last_name="Villarraga Sandoval"
+  "Camilo Andres Garcia Lopez"      → first_name="Camilo"  middle_name="Andres"  last_name="Garcia Lopez"
+
+RULE: first_name = ONLY the very first word. last_name = ALL surnames (one or two). middle_name = remaining given names only.
+NEVER treat a surname as a middle name. NEVER put only the maternal surname in last_name while leaving the paternal surname out.
 
 === ETHNICITY INFERENCE RULE ===
 If country/location is from ANY Spanish-speaking Latin American country or Brazil
@@ -161,6 +166,60 @@ def run_cv_wizard() -> bool:
         f"{T('wiz_done_footer')}"
     )
     return True
+
+
+# ─── Job Terms Wizard (standalone, no full CV re-upload needed) ──────────────
+
+def run_job_terms_wizard() -> bool:
+    """
+    If search_terms is empty but a CV is already on file, use AI to generate
+    search_terms, primary_focus_keywords, and secondary_focus_keywords.
+    Returns True if terms were successfully generated and saved.
+    """
+    from modules.bot_ui import _read_py_var, _write_py_var, ui_confirm, ui_alert, ui_update_status
+
+    search_terms = _read_py_var(_SEARCH, "search_terms")
+    if search_terms and isinstance(search_terms, list) and len(search_terms) > 0:
+        return False
+
+    cv_path = str(_read_py_var(_QUEST, "default_resume_path") or "")
+    if not cv_path or not os.path.exists(cv_path):
+        return False
+
+    choice = ui_confirm(T("job_terms_wiz_title"), T("job_terms_wiz_msg"),
+                        [T("job_terms_btn_yes"), T("job_terms_btn_no")])
+    if choice != T("job_terms_btn_yes"):
+        return False
+
+    ui_update_status(T("wiz_status"), T("wiz_detail_ai"))
+    cv_text = _extract_pdf_text(cv_path)
+    if not cv_text:
+        ui_alert(T("wiz_err_pdf_title"), T("wiz_err_pdf_msg"))
+        return False
+
+    data = _call_ai(cv_text)
+    if not data:
+        ui_alert(T("wiz_err_ai_title"), T("wiz_err_ai_msg"))
+        return False
+
+    terms     = data.get("search_terms", [])
+    primary   = data.get("primary_focus_keywords", [])
+    secondary = data.get("secondary_focus_keywords", [])
+
+    if terms:
+        _write_py_var(_SEARCH, "search_terms", terms)
+    if primary:
+        _write_py_var(_SEARCH, "primary_focus_keywords", primary)
+        _write_py_var(_SEARCH, "enable_job_focus_filter", True)
+    if secondary:
+        _write_py_var(_SEARCH, "secondary_focus_keywords", secondary)
+
+    if terms:
+        ui_alert(T("job_terms_done_title"),
+                 T("job_terms_done_msg") + "\n".join(f"• {t}" for t in terms))
+        return True
+
+    return False
 
 
 # ─── Ask missing fields one by one ───────────────────────────────────────────

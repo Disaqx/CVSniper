@@ -44,10 +44,12 @@ NEVER treat a surname as a middle name. NEVER put only the maternal surname in l
 If country/location is from ANY Spanish-speaking Latin American country or Brazil
 (Colombia, Venezuela, Mexico, Peru, Ecuador, Bolivia, Argentina, Chile, Paraguay,
 Uruguay, Cuba, Panama, Guatemala, Honduras, El Salvador, Costa Rica, Nicaragua,
-Dominican Republic, Puerto Rico, Brazil) → set ethnicity to
-"Hispanic or Latino(a) or Spanish Origin"
+Dominican Republic, Puerto Rico, Brazil) → set ethnicity to "Hispanic/Latino"
 If from Spain → "White"
 If unknown or other → ""
+Valid ethnicity values: "Hispanic/Latino", "White", "Black or African American",
+"Asian", "American Indian or Alaska Native",
+"Native Hawaiian or Other Pacific Islander", "Other", "Decline", ""
 
 === JOB SEARCH TERMS RULE ===
 Based on their actual profession, skills and work experience, generate 6-10 specific
@@ -337,31 +339,46 @@ def _ask_missing_fields(data: dict) -> dict:
 
     # ── 7. EEO — Etnia ────────────────────────────────────────────────────────
     if _missing("ethnicity"):
-        # Pre-suggest based on country
         country_lower = str(data.get("country", "")).lower()
-        suggestion = ""
-        if any(c in country_lower for c in _LATAM_COUNTRIES):
-            suggestion = "Hispanic or Latino(a) or Spanish Origin"
-
-        v = ui_ask_text(title,
-            "Origen étnico (para formularios EEO de empleadores):\n"
-            "• Hispanic or Latino(a) or Spanish Origin\n"
-            "• White\n"
-            "• Black or African American\n"
-            "• Asian\n"
-            "• Prefer not to say\n"
-            "(puedes saltar si prefieres)",
-            suggestion)
-        if v and v.strip().lower() not in ("saltar", "skip"):
-            data["ethnicity"] = v.strip()
+        default_eth = "Hispanic/Latino" if any(c in country_lower for c in _LATAM_COUNTRIES) else ""
+        if not default_eth or _missing("ethnicity"):
+            eth_choice = ui_confirm(title,
+                "Origen étnico (formularios EEO de empleadores):",
+                ["Hispanic/Latino", "White", "Black or African American"])
+            if eth_choice:
+                data["ethnicity"] = eth_choice
+            else:
+                eth2 = ui_confirm(title,
+                    "Origen étnico (continuación):",
+                    ["Asian", "Other", "Decline"])
+                if eth2:
+                    data["ethnicity"] = eth2
+        else:
+            data["ethnicity"] = default_eth
 
     # ── 8. Género ─────────────────────────────────────────────────────────────
     if _missing("gender"):
         choice = ui_confirm(title,
             "Género (para formularios EEO, puedes saltar):",
-            ["Male", "Female", "Prefer not to say"])
+            ["Male", "Female", "Decline"])
         if choice:
-            data["gender"] = choice
+            data["gender"] = choice if choice != "Decline" else "Decline"
+
+    # ── 9 (nuevo). Discapacidad ───────────────────────────────────────────────
+    if _missing("disability_status"):
+        choice = ui_confirm(title,
+            "¿Tienes alguna discapacidad? (formulario EEO):",
+            ["No", "Yes", "Decline"])
+        if choice:
+            data["disability_status"] = choice
+
+    # ── 9 (nuevo). Veterano ──────────────────────────────────────────────────
+    if _missing("veteran_status"):
+        choice = ui_confirm(title,
+            "¿Eres veterano militar? (formulario EEO):",
+            ["No", "Yes", "Decline"])
+        if choice:
+            data["veteran_status"] = choice
 
     # ── 9. Visa ───────────────────────────────────────────────────────────────
     if _missing("require_visa"):
@@ -483,6 +500,8 @@ def _write_data_to_configs(data: dict, cv_path: str = ""):
     _set(_PERS, "field_of_study",    data.get("field_of_study", ""))
     _set(_PERS, "ethnicity",         data.get("ethnicity", ""))
     _set(_PERS, "gender",            data.get("gender", ""))
+    _set(_PERS, "disability_status", data.get("disability_status", ""))
+    _set(_PERS, "veteran_status",    data.get("veteran_status", ""))
 
     # ── questions.py ──────────────────────────────────────────────────────────
     _set(_QUEST, "linkedIn",             data.get("linkedIn", ""))

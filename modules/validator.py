@@ -68,10 +68,10 @@ def validate_personals() -> None | ValueError | TypeError:
     check_string(zipcode, "zipcode")
     check_string(country, "country")
     
-    check_string(ethnicity, "ethnicity", ["Decline", "Hispanic/Latino", "American Indian or Alaska Native", "Asian", "Black or African American", "Native Hawaiian or Other Pacific Islander", "White", "Other"],  min_length=0)
+    check_string(ethnicity, "ethnicity", ["Decline", "Hispanic/Latino", "American Indian or Alaska Native", "Asian", "Black or African American", "Native Hawaiian or Other Pacific Islander", "White", "Other", ""],  min_length=0)
     check_string(gender, "gender", ["Male", "Female", "Other", "Decline", ""])
-    check_string(disability_status, "disability_status", ["Yes", "No", "Decline"])
-    check_string(veteran_status, "veteran_status", ["Yes", "No", "Decline"])
+    check_string(disability_status, "disability_status", ["Yes", "No", "Decline", ""])
+    check_string(veteran_status, "veteran_status", ["Yes", "No", "Decline", ""])
 
 
 
@@ -224,6 +224,15 @@ def validate_config() -> bool | ValueError | TypeError:
     '''
     Runs all validation functions to validate all variables in the config files.
     '''
+    import importlib, sys as _sys
+    for _mod_name in ['config.personals', 'config.questions', 'config.search',
+                      'config.secrets', 'config.settings']:
+        if _mod_name in _sys.modules:
+            _m = importlib.reload(_sys.modules[_mod_name])
+            for _k, _v in vars(_m).items():
+                if not _k.startswith('_'):
+                    globals()[_k] = _v
+
     validate_personals()
     validate_questions()
     validate_search()

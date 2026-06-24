@@ -3227,6 +3227,23 @@ def main() -> None:
     try:
         global linkedIn_tab, tabs_count, useNewResume, aiClient
         alert_title = "Error Occurred. Closing Browser!"
+
+        # Reload config from disk — wizard may have written values after module load
+        import importlib, sys as _sys
+        for _mod_name in ['config.personals', 'config.questions', 'config.search',
+                          'config.secrets', 'config.settings']:
+            if _mod_name in _sys.modules:
+                _m = importlib.reload(_sys.modules[_mod_name])
+                for _k, _v in vars(_m).items():
+                    if not _k.startswith('_'):
+                        globals()[_k] = _v
+        global first_name, middle_name, last_name, full_name
+        first_name  = first_name.strip()
+        middle_name = middle_name.strip()
+        last_name   = last_name.strip()
+        full_name   = (first_name + " " + middle_name + " " + last_name
+                       if middle_name else first_name + " " + last_name)
+
         validate_config()
         
         if not os.path.exists(default_resume_path):

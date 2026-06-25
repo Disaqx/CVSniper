@@ -914,6 +914,18 @@ class GlassSettings(tk.Toplevel):
             self._show_result(f"[!] {T('cfg_saved_err')}{', '.join(errors)}", error=True)
         else:
             self._show_result(T('cfg_saved_ok'))
+            # Reload all config modules so the running bot picks up new values immediately
+            try:
+                import importlib, sys as _sys
+                for _mod in ['config.personals', 'config.questions', 'config.search',
+                             'config.secrets', 'config.settings']:
+                    if _mod in _sys.modules:
+                        importlib.reload(_sys.modules[_mod])
+                # Reload openaiConnections so CV Optimizer uses the fresh API key
+                if 'modules.ai.openaiConnections' in _sys.modules:
+                    importlib.reload(_sys.modules['modules.ai.openaiConnections'])
+            except Exception as _re:
+                print(f"[Settings] Config reload after save failed: {_re}")
             # If language changed, rebuild the settings panel in the new language
             from modules.i18n import get_language, _lang_cache
             _lang_cache.clear()  # force re-read after write

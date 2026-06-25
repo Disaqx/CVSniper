@@ -361,8 +361,17 @@ def ai_optimize_existing_cv(file_path: str, include_portfolio: bool = False) -> 
     try:
         import fitz
         import traceback
+        import importlib, sys as _sys_oa
         from modules.helpers import convert_to_json
         from generate_cv_fullportfolio import generate_full_portfolio, default_projects, images_dir_default
+        # Reload config.secrets so we always use the current API key, not a stale module copy
+        if 'config.secrets' in _sys_oa.modules:
+            _sec_fresh = importlib.reload(_sys_oa.modules['config.secrets'])
+            _g = globals()
+            for _k in ('llm_api_url', 'llm_api_key', 'llm_model', 'use_AI', 'ai_provider',
+                       'stream_output', 'llm_spec'):
+                if hasattr(_sec_fresh, _k):
+                    _g[_k] = getattr(_sec_fresh, _k)
         from config.secrets import ai_provider as _ai_provider
         
         doc = fitz.open(file_path)
@@ -489,6 +498,13 @@ RAW CV TEXT:
 
 def ai_generate_cv_from_config(include_portfolio: bool = False) -> bool:
     try:
+        import importlib, sys as _sys_gc
+        if 'config.secrets' in _sys_gc.modules:
+            _sec_fresh = importlib.reload(_sys_gc.modules['config.secrets'])
+            _g = globals()
+            for _k in ('llm_api_url', 'llm_api_key', 'llm_model', 'use_AI', 'ai_provider', 'stream_output', 'llm_spec'):
+                if hasattr(_sec_fresh, _k):
+                    _g[_k] = getattr(_sec_fresh, _k)
         from generate_cv_fullportfolio import generate_cv_from_basic_info, default_projects, images_dir_default
         import os
         from modules.bot_ui import _read_py_var

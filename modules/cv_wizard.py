@@ -109,6 +109,12 @@ degree must be one of: "High School", "Associate's", "Bachelor's", "Master's", "
 require_visa: "Yes" or "No" if inferable from citizenship/country, else ""
 gender: "Male" or "Female" only if explicitly mentioned, else ""
 years_of_experience: carefully sum each job duration in years (round DOWN, be conservative). List each position start→end, compute months, total. Do NOT use graduation year. If dates unclear, round down.
+current_city: MUST be the candidate's current RESIDENCE city, NOT their university city or past employer city.
+  Priority: (1) address/home city explicitly stated, (2) city of their MOST RECENT job, (3) city mentioned as current location.
+  NEVER use the city of their university or educational institution as current_city unless it matches their current job.
+  If ambiguous, use the nearest major city to their last known residence.
+search_location: same as current_city but formatted as "City, Country" for LinkedIn (e.g. "Bogota, Colombia")
+  If current_city is a small town, use the nearest major metropolitan area (e.g. "Mesitas del Colegio" → "Bogota, Colombia")
 search_terms: 6-10 ACTUAL LinkedIn job title strings (see rule above). Use same language as CV.
 primary_focus_keywords: 6-12 single lowercase words/short phrases extracted from the job titles in search_terms.
   These must be keywords found INSIDE job titles, not standalone skills or tasks.
@@ -116,7 +122,6 @@ primary_focus_keywords: 6-12 single lowercase words/short phrases extracted from
   Examples (Spanish): ["psicólogo", "organizacional", "bienestar", "selección", "rrhh", "coordinador"]
   Examples (English): ["psychologist", "organizational", "wellness", "hr specialist", "counselor"]
 secondary_focus_keywords: 3-6 lowercase keywords for adjacent/remote-friendly roles (same language as search_terms).
-search_location: city + country for LinkedIn search (e.g. "Bogota, Colombia")
 linkedin_headline: 6-10 word professional title (same language as CV)
 linkedin_summary: 3-4 sentence professional summary for LinkedIn (same language as CV)
 user_information_all: 200-300 word complete profile (name, skills, experience, education) the AI uses to answer job screening questions (same language as CV)

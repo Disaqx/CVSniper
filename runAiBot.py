@@ -2421,7 +2421,7 @@ def external_apply(pagination_element: WebElement, job_id: str, job_link: str, r
         if pagination_element != None: return True, application_link, tabs_count
     try:
         wait.until(EC.element_to_be_clickable((By.XPATH, ".//button[contains(@class,'jobs-apply-button') and contains(@class, 'artdeco-button--3')]"))).click() # './/button[contains(span, "Apply") and not(span[contains(@class, "disabled")])]'
-        wait_span_click(driver, "Continue", 1, True, False)
+        wait_span_click(driver, "Continue", 1, True, False) or wait_span_click(driver, "Continuar", 1, True, False)
         windows = driver.window_handles
         tabs_count = len(windows)
         driver.switch_to.window(windows[-1])
@@ -2512,7 +2512,7 @@ def submitted_jobs(job_id: str, title: str, company: str, work_location: str, wo
 # Function to discard the job application
 def discard_job() -> None:
     actions.send_keys(Keys.ESCAPE).perform()
-    wait_span_click(driver, 'Discard', 2)
+    wait_span_click(driver, 'Discard', 2) or wait_span_click(driver, 'Descartar', 2)
 
 
 
@@ -2710,11 +2710,11 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str) -> None:
                     try:
                         # try: time_posted_text = find_by_class(driver, "jobs-unified-top-card__posted-date", 2).text
                         # except: 
-                        time_posted_text = jobs_top_card.find_element(By.XPATH, './/span[contains(normalize-space(), " ago")]').text
+                        time_posted_text = jobs_top_card.find_element(By.XPATH, './/span[contains(normalize-space(), " ago") or contains(normalize-space(), "hace ")]').text
                         print("Time Posted: " + time_posted_text)
-                        if time_posted_text.__contains__("Reposted"):
+                        if "Reposted" in time_posted_text or "Republicado" in time_posted_text:
                             reposted = True
-                            time_posted_text = time_posted_text.replace("Reposted", "")
+                            time_posted_text = time_posted_text.replace("Reposted", "").replace("Republicado", "")
                         date_listed = calculate_date_posted(time_posted_text.strip())
                     except Exception as e:
                         print_lg("Failed to calculate the date posted!",e)
@@ -2848,7 +2848,8 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str) -> None:
                             try:
                                 errored = ""
                                 modal = find_by_class(driver, "jobs-easy-apply-modal")
-                                wait_span_click(modal, "Next", 1)
+                                if not wait_span_click(modal, "Next", 1):
+                                    wait_span_click(modal, "Siguiente", 1)
                                 # if description != "Unknown":
                                 #     resume = create_custom_resume(description)
                                 resume = "Previous resume"
@@ -2871,8 +2872,8 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str) -> None:
                                         raise Exception("Seems like stuck in a continuous loop of next, probably because of new questions.")
                                     questions_list = answer_questions(modal, questions_list, work_location, job_description=description)
                                     if useNewResume and not uploaded: uploaded, resume = upload_resume(modal, default_resume_path)
-                                    try: next_button = modal.find_element(By.XPATH, './/button[contains(normalize-space(.), "Review") or contains(@aria-label, "Review")]') 
-                                    except NoSuchElementException:  next_button = modal.find_element(By.XPATH, './/button[contains(normalize-space(.), "Next") or contains(@aria-label, "next") or contains(@aria-label, "Next")]')
+                                    try: next_button = modal.find_element(By.XPATH, './/button[contains(normalize-space(.), "Review") or contains(@aria-label, "Review") or contains(normalize-space(.), "Revisar") or contains(@aria-label, "Revisar")]')
+                                    except NoSuchElementException:  next_button = modal.find_element(By.XPATH, './/button[contains(normalize-space(.), "Next") or contains(@aria-label, "next") or contains(@aria-label, "Next") or contains(normalize-space(.), "Siguiente") or contains(@aria-label, "Siguiente")]')
                                     try: 
                                         driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", next_button)
                                         time.sleep(0.5)
@@ -2897,7 +2898,8 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str) -> None:
                                     if questions_list and errored != "stuck": 
                                         print_lg("Answered the following questions...", questions_list)
                                         print("\n\n" + "\n".join(str(question) for question in questions_list) + "\n\n")
-                                    wait_span_click(driver, "Review", 1, scrollTop=True)
+                                    if not wait_span_click(driver, "Review", 1, scrollTop=True):
+                                        wait_span_click(driver, "Revisar solicitud", 1, scrollTop=True) or wait_span_click(driver, "Revisar", 1, scrollTop=True)
                                     cur_pause_before_submit = pause_before_submit
                                     if errored != "stuck" and cur_pause_before_submit:
                                         decision = ui_confirm("Confirm your information", '1. Please verify your information.\n2. If you edited something, please return to this final screen.\n3. DO NOT CLICK "Submit Application".\n\n\n\n\nYou can turn off "Pause before submit" setting in config.py\nTo TEMPORARILY disable pausing, click "Disable Pause"', ["Disable Pause", "Discard Application", "Submit Application"])
@@ -2905,12 +2907,14 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str) -> None:
                                         pause_before_submit = False if "Disable Pause" == decision else True
                                         # try_xp(modal, ".//span[normalize-space(.)='Review']")
                                     follow_company(modal)
-                                    if wait_span_click(driver, "Submit application", 5, scrollTop=True) or wait_span_click(driver, "Submit", 3, scrollTop=True): 
+                                    if (wait_span_click(driver, "Submit application", 5, scrollTop=True) or wait_span_click(driver, "Submit", 3, scrollTop=True)
+                                            or wait_span_click(driver, "Enviar solicitud", 5, scrollTop=True) or wait_span_click(driver, "Enviar", 3, scrollTop=True)):
                                         date_applied = datetime.now()
-                                        if not wait_span_click(driver, "Done", 2): actions.send_keys(Keys.ESCAPE).perform()
+                                        if not (wait_span_click(driver, "Done", 2) or wait_span_click(driver, "Listo", 2) or wait_span_click(driver, "Hecho", 2)):
+                                            actions.send_keys(Keys.ESCAPE).perform()
                                     elif errored != "stuck" and cur_pause_before_submit and "Yes" in ui_confirm("Failed to find Submit Application!", "You submitted the application, didn't you?", ["Yes", "No"]):
                                         date_applied = datetime.now()
-                                        wait_span_click(driver, "Done", 2)
+                                        wait_span_click(driver, "Done", 2) or wait_span_click(driver, "Listo", 2)
                                     else:
                                         print_lg("Since, Submit Application failed, discarding the job application...")
                                         # if screenshot_name == "Not Available":  screenshot_name = screenshot(driver, job_id, "Failed to click Submit application")

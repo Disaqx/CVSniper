@@ -204,7 +204,26 @@ def calculate_date_posted(time_string: str) -> datetime | None | ValueError:
     time_string = time_string.strip()
     now = datetime.now()
 
+    # English: "2 hours ago", "3 days ago", etc.
     match = re.search(r'(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago', time_string, re.IGNORECASE)
+
+    # Spanish: "hace 2 horas", "hace 3 días", "hace 1 semana", etc.
+    if not match:
+        _ES = {
+            "segundo": "second", "segundos": "second",
+            "minuto": "minute", "minutos": "minute",
+            "hora": "hour", "horas": "hour",
+            "día": "day", "dia": "day", "días": "day", "dias": "day",
+            "semana": "week", "semanas": "week",
+            "mes": "month", "meses": "month",
+            "año": "year", "ano": "year", "años": "year", "anos": "year",
+        }
+        _es_m = re.search(r'hace\s+(\d+)\s+(\w+)', time_string, re.IGNORECASE)
+        if _es_m:
+            _es_unit = _ES.get(_es_m.group(2).lower())
+            if _es_unit:
+                time_string = f"{_es_m.group(1)} {_es_unit} ago"
+                match = re.search(r'(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago', time_string, re.IGNORECASE)
 
     if match:
         try:

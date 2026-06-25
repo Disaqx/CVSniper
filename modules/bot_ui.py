@@ -1166,6 +1166,8 @@ class BotUIApp:
                 ui_alert(T("cv_success_title"), T("cv_success_opt"))
             else:
                 self.add_log("System", T("cv_log_err_opt"), "status")
+                ui_alert(T("cv_success_title") if False else "Error",
+                         "No se pudo optimizar el CV.\n\nVerifica que tu API Key sea válida en Ajustes → Bot → IA Settings.\nSi usas Gemini, genera una nueva key en aistudio.google.com\nSi usas Groq, verifica en console.groq.com")
         elif choice == _scratch:
             inc_port = ui_confirm(T("cv_port_title"), T("cv_port_question"), [T("cv_port_btn_yes"), T("cv_port_btn_no")])
             self.add_log("System", T("cv_log_generating"), "system")
@@ -1180,6 +1182,8 @@ class BotUIApp:
                 ui_alert(T("cv_success_title"), T("cv_success_gen"))
             else:
                 self.add_log("System", T("cv_log_err_gen"), "status")
+                ui_alert("Error",
+                         "No se pudo generar el CV.\n\nVerifica que tu API Key sea válida en Ajustes → Bot → IA Settings.\nSi usas Gemini, genera una nueva key en aistudio.google.com\nSi usas Groq, verifica en console.groq.com")
 
     def toggle_pause(self):
         global is_paused

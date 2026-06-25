@@ -191,9 +191,9 @@ def is_job_relevant(title: str, work_style: str) -> bool:
         for kw in primary_focus_keywords:
             if kw.lower() in title_low:
                 return True
-        # Check secondary focus (only if Remote or Hybrid)
+        # Check secondary focus (only if Remote or Hybrid — EN and ES)
         style_low = work_style.lower() if work_style else ""
-        if any(s in style_low for s in ["remote", "hybrid"]):
+        if any(s in style_low for s in ["remote", "hybrid", "remoto", "híbrido", "hibrido"]):
             for kw in secondary_focus_keywords:
                 if kw.lower() in title_low:
                     return True
@@ -346,7 +346,14 @@ def apply_filters(location_str: str) -> None:
     try:
         recommended_wait = 1 if click_gap < 1 else 0
 
-        wait.until(EC.presence_of_element_located((By.XPATH, '//button[normalize-space()="All filters"]'))).click()
+        _all_filters_xp = (
+            '//button['
+            'normalize-space()="All filters" or '
+            'normalize-space()="Todos los filtros" or '
+            'normalize-space()="Alle Filter" or '
+            'contains(@class,"search-reusables__all-filters-pill-button")]'
+        )
+        wait.until(EC.presence_of_element_located((By.XPATH, _all_filters_xp))).click()
         buffer(recommended_wait)
 
         wait_span_click(driver, sort_by)
@@ -361,7 +368,21 @@ def apply_filters(location_str: str) -> None:
         multi_sel_noWait(driver, on_site)
         if job_type or on_site: buffer(recommended_wait)
 
-        if easy_apply_only and not is_career_ops_mode(): boolean_button_click(driver, actions, "Easy Apply")
+        if easy_apply_only and not is_career_ops_mode():
+            _ea_clicked = False
+            for _ea_lbl in ["Easy Apply", "Solicitud sencilla", "Postulacion simplificada", "Postulación simplificada"]:
+                try:
+                    _fc  = driver.find_element(By.XPATH, f'.//h3[normalize-space()="{_ea_lbl}"]/ancestor::fieldset')
+                    _btn = _fc.find_element(By.XPATH, './/input[@role="switch"]')
+                    scroll_to_view(driver, _btn)
+                    actions.move_to_element(_btn).click().perform()
+                    buffer(click_gap)
+                    _ea_clicked = True
+                    break
+                except Exception:
+                    continue
+            if not _ea_clicked:
+                print_lg("Easy Apply filter toggle not found (tried EN/ES labels)")
         
         multi_sel_noWait(driver, location)
         multi_sel_noWait(driver, industry)
@@ -383,7 +404,14 @@ def apply_filters(location_str: str) -> None:
         if benefits or commitments: buffer(recommended_wait)
 
         try:
-            show_results_button: WebElement = driver.find_element(By.XPATH, '//button[contains(translate(@aria-label, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "apply current filters to show")]')
+            _show_xp = (
+                '//button['
+                'contains(translate(@aria-label,"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"),"apply current filters to show") or '
+                'contains(translate(@aria-label,"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"),"aplicar") or '
+                'contains(translate(@aria-label,"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"),"mostrar") or '
+                'contains(@class,"search-reusables__secondary-filters-show-results-button")]'
+            )
+            show_results_button: WebElement = driver.find_element(By.XPATH, _show_xp)
             try:
                 show_results_button.click()
             except Exception:
@@ -2588,7 +2616,8 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str) -> None:
 
                     # Job focus filter — skip if title doesn't match user's focus areas
                     if not is_job_relevant(title, work_style):
-                        print_lg(f'Skipping "{title}" — not in focus areas (Help Desk / Tech Support / Customer Service Remote)')
+                        _kw_preview = " / ".join((primary_focus_keywords[:3] if primary_focus_keywords else []) + (secondary_focus_keywords[:2] if secondary_focus_keywords else []))
+                        print_lg(f'Skipping "{title}" — not in focus areas ({_kw_preview or "none configured"})')
                         if is_career_ops_mode():
                             ui_update_status("Career-Ops: Skipping Job", f"{title} at {company} (Not in focus areas) ({len(top_manual_jobs)}/5 matches)")
                         skip_count += 1

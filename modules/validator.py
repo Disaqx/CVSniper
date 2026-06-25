@@ -97,6 +97,7 @@ def validate_questions() -> None | ValueError | TypeError:
     check_string(cover_letter, "cover_letter")
     check_string(recent_employer, "recent_employer")
     check_string(confidence_level, "confidence_level")
+    check_string(english_level, "english_level", ["none", "a1", "a2", "b1", "b2", "c1", "c2", "native", ""])
 
     check_boolean(pause_before_submit, "pause_before_submit")
     check_boolean(pause_at_failed_question, "pause_at_failed_question")

@@ -790,16 +790,59 @@ def answer_language_question(label_org: str, question_type: str, options_text=No
         return "Native"
         
     elif is_english:
-        if question_type in ["select", "radio", "combobox"] and options_text:
+        # Load user's configured English level
+        try:
+            from config.questions import english_level as _eng_lvl
+        except Exception:
+            _eng_lvl = ""
+        _el = (_eng_lvl or "").lower().strip()
+
+        # Map level to keyword sets for matching options
+        _level_kw = {
+            "none":   ["none", "no proficiency", "ninguno", "sin conocimiento", "don't speak", "do not speak", "no hablo", "0", "n/a"],
+            "a1":     ["a1", "beginner", "principiante", "elementary", "basic"],
+            "a2":     ["a2", "pre-intermediate", "pre intermediate", "elementary", "basic", "limited"],
+            "b1":     ["b1", "intermediate", "intermedio"],
+            "b2":     ["b2", "upper intermediate", "upper-intermediate", "upper", "conversational", "working proficiency"],
+            "c1":     ["c1", "advanced", "avanzado", "professional", "proficient", "fluent"],
+            "c2":     ["c2", "proficient", "mastery", "superior", "full professional", "native or bilingual"],
+            "native": ["native", "nativo", "bilingual", "bilingue", "c2"],
+        }
+
+        if _el == "none":
+            # User has no English — treat like an unknown language
+            if question_type in ["select", "radio", "combobox"] and options_text:
+                no_idx = find_matching_option(options_text, "No")
+                if no_idx is not None:
+                    return options_text[no_idx]
+                for opt in options_text:
+                    if any(w in opt.lower() for w in _level_kw["none"]):
+                        return opt
+                return options_text[0]
+            return "No"
+
+        if _el in _level_kw and question_type in ["select", "radio", "combobox"] and options_text:
+            kws = _level_kw[_el]
             for opt in options_text:
-                opt_lower = opt.lower()
-                # C1 level matches advanced, fluent, proficient, c1, etc.
-                if any(w in opt_lower for w in ["advanced", "avanzado", "fluent", "proficient", "c1", "c2", "professional", "professional working"]):
+                if any(w in opt.lower() for w in kws):
                     return opt
+            # Fallback: pick any Yes option
             yes_idx = find_matching_option(options_text, "Yes")
             if yes_idx is not None:
                 return options_text[yes_idx]
-        return "C1/Advanced"
+
+        if not _el:
+            # Old behaviour: pick highest available option
+            if question_type in ["select", "radio", "combobox"] and options_text:
+                for opt in options_text:
+                    opt_lower = opt.lower()
+                    if any(w in opt_lower for w in ["advanced", "avanzado", "fluent", "proficient", "c1", "c2", "professional", "professional working"]):
+                        return opt
+                yes_idx = find_matching_option(options_text, "Yes")
+                if yes_idx is not None:
+                    return options_text[yes_idx]
+
+        return _el.upper() if _el else "C1/Advanced"
         
     elif is_german:
         if question_type in ["select", "radio", "combobox"] and options_text:

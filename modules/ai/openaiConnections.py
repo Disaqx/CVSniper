@@ -381,35 +381,36 @@ def ai_optimize_existing_cv(file_path: str, include_portfolio: bool = False) -> 
         doc.close()
         print(f"[CV Optimizer] Extracted {len(text)} chars from PDF")
 
-        prompt = f"""\
+        _prompt_template = """\
 Act as an expert resume writer. Optimize the CV text below: be impactful, metric-driven, and modern.
 Return ONLY a JSON object (no markdown) with this exact structure:
-{{
+{
     "name": "Full Name",
     "title": "Professional Title",
     "contact": ["Email: x@y.com", "Phone: +123"],
     "sections": [
-        {{
+        {
             "title": "EXPERIENCE",
             "subsections": [
-                {{
+                {
                     "title": "Job Title at Company",
                     "date": "Jan 2020 - Present",
                     "bullets": ["Achievement 1", "Achievement 2"]
-                }}
+                }
             ],
             "bullets": []
-        }},
-        {{
+        },
+        {
             "title": "SKILLS",
             "subsections": [],
             "bullets": ["Skill A", "Skill B"]
-        }}
+        }
     ]
-}}
+}
 
 RAW CV TEXT:
-{text}"""
+CV_TEXT_PLACEHOLDER"""
+        prompt = _prompt_template.replace("CV_TEXT_PLACEHOLDER", text)
 
         response_text = None
 

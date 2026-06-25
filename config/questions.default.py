@@ -48,6 +48,11 @@ recent_employer = ""
 # Nivel de confianza 1-10 / Confidence level 1-10
 confidence_level = 8
 
+# Nivel de inglés / English proficiency level
+# Opciones: "none", "a1", "a2", "b1", "b2", "c1", "c2", "native"
+# Deja "" si no aplicas a trabajos en inglés
+english_level = ""
+
 # Titular de LinkedIn / LinkedIn headline
 linkedin_headline = ""
 
@@ -65,6 +70,6 @@ The AI will use this information to answer screening questions on your behalf.
 """
 
 # Opciones de comportamiento / Behavior options
-pause_before_submit = True       # True: revisa antes de enviar / review before submit
-pause_at_failed_question = True  # True: pausa si no puede responder / pause if can't answer
+pause_before_submit = False      # True: revisa antes de enviar / review before submit
+pause_at_failed_question = False # True: pausa si no puede responder / pause if can't answer
 overwrite_previous_answers = False

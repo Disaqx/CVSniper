@@ -102,7 +102,8 @@ Use "" or [] or 0 if not found. Never omit a field.
   "search_terms": [],
   "search_location": "",
   "primary_focus_keywords": [],
-  "secondary_focus_keywords": []
+  "secondary_focus_keywords": [],
+  "english_level": ""
 }
 
 degree must be one of: "High School", "Associate's", "Bachelor's", "Master's", "Doctorate", "Other"
@@ -122,6 +123,10 @@ primary_focus_keywords: 6-12 single lowercase words/short phrases extracted from
   Examples (Spanish): ["psicólogo", "organizacional", "bienestar", "selección", "rrhh", "coordinador"]
   Examples (English): ["psychologist", "organizational", "wellness", "hr specialist", "counselor"]
 secondary_focus_keywords: 3-6 lowercase keywords for adjacent/remote-friendly roles (same language as search_terms).
+english_level: exactly one of "none", "a1", "a2", "b1", "b2", "c1", "c2", "native", "".
+  Infer from explicit mentions like "B2 English", "inglés intermedio", "nivel B1", "fluent in English", "bilingual".
+  If the CV is in English AND the person is from a non-English-speaking country → at minimum "b2".
+  If no English mentioned at all → "none". If truly unclear → "".
 linkedin_headline: 6-10 word professional title (same language as CV)
 linkedin_summary: 3-4 sentence professional summary for LinkedIn (same language as CV)
 user_information_all: 200-300 word complete profile (name, skills, experience, education) the AI uses to answer job screening questions (same language as CV)
@@ -543,6 +548,7 @@ def _write_data_to_configs(data: dict, cv_path: str = ""):
     _set(_QUEST, "user_information_all", data.get("user_information_all", ""))
     _set(_QUEST, "recent_employer",      data.get("recent_employer", ""))
     _set(_QUEST, "require_visa",         data.get("require_visa", ""))
+    _set(_QUEST, "english_level",        data.get("english_level", ""))
 
     yoe = data.get("years_of_experience")
     if yoe and yoe != 0:

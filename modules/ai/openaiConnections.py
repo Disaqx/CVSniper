@@ -363,7 +363,7 @@ def ai_optimize_existing_cv(file_path: str, include_portfolio: bool = False) -> 
         import traceback
         import importlib, sys as _sys_oa
         from modules.helpers import convert_to_json
-        from generate_cv_fullportfolio import generate_full_portfolio, default_projects, images_dir_default
+        from generate_cv_fullportfolio import generate_full_portfolio, generate_cv_pdf_simple, default_projects, images_dir_default
         # Reload config.secrets so we always use the current API key, not a stale module copy
         if 'config.secrets' in _sys_oa.modules:
             _sec_fresh = importlib.reload(_sys_oa.modules['config.secrets'])
@@ -488,7 +488,11 @@ CV_TEXT_PLACEHOLDER"""
         output_path = os.path.join(base_dir, "all resumes", f"{safe_name}_CV_Optimized.pdf")
 
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        generate_full_portfolio(cv_data, output_path, include_portfolio=include_portfolio, projects=default_projects, images_dir=images_dir_default)
+        try:
+            generate_full_portfolio(cv_data, output_path, include_portfolio=include_portfolio, projects=default_projects, images_dir=images_dir_default)
+        except Exception as _pdf_e:
+            print(f"[CV Optimizer] Full portfolio failed ({_pdf_e.__class__.__name__}), falling back to simple PDF...")
+            generate_cv_pdf_simple(cv_data, output_path)
         print(f"[CV Optimizer] SUCCESS: Saved to {output_path}")
         return True
     except Exception as e:

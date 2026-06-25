@@ -343,6 +343,114 @@ def generate_full_portfolio(cv_data, output_path, include_portfolio=True, projec
         if os.path.exists(temp_html):
             os.remove(temp_html)
 
+def generate_cv_pdf_simple(cv_data: dict, output_path: str):
+    """Pure-Python PDF CV generator using fpdf2 — no Node.js, no Playwright required."""
+    from fpdf import FPDF
+    from fpdf.enums import XPos, YPos
+
+    MARGIN = 15
+    PAGE_W = 210
+    TW = PAGE_W - 2 * MARGIN  # usable text width
+
+    pdf = FPDF()
+    pdf.set_margins(MARGIN, MARGIN, MARGIN)
+    pdf.set_auto_page_break(auto=True, margin=MARGIN)
+
+    # Use Windows Arial for full UTF-8 support (always available on Windows)
+    import platform
+    if platform.system() == "Windows":
+        _fdir = r"C:\Windows\Fonts"
+        try:
+            pdf.add_font("CV", fname=os.path.join(_fdir, "arial.ttf"))
+            pdf.add_font("CV", style="B", fname=os.path.join(_fdir, "arialbd.ttf"))
+            pdf.add_font("CV", style="I", fname=os.path.join(_fdir, "ariali.ttf"))
+            pdf.add_font("CV", style="BI", fname=os.path.join(_fdir, "arialbi.ttf"))
+            _font = "CV"
+        except Exception:
+            _font = "Helvetica"
+    else:
+        _font = "Helvetica"
+
+    def _ct(text):
+        return clean_latin1_text(text) if _font == "Helvetica" else (text or "")
+
+    pdf.add_page()
+
+    # ── Header ────────────────────────────────────────────────────────────────
+    name    = _ct(cv_data.get("name", ""))
+    title_t = _ct(cv_data.get("title", ""))
+    contact = [_ct(c) for c in cv_data.get("contact", [])]
+
+    pdf.set_font(_font, "B", 20)
+    pdf.cell(TW, 10, name, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C")
+
+    if title_t:
+        pdf.set_font(_font, "I", 11)
+        pdf.cell(TW, 6, title_t, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C")
+
+    if contact:
+        pdf.set_font(_font, "", 9)
+        pdf.set_text_color(80, 80, 80)
+        pdf.cell(TW, 5, "  |  ".join(contact), new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="C")
+        pdf.set_text_color(0, 0, 0)
+
+    pdf.ln(2)
+    pdf.set_draw_color(30, 60, 130)
+    pdf.set_line_width(0.6)
+    pdf.line(MARGIN, pdf.get_y(), PAGE_W - MARGIN, pdf.get_y())
+    pdf.ln(3)
+
+    # ── Sections ──────────────────────────────────────────────────────────────
+    for section in cv_data.get("sections", []):
+        sec_title   = _ct(section.get("title", ""))
+        subsections = section.get("subsections", [])
+        bullets     = section.get("bullets", [])
+
+        # Section heading
+        pdf.set_font(_font, "B", 10)
+        pdf.set_text_color(30, 60, 130)
+        pdf.cell(TW, 5, sec_title.upper(), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.set_text_color(0, 0, 0)
+        pdf.set_draw_color(30, 60, 130)
+        pdf.set_line_width(0.3)
+        pdf.line(MARGIN, pdf.get_y(), PAGE_W - MARGIN, pdf.get_y())
+        pdf.ln(1.5)
+
+        # Subsections (e.g. EXPERIENCE entries)
+        for sub in subsections:
+            sub_title   = _ct(sub.get("title", ""))
+            sub_date    = _ct(sub.get("date", ""))
+            sub_bullets = [_ct(b) for b in sub.get("bullets", [])]
+
+            pdf.set_font(_font, "B", 9)
+            date_w = 42
+            pdf.cell(TW - date_w, 4.5, sub_title, new_x=XPos.RIGHT, new_y=YPos.TOP)
+            pdf.set_font(_font, "I", 9)
+            pdf.set_text_color(80, 80, 80)
+            pdf.cell(date_w, 4.5, sub_date, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="R")
+            pdf.set_text_color(0, 0, 0)
+
+            pdf.set_font(_font, "", 9)
+            for b in sub_bullets:
+                pdf.set_x(MARGIN + 4)
+                pdf.cell(4, 4.2, "-")
+                pdf.multi_cell(TW - 8, 4.2, b, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            pdf.ln(1)
+
+        # Direct bullets (e.g. SKILLS)
+        pdf.set_font(_font, "", 9)
+        for b in bullets:
+            pdf.set_x(MARGIN + 4)
+            pdf.cell(4, 4.2, "-")
+            pdf.multi_cell(TW - 8, 4.2, _ct(b), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+        pdf.ln(3)
+
+    os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+    pdf.output(output_path)
+    print(f"[CV Simple] PDF saved: {output_path}")
+
+
 def generate_cv_from_basic_info(first_name, last_name, phone, location, title, output_path, include_portfolio=False, projects=None, images_dir=None, extra_sections=None):
     """
     Helper function to generate a CV from basic information without needing a Markdown file.

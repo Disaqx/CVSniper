@@ -52,15 +52,26 @@ Valid ethnicity values: "Hispanic/Latino", "White", "Black or African American",
 "Native Hawaiian or Other Pacific Islander", "Other", "Decline", ""
 
 === JOB SEARCH TERMS RULE ===
-Based on their actual profession, skills and work experience, generate 6-10 specific
-LinkedIn job titles they could realistically apply for. Be specific and match their field.
-Examples:
-  Psychologist  → ["Clinical Psychologist", "School Psychologist", "Organizational Psychologist",
-                    "Mental Health Counselor", "HR Psychologist", "Child Psychologist"]
-  System Admin  → ["System Administrator", "IT Support Specialist", "Network Administrator",
-                    "Help Desk Technician", "Technical Support Engineer"]
-  Accountant    → ["Accountant", "Financial Analyst", "Accounting Analyst",
-                    "Tax Accountant", "Bookkeeper", "Finance Assistant"]
+search_terms MUST be actual LinkedIn job title keywords that a person would type into the search bar.
+Each item must be a short job title (2-5 words). NEVER include:
+  - Task descriptions ("Follow-up Recommendations", "Data Analysis", "Report Writing")
+  - Skills or competencies ("Active Listening", "Team Management")
+  - Action phrases or gerunds ("Coordinating Teams", "Providing Support")
+Only include real job titles that appear in job postings on LinkedIn.
+
+Generate 6-10 specific titles matching their field. Translate to the SAME LANGUAGE as the CV.
+
+Examples (English CV):
+  Psychologist  → ["Clinical Psychologist", "Organizational Psychologist", "HR Psychologist",
+                    "Mental Health Counselor", "People & Culture Specialist"]
+  System Admin  → ["IT Support Specialist", "Help Desk Technician", "Network Administrator",
+                    "Technical Support Engineer", "Desktop Support Technician"]
+
+Examples (Spanish CV / Latin America):
+  Psicólogo     → ["Psicólogo Clínico", "Psicólogo Organizacional", "Especialista en RRHH",
+                    "Psicólogo Educativo", "Coordinador de Bienestar", "Analista de Selección"]
+  Soporte TI    → ["Especialista en Soporte TI", "Técnico de Mesa de Ayuda", "Administrador de Sistemas",
+                    "Analista de Soporte", "Coordinador de TI"]
 
 === FIELDS TO EXTRACT ===
 Use "" or [] or 0 if not found. Never omit a field.
@@ -98,13 +109,17 @@ degree must be one of: "High School", "Associate's", "Bachelor's", "Master's", "
 require_visa: "Yes" or "No" if inferable from citizenship/country, else ""
 gender: "Male" or "Female" only if explicitly mentioned, else ""
 years_of_experience: carefully sum each job duration in years (round DOWN, be conservative). List each position start→end, compute months, total. Do NOT use graduation year. If dates unclear, round down.
-search_terms: generate in the SAME LANGUAGE as the CV (Spanish if CV is in Spanish, English if in English)
-linkedin_headline: 6-10 word professional title
-linkedin_summary: 3-4 sentence professional summary for LinkedIn
-user_information_all: 200-300 word complete profile (name, skills, experience, education) the AI uses to answer job screening questions
+search_terms: 6-10 ACTUAL LinkedIn job title strings (see rule above). Use same language as CV.
+primary_focus_keywords: 6-12 single lowercase words/short phrases extracted from the job titles in search_terms.
+  These must be keywords found INSIDE job titles, not standalone skills or tasks.
+  Use the SAME LANGUAGE as search_terms.
+  Examples (Spanish): ["psicólogo", "organizacional", "bienestar", "selección", "rrhh", "coordinador"]
+  Examples (English): ["psychologist", "organizational", "wellness", "hr specialist", "counselor"]
+secondary_focus_keywords: 3-6 lowercase keywords for adjacent/remote-friendly roles (same language as search_terms).
 search_location: city + country for LinkedIn search (e.g. "Bogota, Colombia")
-primary_focus_keywords: 6-12 lowercase keywords from main job titles/roles
-secondary_focus_keywords: 3-6 lowercase keywords for adjacent roles they could do remotely
+linkedin_headline: 6-10 word professional title (same language as CV)
+linkedin_summary: 3-4 sentence professional summary for LinkedIn (same language as CV)
+user_information_all: 200-300 word complete profile (name, skills, experience, education) the AI uses to answer job screening questions (same language as CV)
 
 CV TEXT:
 {cv_text}

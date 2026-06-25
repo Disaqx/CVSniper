@@ -356,8 +356,21 @@ def apply_filters(location_str: str) -> None:
         wait.until(EC.presence_of_element_located((By.XPATH, _all_filters_xp))).click()
         buffer(recommended_wait)
 
-        wait_span_click(driver, sort_by)
-        wait_span_click(driver, date_posted)
+        _FILTER_SPAN_ES = {
+            "Most recent":    "Más reciente",
+            "Most relevant":  "Más relevante",
+            "Any time":       "Cualquier momento",
+            "Past month":     "Mes pasado",
+            "Past week":      "Semana pasada",
+            "Past 24 hours":  "Últimas 24 horas",
+        }
+        def _click_filter_span(text):
+            if not wait_span_click(driver, text):
+                _es = _FILTER_SPAN_ES.get(text)
+                if _es:
+                    wait_span_click(driver, _es)
+        _click_filter_span(sort_by)
+        _click_filter_span(date_posted)
         buffer(recommended_wait)
 
         multi_sel_noWait(driver, experience_level) 

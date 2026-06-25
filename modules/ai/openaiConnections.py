@@ -477,6 +477,7 @@ RAW CV TEXT:
         safe_name = cv_data.get("name", "Optimized").replace(" ", "_")
         output_path = os.path.join(base_dir, "all resumes", f"{safe_name}_CV_Optimized.pdf")
 
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
         generate_full_portfolio(cv_data, output_path, include_portfolio=include_portfolio, projects=default_projects, images_dir=images_dir_default)
         print(f"[CV Optimizer] SUCCESS: Saved to {output_path}")
         return True

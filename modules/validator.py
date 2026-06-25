@@ -158,8 +158,8 @@ def validate_secrets() -> None | ValueError | TypeError:
     global __validation_file_path
     __validation_file_path = "config/secrets.py"
 
-    check_string(username, "username", min_length=5)
-    check_string(password, "password", min_length=5)
+    check_string(username, "username", min_length=0)
+    check_string(password, "password", min_length=0)
 
     check_boolean(use_AI, "use_AI")
     check_string(llm_api_url, "llm_api_url", min_length=5)
@@ -169,7 +169,7 @@ def validate_secrets() -> None | ValueError | TypeError:
     
     ##> ------ Yang Li : MARKYangL - Feature ------
     # Validate AI provider configuration
-    check_string(ai_provider, "ai_provider", ["openai", "deepseek", "gemini"])
+    check_string(ai_provider, "ai_provider", ["openai", "groq", "deepseek", "gemini"])
 
     ##> ------ Tim L : tulxoro - Refactor ------
     if ai_provider == "deepseek":

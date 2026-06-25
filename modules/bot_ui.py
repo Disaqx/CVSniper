@@ -1465,12 +1465,10 @@ def ui_enforce_configuration():
 
     _SECR_PATH = os.path.join(_BASE, "config", "secrets.py")
     first_name = _read_py_var(_PERS, "first_name")
-    username   = _read_py_var(_SECR_PATH, "username")
     missing_name = not first_name or str(first_name).strip() == ""
     missing_key  = _is_api_key_missing()
-    missing_creds = not username or len(str(username).strip()) < 5
 
-    if missing_name or missing_key or missing_creds:
+    if missing_name or missing_key:
         ui_update_status(T("status_config_req"), T("msg_config_req"))
         is_paused = True
 
@@ -1502,9 +1500,7 @@ def ui_enforce_configuration():
                     run_cv_wizard()
                 except Exception as _wiz_err:
                     print(f"[Setup] CV wizard retry error: {_wiz_err}")
-            _u = _read_py_var(_SECR_PATH, "username")
-            creds_ok = bool(_u and len(str(_u).strip()) >= 5)
-            if name_ok and key_ok and creds_ok:
+            if name_ok and key_ok:
                 is_paused = False
                 ui_update_status(T("status_configured"), T("msg_bot_ready"))
                 break

@@ -408,22 +408,8 @@ def _ask_missing_fields(data: dict) -> dict:
             except Exception:
                 data["desired_salary"] = v
 
-    # ── LinkedIn credentials ──────────────────────────────────────────────────
-    from modules.bot_ui import _read_py_var as _rpv
-    _BASE2 = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    _secr = os.path.join(_BASE2, "config", "secrets.py")
-    _existing_user = str(_rpv(_secr, "username") or "").strip()
-    if len(_existing_user) < 5:
-        v = ui_ask_text(T("wiz_cred_title"),
-                        T("wiz_cred_email"), "")
-        if v and v.strip():
-            from modules.bot_ui import _write_py_var as _wpv
-            _wpv(_secr, "username", v.strip())
-        v2 = ui_ask_text(T("wiz_cred_title"),
-                         T("wiz_cred_pass"), "")
-        if v2 and v2.strip():
-            from modules.bot_ui import _write_py_var as _wpv2
-            _wpv2(_secr, "password", v2.strip())
+    # LinkedIn credentials are not asked here — the bot requires the user
+    # to already be logged in to LinkedIn in Chrome before starting.
 
     return data
 

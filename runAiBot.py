@@ -382,17 +382,22 @@ def apply_filters(location_str: str) -> None:
         multi_sel_noWait(driver, commitments)
         if benefits or commitments: buffer(recommended_wait)
 
-        show_results_button: WebElement = driver.find_element(By.XPATH, '//button[contains(translate(@aria-label, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "apply current filters to show")]')
-        show_results_button.click()
+        try:
+            show_results_button: WebElement = driver.find_element(By.XPATH, '//button[contains(translate(@aria-label, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "apply current filters to show")]')
+            try:
+                show_results_button.click()
+            except Exception:
+                driver.execute_script("arguments[0].click();", show_results_button)
+        except Exception:
+            print_lg("Show results button not found — filters may already be applied.")
 
         global pause_after_filters
         if pause_after_filters and "Turn off Pause after search" == ui_confirm("Please check your results", "These are your configured search results and filter. It is safe to change them while this dialog is open, any changes later could result in errors and skipping this search run.", ["Turn off Pause after search", "Look's good, Continue"]):
             pause_after_filters = False
 
     except Exception as e:
-        print_lg("Setting the preferences failed!")
-        ui_confirm("Error applying filters", f"Faced error while applying filters. Please make sure correct filters are selected, click on show results and click on any button of this dialog, I know it sucks. Can't turn off Pause after search when error occurs! ERROR: {e}", ["Doesn't look good, but Continue XD", "Look's good, Continue"])
-        # print_lg(e)
+        print_lg(f"Setting the preferences failed: {e}")
+        # Continue silently — filters may be partially applied, bot will proceed
 
 
 

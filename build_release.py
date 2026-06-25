@@ -27,6 +27,7 @@ CONFIG_REPLACEMENTS = ["personals", "secrets", "questions", "search", "settings"
 IGNORE = {
     "__pycache__", ".git", ".gitignore",
     "CVSniper_Release", "CVSniper_Release.zip",
+    "_release_build", "_release_test_build",
     "build_release.py", "release.ps1", "release_notes.md",
     ".claude", "CVSniper", "REVISED_CV.md", "qa_database.json",
     ".setup_done",
@@ -336,7 +337,7 @@ def copy_tree(src: Path, dst: Path):
                 (dest_item / ".gitkeep").write_text("")
             else:
                 copy_tree(item, dest_item)
-        else:
+        elif item.is_file():
             shutil.copy2(item, dest_item)
 
 

@@ -31,6 +31,9 @@ IGNORE = {
     "build_release.py", "release.ps1", "release_notes.md",
     ".claude", "CVSniper", "REVISED_CV.md", "qa_database.json",
     ".setup_done",
+    # dev environment folders — never include in release
+    "venv", ".venv", "env", "chrome_driver", "node_modules",
+    ".mypy_cache", ".pytest_cache", "dist", "build",
 }
 
 CONFIG_IGNORE = {
@@ -285,6 +288,41 @@ if exist "venv\Scripts\python.exe" (
 pause
 """
 
+DESINSTALAR_BAT = r"""@echo off
+title CVSniper - Desinstalar
+echo.
+echo  Para desinstalar CVSniper completamente:
+echo  Este script elimina el entorno virtual (miles de archivos pequeños)
+echo  para que puedas borrar esta carpeta rapidamente despues.
+echo.
+echo  Presiona cualquier tecla para continuar o cierra esta ventana para cancelar.
+pause > nul
+
+echo.
+echo  Eliminando entorno virtual...
+if exist "venv" (
+    rd /s /q "venv"
+    echo  [OK] venv eliminado
+) else (
+    echo  venv no encontrado, nada que eliminar
+)
+
+if exist "chrome_driver" (
+    rd /s /q "chrome_driver"
+    echo  [OK] chrome_driver eliminado
+)
+
+del /f /q ".setup_done" 2>nul
+
+echo.
+echo  ============================================
+echo    Listo. Ahora puedes borrar esta carpeta
+echo    normalmente desde el Explorador de Windows.
+echo  ============================================
+echo.
+pause
+"""
+
 LEEME = f"""\
 # CVSniper - Inicio Rapido
 
@@ -307,6 +345,11 @@ No necesitas instalar Python. El instalador lo incluye automaticamente.
 3. Se abre una ventana de control y el panel web en http://127.0.0.1:5000
    - Completa tu informacion en el panel
    - El bot empieza automaticamente cuando guardas
+
+## Para desinstalar
+Corre DESINSTALAR.bat ANTES de borrar la carpeta.
+Esto elimina el entorno virtual (miles de archivos pequeños) y
+hace que la carpeta se pueda borrar rapidamente desde el Explorador.
 
 ## IA gratuita recomendada
 Usa Groq: crea cuenta en https://console.groq.com
@@ -368,14 +411,16 @@ def create_installer_scripts(dst: Path):
     (dst / "SETUP.bat").write_text(SETUP_BAT, encoding="utf-8")
     (dst / "SETUP.ps1").write_text(SETUP_PS1, encoding="utf-8")
     (dst / "START_CVSniper.bat").write_text(START_BAT, encoding="utf-8")
+    (dst / "DESINSTALAR.bat").write_text(DESINSTALAR_BAT, encoding="utf-8")
     (dst / "LEEME_QuickStart.md").write_text(LEEME, encoding="utf-8")
-    print("  [scripts] SETUP.bat, SETUP.ps1, START_CVSniper.bat, LEEME creados")
+    print("  [scripts] SETUP.bat, SETUP.ps1, START_CVSniper.bat, DESINSTALAR.bat, LEEME creados")
 
 
 def zip_release(src: Path, zip_path: Path):
-    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
         for file in src.rglob("*"):
-            zf.write(file, file.relative_to(src.parent))
+            if file.is_file():
+                zf.write(file, file.relative_to(src.parent))
     size_mb = zip_path.stat().st_size / 1024 / 1024
     print(f"\n[ZIP] {zip_path.name} ({size_mb:.1f} MB)")
 

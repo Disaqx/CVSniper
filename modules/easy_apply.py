@@ -18,12 +18,9 @@ from modules.helpers import print_lg, buffer, sleep
 from modules.bot_ui import is_career_ops_mode, ui_pause_check, ui_alert, ui_confirm, ui_update_status
 from modules.clickers_and_finders import try_xp, find_by_class, try_find_by_classes, wait_span_click, text_input_by_ID
 from modules.ai.qa_database import save_to_qa_database
-from modules.ai.openaiConnections import ai_answer_question
-from modules.ai.deepseekConnections import deepseek_answer_question
-from modules.ai.geminiConnections import gemini_answer_question
 from config.personals import *
 from config.questions import *
-from config.secrets import use_AI, ai_provider
+from config.secrets import use_AI
 from config.settings import *
 
 # Derived values (computed from config; mirroring runAiBot.py module-level logic)
@@ -164,10 +161,27 @@ def find_matching_option(options_text_list: list[str], target_answer) -> int | N
     return None
 
 
+def _resolve_experience_answer(label_org: str) -> str:
+    """Return years_of_experience for any 'years of experience' question.
+
+    NOTE: Without AI context the bot cannot tell which specific skills the
+    applicant actually has, so returning years_of_experience is always the
+    safest fallback — far better than blindly answering "0" for skills the
+    user actually possesses (e.g. scripting, SQL, Linux).
+    AI already runs before this function is called; if AI has an answer,
+    this function is never reached.
+    """
+    return years_of_experience
+
+
+
+
+
 def answer_language_question(label_org: str, question_type: str, options_text=None) -> str | None:
     # Normalize label string to remove accents
     import unicodedata
     norm = "".join(c for c in unicodedata.normalize('NFD', label_org) if unicodedata.category(c) != 'Mn').lower().strip()
+
 
     # 1. Check if it matches our specific supported languages
     is_spanish = any(w in norm for w in ["spanish", "espanol", "castellano"])
@@ -432,6 +446,19 @@ def answer_common_questions(label: str, answer: str) -> str:
         'accept wizeline', 'accept the policy', 'acepto los terminos', 'acepto la politica',
         'lei y acepto', 'he leido y acepto', 'leido y aceptado',
     ]):
+        answer = 'Yes'
+    elif any(phrase in norm_label for phrase in [
+        # "Are you interested in X role / opportunity / position?"
+        'are you interested in', 'estas interesado en', 'te interesa', 'le interesa',
+        'interested in this role', 'interested in a customer', 'interested in customer',
+        'interested in working', 'interested in joining',
+    ]):
+        answer = 'Yes'
+    elif any(phrase in norm_label for phrase in [
+        # Hybrid / on-site / remote preference questions
+        'open to', 'willing to', 'comfortable with', 'comfortable working',
+        'abierto a', 'dispuesto a', 'disponible para',
+    ]) and any(w in norm_label for w in ['remote', 'onsite', 'on-site', 'hybrid', 'office', 'travel', 'viajar']):
         answer = 'Yes'
     return answer
 
@@ -751,13 +778,7 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                             raise CareerOpsActivatedException()
                         try:
                             print_lg(f"Asking AI to select an option for: {label_org}")
-                            ai_answer = None
-                            if ai_provider.lower() in ("openai", "groq"):
-                                ai_answer = ai_answer_question(ai_client, label_org, options=optionsText, question_type="single_select", job_description=job_description, user_information_all=user_information_all)
-                            elif ai_provider.lower() == "deepseek":
-                                ai_answer = deepseek_answer_question(ai_client, label_org, options=optionsText, question_type="single_select", job_description=job_description, about_company=None, user_information_all=user_information_all)
-                            elif ai_provider.lower() == "gemini":
-                                ai_answer = gemini_answer_question(ai_client, label_org, options=optionsText, question_type="single_select", job_description=job_description, about_company=None, user_information_all=user_information_all)
+                            ai_answer = ai_client.answer_question(label_org, options=optionsText, question_type="single_select", job_description=job_description, user_information_all=user_information_all)
 
                             if ai_answer and isinstance(ai_answer, str):
                                 ai_match_idx = find_matching_option(optionsText, ai_answer)
@@ -1223,7 +1244,7 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                             elif any(w in label for w in ['salary', 'compensation', 'ctc', 'pay', 'salario', 'salarial', 'sueldo', 'remuneracion', 'expectativa', 'expectativas', 'pretension', 'pretensiones', 'pretendido', 'pretendida', 'aspiracion', 'aspiraciones', 'tarifa', 'cobro', 'pago']):
                                 answer = resolve_salary_expectation(label_org, any(w in label for w in ['current', 'present', 'actual', 'presente', 'ultimo', 'último']), work_location)
                             elif any(w in label for w in ['experience', 'years', 'experiencia', 'anos', 'ano', 'tiempo']):
-                                answer = years_of_experience
+                                answer = _resolve_experience_answer(label_org)
                             elif any(w in label for w in ['phone', 'mobile', 'telefono', 'celular', 'movil']):
                                 answer = phone_number
                             elif any(w in label for w in ['street', 'calle']):
@@ -1295,7 +1316,7 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                         elif any(re.search(r'\b' + w + r'\b', label) for w in ['number', 'phone', 'telefono', 'celular', 'movil']):
                             answer = phone_number
                         else:
-                            answer = years_of_experience if any(w in label for w in ['year', 'experience', 'ano', 'anos', 'experiencia', 'tiempo']) else "0"
+                            answer = _resolve_experience_answer(label_org) if any(w in label for w in ['year', 'experience', 'ano', 'anos', 'experiencia', 'tiempo']) else "0"
 
                 if not isinstance(answer, str):
                     answer = str(answer)
@@ -1568,7 +1589,7 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                         elif any(w in label for w in ['salary', 'compensation', 'ctc', 'pay', 'salario', 'salarial', 'sueldo', 'remuneracion', 'expectativa', 'expectativas', 'pretension', 'pretensiones', 'pretendido', 'pretendida', 'aspiracion', 'aspiraciones', 'tarifa', 'cobro', 'pago']):
                             answer = resolve_salary_expectation(label_org, any(w in label for w in ['current', 'present', 'actual', 'presente', 'ultimo', 'último']), work_location)
                         elif any(w in label for w in ['experience', 'years', 'experiencia', 'anos', 'ano', 'tiempo']):
-                            answer = years_of_experience
+                            answer = _resolve_experience_answer(label_org)
                         elif any(re.search(r'\b' + w + r'\b', label) for w in ['number', 'phone', 'telefono', 'celular', 'movil']):
                             answer = phone_number
                         elif any(w in label for w in ['street', 'calle']):
@@ -1684,7 +1705,7 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                             elif any(w in label for w in ['number', 'phone', 'telefono', 'celular', 'movil']):
                                 answer = phone_number
                             else:
-                                answer = years_of_experience if any(w in label for w in ['year', 'experience', 'ano', 'anos', 'experiencia', 'tiempo']) else "0"
+                                answer = _resolve_experience_answer(label_org) if any(w in label for w in ['year', 'experience', 'ano', 'anos', 'experiencia', 'tiempo']) else "0"
                 if not isinstance(answer, str):
                     answer = str(answer)
 

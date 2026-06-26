@@ -29,4 +29,11 @@ CVSniper_Release.zip
 # Carpetas duplicadas / Duplicate nested folders
 modules/modules/
 setup/setup/
-templates/templates/
+templates/templates/
+
+# Claude Code / Antigravity IDE local data
+.claude/
+
+# Windows artefactos accidentales
+nul
+*.pyc

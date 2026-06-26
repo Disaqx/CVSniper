@@ -295,7 +295,7 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str) -> None:
     applied_jobs = get_applied_job_ids()
     rejected_jobs = set()
     blacklisted_companies = set()
-    global current_city, failed_count, skip_count, easy_applied_count, external_jobs_count, tabs_count, pause_before_submit, pause_at_failed_question, useNewResume, top_manual_jobs
+    global current_city, failed_count, skip_count, easy_applied_count, external_jobs_count, tabs_count, pause_before_submit, pause_at_failed_question, useNewResume, top_manual_jobs, pause_after_filters
     current_city = current_city.strip()
     top_manual_jobs.clear()
 

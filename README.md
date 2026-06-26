@@ -332,3 +332,22 @@ En el primer inicio, el bot ofrece subir tu CV en PDF para que la IA extraiga au
 
 ### Botón Stop — fuerza de salida garantizada
 Se corrigió un bug donde el botón Stop dejaba de funcionar cuando Chrome/chromedriver estaba colgado. Ahora el proceso se fuerza a cerrar después de 5 segundos sin importar el estado del driver.
+
+### [v1.0.0] Correcciones de estabilidad del bot
+
+#### Bug: `pause_after_filters` — UnboundLocalError al iniciar búsqueda
+Al iniciar el bot con un resume nuevo aparecía:
+```
+cannot access local variable 'pause_after_filters' where it is not associated with a value
+```
+Causa: `pause_after_filters` se asignaba dentro de `_apply_to_jobs_for_location` sin estar en la declaración `global`, haciendo que Python la tratara como variable local. Corregido añadiéndola al `global` statement.
+
+#### Bug: Respuestas de experiencia incorrectas en formularios
+El bot respondía indiscriminadamente con `years_of_experience` a **cualquier** pregunta que contuviera la palabra "experience" o "years". Por ejemplo, respondía "3" a "¿Cuántos años de experiencia tienes con Audio Visual Systems?" aunque el candidato no tuviera esa experiencia.
+
+Se añadió la función `_resolve_experience_answer()` que distingue entre:
+- Preguntas genéricas de experiencia total → responde `years_of_experience`
+- Preguntas de experiencia específica en una habilidad → delega a la IA (si está activa); si no, devuelve `years_of_experience` como mejor estimado disponible
+
+#### Bug: "Are you interested in a customer facing role?" — HELP NEEDED
+Preguntas del tipo *"Are you interested in X?"*, *"Are you open to remote?"*, *"Are you willing to travel?"* no tenían regla en `answer_common_questions` y activaban la pausa de HELP NEEDED. Ahora se responden automáticamente con "Yes".

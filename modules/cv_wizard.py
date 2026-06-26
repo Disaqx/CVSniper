@@ -447,7 +447,8 @@ def _extract_pdf_text(file_path: str) -> str:
         doc = fitz.open(file_path)
         text = ""
         for page in doc:
-            text += page.get_text("text") + "\n"
+            # sort=True keeps multi-column resume layouts readable (visual order)
+            text += page.get_text("text", sort=True) + "\n"
         doc.close()
         return text.strip()
     except Exception as e:

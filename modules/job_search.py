@@ -8,7 +8,7 @@ from selenium.webdriver.common.keys import Keys
 from selenium.common.exceptions import ElementClickInterceptedException
 from modules.open_chrome import driver, wait, actions
 from modules.helpers import print_lg, buffer, sleep, critical_error_log
-from modules.bot_ui import is_career_ops_mode, ui_confirm
+from modules.bot_ui import is_career_ops_mode, ui_confirm, ui_pause_check
 from modules.clickers_and_finders import try_xp, find_by_class, try_find_by_classes, wait_span_click, multi_sel_noWait, scroll_to_view, boolean_button_click
 from modules.easy_apply import discard_job
 from config.search import (
@@ -112,6 +112,7 @@ def apply_filters(location_str: str, sort_by: str, date_posted: str, pause_after
     '''
     Function to apply job search filters
     '''
+    ui_pause_check()  # honor pause/stop before starting the slow filter sequence
     set_search_location(location_str)
 
     try:

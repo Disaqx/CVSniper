@@ -986,13 +986,7 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                             raise CareerOpsActivatedException()
                         try:
                             print_lg(f"Asking AI to answer Radio question: {label_org}")
-                            ai_answer = None
-                            if ai_provider.lower() in ("openai", "groq"):
-                                ai_answer = ai_answer_question(ai_client, label_org, options=options_text_list, question_type="single_select", job_description=job_description, user_information_all=user_information_all)
-                            elif ai_provider.lower() == "deepseek":
-                                ai_answer = deepseek_answer_question(ai_client, label_org, options=options_text_list, question_type="single_select", job_description=job_description, about_company=None, user_information_all=user_information_all)
-                            elif ai_provider.lower() == "gemini":
-                                ai_answer = gemini_answer_question(ai_client, label_org, options=options_text_list, question_type="single_select", job_description=job_description, about_company=None, user_information_all=user_information_all)
+                            ai_answer = ai_client.answer_question(label_org, options=options_text_list, question_type="single_select", job_description=job_description, user_information_all=user_information_all)
 
                             if ai_answer and isinstance(ai_answer, str):
                                 ai_match_idx = find_matching_option(options_text_list, ai_answer)
@@ -1220,12 +1214,7 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                             ai_question = label_org
                             if question_full_text and question_full_text.lower() != label_org.lower() and len(question_full_text) > len(label_org) + 5:
                                 ai_question = f"{label_org}\n\n[Full question context: {question_full_text}]"
-                            if ai_provider.lower() in ("openai", "groq"):
-                                ai_answer = ai_answer_question(ai_client, ai_question, question_type="text", job_description=job_description, user_information_all=user_information_all)
-                            elif ai_provider.lower() == "deepseek":
-                                ai_answer = deepseek_answer_question(ai_client, ai_question, options=None, question_type="text", job_description=job_description, about_company=None, user_information_all=user_information_all)
-                            elif ai_provider.lower() == "gemini":
-                                ai_answer = gemini_answer_question(ai_client, ai_question, options=None, question_type="text", job_description=job_description, about_company=None, user_information_all=user_information_all, error_message=error_msg if has_error else None)
+                            ai_answer = ai_client.answer_question(ai_question, question_type="text", job_description=job_description, user_information_all=user_information_all, error_message=error_msg if has_error else None)
 
                             if ai_answer is not None and isinstance(ai_answer, str) and len(ai_answer) > 0:
                                 print_lg(f'AI Answered received for question "{label_org}" \nhere is answer: "{ai_answer}"')
@@ -1422,12 +1411,7 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                                     if is_career_ops_mode():
                                         raise CareerOpsActivatedException()
                                     try:
-                                        if ai_provider.lower() in ("openai", "groq"):
-                                            answer = ai_answer_question(ai_client, label_org, question_type="text", job_description=job_description, user_information_all=user_information_all)
-                                        elif ai_provider.lower() == "deepseek":
-                                            answer = deepseek_answer_question(ai_client, label_org, options=None, question_type="text", job_description=job_description, about_company=None, user_information_all=user_information_all)
-                                        elif ai_provider.lower() == "gemini":
-                                            answer = gemini_answer_question(ai_client, label_org, options=None, question_type="text", job_description=job_description, about_company=None, user_information_all=user_information_all)
+                                        answer = ai_client.answer_question(label_org, question_type="text", job_description=job_description, user_information_all=user_information_all)
                                     except Exception as e:
                                         print_lg("AI failed to answer combobox text input", e)
 
@@ -1487,13 +1471,7 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                                 raise CareerOpsActivatedException()
                             try:
                                 print_lg(f"Asking AI to select an option for combobox: {label_org}")
-                                ai_answer = None
-                                if ai_provider.lower() in ("openai", "groq"):
-                                    ai_answer = ai_answer_question(ai_client, label_org, options=optionsText, question_type="single_select", job_description=job_description, user_information_all=user_information_all)
-                                elif ai_provider.lower() == "deepseek":
-                                    ai_answer = deepseek_answer_question(ai_client, label_org, options=optionsText, question_type="single_select", job_description=job_description, about_company=None, user_information_all=user_information_all)
-                                elif ai_provider.lower() == "gemini":
-                                    ai_answer = gemini_answer_question(ai_client, label_org, options=optionsText, question_type="single_select", job_description=job_description, about_company=None, user_information_all=user_information_all)
+                                ai_answer = ai_client.answer_question(label_org, options=optionsText, question_type="single_select", job_description=job_description, user_information_all=user_information_all)
 
                                 if ai_answer and isinstance(ai_answer, str):
                                     ai_match_idx = find_matching_option(optionsText, ai_answer)
@@ -1640,12 +1618,7 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                         if is_career_ops_mode():
                             raise CareerOpsActivatedException()
                         try:
-                            if ai_provider.lower() in ("openai", "groq"):
-                                answer = ai_answer_question(ai_client, label_org, question_type="textarea", job_description=job_description, user_information_all=user_information_all)
-                            elif ai_provider.lower() == "deepseek":
-                                answer = deepseek_answer_question(ai_client, label_org, options=None, question_type="textarea", job_description=job_description, about_company=None, user_information_all=user_information_all)
-                            elif ai_provider.lower() == "gemini":
-                                answer = gemini_answer_question(ai_client, label_org, options=None, question_type="textarea", job_description=job_description, about_company=None, user_information_all=user_information_all)
+                            answer = ai_client.answer_question(label_org, question_type="textarea", job_description=job_description, user_information_all=user_information_all)
 
                             if answer and isinstance(answer, str) and len(answer) > 0 and answer != "0":
                                 print_lg(f'AI Answered received for question "{label_org}" \nhere is answer: "{answer}"')
@@ -1802,13 +1775,7 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                         if is_career_ops_mode():
                             raise CareerOpsActivatedException()
                         try:
-                            ai_ans = None
-                            if ai_provider.lower() in ("openai", "groq"):
-                                ai_ans = ai_answer_question(ai_client, label_org, options=["Yes", "No"], question_type="single_select", job_description=job_description, user_information_all=user_information_all)
-                            elif ai_provider.lower() == "deepseek":
-                                ai_ans = deepseek_answer_question(ai_client, label_org, options=["Yes", "No"], question_type="single_select", job_description=job_description, about_company=None, user_information_all=user_information_all)
-                            elif ai_provider.lower() == "gemini":
-                                ai_ans = gemini_answer_question(ai_client, label_org, options=["Yes", "No"], question_type="single_select", job_description=job_description, about_company=None, user_information_all=user_information_all)
+                            ai_ans = ai_client.answer_question(label_org, options=["Yes", "No"], question_type="single_select", job_description=job_description, user_information_all=user_information_all)
                             if ai_ans and isinstance(ai_ans, str):
                                 desired = ai_ans.strip().lower() not in ("no", "false", "0")
                         except Exception as e:

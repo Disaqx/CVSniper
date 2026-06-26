@@ -377,36 +377,57 @@ def ai_optimize_existing_cv(file_path: str, include_portfolio: bool = False) -> 
         doc = fitz.open(file_path)
         text = ""
         for page in doc:
-            text += page.get_text("text") + "\n"
+            # sort=True orders text by visual position (top-to-bottom, left-to-right),
+            # which keeps multi-column resume layouts readable instead of interleaving columns.
+            text += page.get_text("text", sort=True) + "\n"
         doc.close()
         print(f"[CV Optimizer] Extracted {len(text)} chars from PDF")
 
         _prompt_template = """\
-Act as an expert resume writer. Optimize the CV text below: be impactful, metric-driven, and modern.
-Return ONLY a JSON object (no markdown) with this exact structure:
+You are an expert resume writer and career strategist.
+
+CRITICAL LANGUAGE RULE:
+- First, detect the language of the RAW CV TEXT below (e.g. Spanish, English).
+- Write the ENTIRE optimized CV in that SAME language. Do NOT translate.
+  If the CV is in Spanish, every field, title, bullet and section header MUST be in Spanish.
+
+OPTIMIZATION GOALS:
+- Make each bullet impactful, metric-driven, and modern (start with strong action verbs).
+- Do NOT invent facts, employers, dates, degrees, or numbers that are not in the source.
+- Preserve ALL real information, especially:
+  * The person's professional title / headline (the role under their name).
+  * Every academic degree in the education section, with its institution and year
+    (e.g. "Psicólogo — Universidad Distrital Francisco José de Caldas, 2024").
+    Never drop a degree the candidate already holds.
+- The raw text may come from a multi-column PDF, so lines can be slightly out of order.
+  Use your judgment to correctly pair each job/degree title with its company/institution and date.
+
+Return ONLY a JSON object (no markdown, no commentary) with this EXACT structure:
 {
     "name": "Full Name",
-    "title": "Professional Title",
-    "contact": ["Email: x@y.com", "Phone: +123"],
+    "title": "Professional Title (in the CV's language)",
+    "contact": ["Email: x@y.com", "Phone: +123", "Location: City"],
     "sections": [
         {
-            "title": "EXPERIENCE",
+            "title": "SECTION HEADER (in the CV's language, e.g. EXPERIENCIA / FORMACIÓN ACADÉMICA)",
             "subsections": [
                 {
-                    "title": "Job Title at Company",
-                    "date": "Jan 2020 - Present",
-                    "bullets": ["Achievement 1", "Achievement 2"]
+                    "title": "Role or Degree at Company/Institution",
+                    "date": "2020 - Presente",
+                    "bullets": ["Logro 1", "Logro 2"]
                 }
             ],
             "bullets": []
         },
         {
-            "title": "SKILLS",
+            "title": "HABILIDADES",
             "subsections": [],
-            "bullets": ["Skill A", "Skill B"]
+            "bullets": ["Habilidad A", "Habilidad B"]
         }
     ]
 }
+
+Always include an education section containing every degree found in the source.
 
 RAW CV TEXT:
 CV_TEXT_PLACEHOLDER"""

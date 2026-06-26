@@ -50,9 +50,7 @@ from modules.validator import validate_config
 from modules.bot_ui import ui_start, ui_update_status, ui_alert, ui_confirm, ui_pause_check, is_career_ops_mode, ui_enforce_configuration
 
 if use_AI:
-    from modules.ai.openaiConnections import ai_create_openai_client, ai_extract_skills, ai_answer_question, ai_evaluate_job, ai_close_openai_client
-    from modules.ai.deepseekConnections import deepseek_create_client, deepseek_extract_skills, deepseek_answer_question, deepseek_evaluate_job
-    from modules.ai.geminiConnections import gemini_create_client, gemini_extract_skills, gemini_answer_question, gemini_evaluate_job
+    from modules.ai.providers import get_ai_client
 
 from typing import Literal
 from modules.ai.qa_database import save_to_qa_database
@@ -479,12 +477,7 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str) -> None:
                             print_lg("Pre-screening job requirements with AI...")
                             eval_result = {"meets_requirements": True, "reason": "Default"}
                             
-                            if ai_provider.lower() in ("openai", "groq"):
-                                eval_result = ai_evaluate_job(aiClient, description, user_information_all)
-                            elif ai_provider.lower() == "deepseek":
-                                eval_result = deepseek_evaluate_job(aiClient, description, user_information_all)
-                            elif ai_provider.lower() == "gemini":
-                                eval_result = gemini_evaluate_job(aiClient, description, user_information_all)
+                            eval_result = aiClient.evaluate_job(description, user_information_all)
                                 
                             if isinstance(eval_result, dict) and not eval_result.get("meets_requirements", True):
                                 reason = eval_result.get("reason", "AI determined user does not meet core requirements.")
@@ -510,14 +503,7 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str) -> None:
 
                         ##> ------ Yang Li : MARKYangL - Feature ------
                         try:
-                            if ai_provider.lower() in ("openai", "groq"):
-                                skills = ai_extract_skills(aiClient, description)
-                            elif ai_provider.lower() == "deepseek":
-                                skills = deepseek_extract_skills(aiClient, description)
-                            elif ai_provider.lower() == "gemini":
-                                skills = gemini_extract_skills(aiClient, description)
-                            else:
-                                skills = "In Development"
+                            skills = aiClient.extract_skills(description)
                             print_lg(f"Extracted skills using {ai_provider} AI")
                         except Exception as e:
                             print_lg("Failed to extract skills:", e)
@@ -1059,15 +1045,7 @@ def main() -> None:
         #     except Exception as e:
         #         print_lg("Opening OpenAI chatGPT tab failed!")
         if use_AI:
-            if ai_provider in ("openai", "groq"):
-                aiClient = ai_create_openai_client()
-            ##> ------ Yang Li : MARKYangL - Feature ------
-            # Create DeepSeek client
-            elif ai_provider == "deepseek":
-                aiClient = deepseek_create_client()
-            elif ai_provider == "gemini":
-                aiClient = gemini_create_client()
-            ##<
+            aiClient = get_ai_client()
 
             try:
                 about_company_for_ai = " ".join([word for word in (first_name+" "+last_name).split() if len(word) > 3])
@@ -1132,12 +1110,7 @@ def main() -> None:
         ##> ------ Yang Li : MARKYangL - Feature ------
         if use_AI and aiClient:
             try:
-                if ai_provider.lower() in ("openai", "groq"):
-                    ai_close_openai_client(aiClient)
-                elif ai_provider.lower() == "deepseek":
-                    ai_close_openai_client(aiClient)
-                elif ai_provider.lower() == "gemini":
-                    pass # Gemini client does not need to be closed
+                aiClient.close()
                 print_lg(f"Closed {ai_provider} AI client.")
             except Exception as e:
                 print_lg("Failed to close AI client:", e)

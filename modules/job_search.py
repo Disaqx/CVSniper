@@ -244,7 +244,14 @@ def get_job_main_details(job: WebElement, blacklisted_companies: set, rejected_j
     * skip: A boolean flag to skip this job
     '''
     skip = False
-    job_details_button = job.find_element(By.TAG_NAME, 'a')  # job.find_element(By.CLASS_NAME, "job-card-list__title")  # Problem in India
+    try:
+        job_details_button = job.find_element(By.TAG_NAME, 'a')
+    except Exception:
+        # LinkedIn sometimes occludes/recycles DOM elements; the <a> tag may
+        # disappear from a listing that is still in the list. Skip safely.
+        job_id = job.get_dom_attribute('data-occludable-job-id') or 'unknown'
+        print_lg(f'Skipping job ID {job_id}: listing element has no <a> tag (DOM recycled by LinkedIn).')
+        return (job_id, 'Unknown', 'Unknown', 'Unknown', 'Unknown', True)
     scroll_to_view(driver, job_details_button, True)
     job_id = job.get_dom_attribute('data-occludable-job-id')
     title = job_details_button.text

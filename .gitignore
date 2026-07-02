@@ -16,7 +16,6 @@ config/search.py
 config/settings.py
 REVISED_CV.md
 qa_database.json
-config/questions_db.json
 config/user_config.json
 .venv
 apikeys.py

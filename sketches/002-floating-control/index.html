@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>CVSniper · Floating Control (mockup)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:'Inter','Segoe UI',sans-serif;
+  /* simulate the desktop showing through (the "transparent" feel) */
+  background:
+    linear-gradient(120deg,#1a2540,#3a1f47 40%,#0d2733 80%),
+    url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" fill="none" stroke="%23ffffff10" stroke-width="0.5"/></svg>');
+  min-height:100vh; display:grid; place-items:center; gap:40px; padding:40px;
+  grid-auto-flow:column;
+}
+.label{position:fixed;top:14px;left:50%;transform:translateX(-50%);color:#fff9;font-size:12px;letter-spacing:.5px}
+
+/* ===== Floating control window ===== */
+.win{
+  width:360px; border-radius:14px; overflow:hidden;
+  /* translucent dark glass — same palette, keeps see-through feel */
+  background:rgba(10,10,12,0.82);
+  backdrop-filter:blur(20px) saturate(1.1);
+  border:1px solid rgba(255,255,255,0.10);
+  box-shadow:0 18px 50px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.05);
+  color:#E6E6E8;
+}
+.win.current{ background:#0a0a0c; backdrop-filter:none; border:1px solid #2d2d30; box-shadow:0 10px 30px rgba(0,0,0,.5); }
+
+/* header */
+.hdr{display:flex;align-items:center;gap:8px;padding:11px 13px 8px}
+.dot{width:9px;height:9px;border-radius:50%;background:#2ECC71;box-shadow:0 0 0 0 rgba(46,204,113,.5);animation:pulse 2s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(46,204,113,.45)}70%{box-shadow:0 0 0 7px rgba(46,204,113,0)}100%{box-shadow:0 0 0 0 rgba(46,204,113,0)}}
+.title{font-size:11px;font-weight:800;letter-spacing:1.2px;color:#E6E6E8}
+.spacer{flex:1}
+.hicon{font-size:11px;color:#5a5a63;cursor:pointer;padding:2px 5px;border-radius:6px;transition:.15s}
+.hicon:hover{color:#7F5AF0;background:rgba(127,90,240,.12)}
+.hicon.x:hover{color:#E74C3C;background:rgba(231,76,60,.12)}
+.drag{color:#3a3a42;letter-spacing:2px;font-size:11px;cursor:grab}
+
+/* dashboard button row */
+.row{display:flex;gap:6px;padding:0 13px 6px}
+.dashbtn{
+  flex:1;text-align:center;padding:7px;border-radius:9px;cursor:pointer;
+  font-size:10px;font-weight:700;letter-spacing:.5px;
+  color:#00E8C6;background:rgba(0,232,198,.08);border:1px solid rgba(0,232,198,.22);transition:.15s;
+}
+.dashbtn:hover{background:rgba(0,232,198,.16);box-shadow:0 0 18px rgba(0,232,198,.18)}
+
+/* console */
+.console{
+  margin:2px 13px 8px;height:96px;border-radius:10px;overflow:hidden;
+  background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,.06);
+  padding:8px 10px;font-family:'Consolas',monospace;font-size:11px;line-height:1.55;
+}
+.console .s{color:#7F5AF0}.console .i{color:#94A1B2}.console .a{color:#00FFCC}.console .y{color:#FFFFFE}
+
+/* action buttons */
+.actions{display:flex;gap:6px;padding:0 13px 10px}
+.btn{
+  flex:1;text-align:center;padding:8px 4px;border-radius:9px;cursor:pointer;
+  font-size:10px;font-weight:700;letter-spacing:.4px;transition:.15s;border:1px solid transparent;
+}
+.btn.pause{ color:#E6E6E8;background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.12); }
+.btn.pause:hover{ background:rgba(255,255,255,.10); }
+.btn.career{ color:#c9b8ff;background:rgba(127,90,240,.14);border-color:rgba(127,90,240,.32); }
+.btn.career:hover{ background:rgba(127,90,240,.24);box-shadow:0 0 16px rgba(127,90,240,.22) }
+.btn.cv{ color:#00E8C6;background:rgba(0,232,198,.10);border-color:rgba(0,232,198,.26); }
+.btn.cv:hover{ background:rgba(0,232,198,.18) }
+.btn.stop{ color:#fff;background:linear-gradient(135deg,#E74C3C,#c0392b);border:none;box-shadow:0 4px 14px rgba(231,76,60,.35) }
+.btn.stop:hover{ box-shadow:0 6px 20px rgba(231,76,60,.5) }
+
+/* old-style action buttons for the "current" window */
+.btn.old{ color:#fff;background:#2D2D30;border:none;border-radius:5px;font-weight:700 }
+.btn.old.stop{ background:#E74C3C }
+.dashbtn.old{ color:#00E8C6;background:#131316;border:none;border-radius:5px }
+.console.old{ background:#050507;border:1px solid #222225;border-radius:0 }
+
+/* api bar */
+.api{padding:0 13px 11px}
+.api-top{display:flex;justify-content:space-between;font-family:'Consolas',monospace;font-size:9px;color:#5a5a63;margin-bottom:4px}
+.api-track{height:3px;border-radius:3px;background:rgba(255,255,255,.07);overflow:hidden}
+.api-fill{height:100%;width:42%;background:linear-gradient(90deg,#7F5AF0,#00E8C6);border-radius:3px}
+.api-fill.old{background:#7F5AF0}
+
+.cap{text-align:center;color:#fff9;font-size:11px;margin-top:12px;font-weight:600}
+</style>
+</head>
+<body>
+<div class="label">Comparación: ACTUAL (izq) vs PROPUESTA (der) — fondo simula el escritorio detrás</div>
+
+<!-- CURRENT -->
+<div>
+<div class="win current">
+  <div class="hdr">
+    <div class="dot"></div><div class="title">CVSNIPER CONTROL</div>
+    <div class="spacer"></div>
+    <div class="drag">:::</div><div class="hicon">CFG</div><div class="hicon x">X</div>
+  </div>
+  <div class="row"><div class="dashbtn old">Dashboard</div></div>
+  <div class="console old">
+    <div class="s">[Status] Buscando 'Psicólogo'…</div>
+    <div class="i">[Info] 12 vacantes encontradas</div>
+    <div class="a">[Action] Easy Apply enviado</div>
+    <div class="y">CVSniper Control initialized.</div>
+  </div>
+  <div class="actions">
+    <div class="btn old pause">PAUSA</div><div class="btn old">CAREER-OPS</div>
+    <div class="btn old">OPTIMIZAR CV</div><div class="btn old stop">DETENER</div>
+  </div>
+  <div class="api">
+    <div class="api-top"><span>API  2,400 tok</span><span>42%</span></div>
+    <div class="api-track"><div class="api-fill old"></div></div>
+  </div>
+</div>
+<div class="cap">ACTUAL</div>
+</div>
+
+<!-- PROPOSED -->
+<div>
+<div class="win">
+  <div class="hdr">
+    <div class="dot"></div><div class="title">CVSNIPER CONTROL</div>
+    <div class="spacer"></div>
+    <div class="drag">⠿</div><div class="hicon">⚙</div><div class="hicon x">✕</div>
+  </div>
+  <div class="row"><div class="dashbtn">◈  DASHBOARD</div></div>
+  <div class="console">
+    <div class="s">[Status] Buscando 'Psicólogo'…</div>
+    <div class="i">[Info] 12 vacantes encontradas</div>
+    <div class="a">[Action] Easy Apply enviado</div>
+    <div class="y">CVSniper Control initialized.</div>
+  </div>
+  <div class="actions">
+    <div class="btn pause">❚❚ PAUSA</div><div class="btn career">CAREER-OPS</div>
+    <div class="btn cv">OPTIMIZAR CV</div><div class="btn stop">■ DETENER</div>
+  </div>
+  <div class="api">
+    <div class="api-top"><span>API · 2,400 tok</span><span>42%</span></div>
+    <div class="api-track"><div class="api-fill"></div></div>
+  </div>
+</div>
+<div class="cap">PROPUESTA</div>
+</div>
+</body>
+</html>

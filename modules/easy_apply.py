@@ -94,7 +94,7 @@ def resolve_value_for_category(category: str, var_name: str = None, direct_value
 def find_matching_option(options_text_list: list[str], target_answer) -> int | None:
     if target_answer is None or str(target_answer).strip() == "":
         # If there's only one valid option and it's a "Yes" variant, pick it automatically (forced acceptance)
-        valid_opts = [o for o in options_text_list if not any(w in o.lower() for w in ["select", "selecciona", "elegir", "choose", "opcion"])]
+        valid_opts = [o for o in options_text_list if not any(w in o.lower() for w in ["select", "selecciona", "elegir", "choose", "opcion", "selecionar", "opção", "opcao", "escolher", "selecione"])]
         if len(valid_opts) == 1:
             opt_low = valid_opts[0].lower()
             if any(ys == opt_low or ys in opt_low.split() for ys in ["yes", "sí", "si", "acepto", "agree", "i do", "i have"]):
@@ -149,7 +149,7 @@ def find_matching_option(options_text_list: list[str], target_answer) -> int | N
             return idx
 
     # 5. Alphanumeric only check — skip placeholder options to avoid false matches (e.g. "no" in "selectanoption")
-    _placeholder_words = {"select", "selecciona", "elegir", "choose", "unselected", "opcion", "seleccione"}
+    _placeholder_words = {"select", "selecciona", "elegir", "choose", "unselected", "opcion", "seleccione", "selecionar", "opção", "opcao", "escolher", "selecione"}
     target_alnum = "".join(c for c in target_str if c.isalnum())
     for idx, opt in enumerate(options_text_list):
         if any(w in opt.lower() for w in _placeholder_words):
@@ -582,7 +582,7 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                 options = "".join([f' "{option}",' for option in optionsText])
             prev_answer = selected_option
 
-            is_default_option = any(w in selected_option.lower() for w in ["select", "selecciona", "elegir", "choose", "unselected", "opcion", "seleccione"]) or selected_option == ""
+            is_default_option = any(w in selected_option.lower() for w in ["select", "selecciona", "elegir", "choose", "unselected", "opcion", "seleccione", "selecionar", "opção", "opcao", "escolher", "selecione"]) or selected_option == ""
 
             try:
                 if Question.find_elements(By.XPATH, ".//*[contains(@class, 'artdeco-inline-feedback--error')]"):
@@ -705,18 +705,20 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                         except Exception as _e2:
                             print_lg(f"select_by_index failed: {_e2}")
 
-                    # 2. Fire React/framework events so the component state updates
+                    # 2. Fire React/framework events so the component state updates.
+                    #    Use selectedIndex (bulletproof) — NOT value=text, which can
+                    #    deselect the option when the real <option value> is numeric/opaque.
                     try:
-                        _opt_value = select_obj.options[match_idx].get_attribute("value") or target_text
                         driver.execute_script("""
                         var sel = arguments[0];
-                        var val = arguments[1];
+                        var idx = arguments[1];
+                        sel.selectedIndex = idx;
                         var setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set;
-                        setter.call(sel, val);
-                        ['mousedown','mouseup','click','input','change','blur'].forEach(function(t){
+                        setter.call(sel, sel.options[idx].value);
+                        ['input','change'].forEach(function(t){
                             sel.dispatchEvent(new Event(t, {bubbles:true, cancelable:true}));
                         });
-                        """, select, _opt_value)
+                        """, select, match_idx)
                     except Exception as _e3:
                         print_lg(f"JS event dispatch failed: {_e3}")
 
@@ -1320,7 +1322,40 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                         val = float(answer)
                         answer = f"{val:.1f}"
                     except ValueError:
-                        pass
+                        # The field REQUIRES a number but answer is text (e.g. AI said "Yes"
+                        # or "2. No" for a numeric field). Never leave invalid text — it makes
+                        # LinkedIn reject with "Introduce un número...". Recover a number instead.
+                        import re as _re
+                        _nums = _re.findall(r'\d+(?:[.,]\d+)?', answer)
+                        _lbl_num = label
+                        _is_salary_field = any(w in _lbl_num for w in ['salary', 'rate', 'pay', 'compensation', 'salario', 'tarifa', 'sueldo', 'pretension', 'aspiracion'])
+                        _is_usd = any(w in question_full_text.lower() for w in ['usd', 'dollar', 'dolar', 'dólar']) or (is_usd if 'is_usd' in dir() else False)
+                        if _nums:
+                            # Use the first number found in the text (e.g. "2. No" -> 2)
+                            _v = float(_nums[0].replace(',', '.'))
+                            # Safety cap: never offer more than 2000 USD/month on a salary field
+                            if _is_salary_field and _is_usd and _v > 2000:
+                                print_lg(f"[SalaryCap] {_v} USD excede tope 2000 -> capado a 2000")
+                                _v = 2000.0
+                            answer = f"{_v:.1f}"
+                        else:
+                            # No number at all in the answer. Pick a safe numeric default by intent:
+                            _lbl = label
+                            if any(w in _lbl for w in ['salary', 'rate', 'pay', 'compensation', 'salario', 'tarifa', 'sueldo', 'pretension', 'aspiracion']):
+                                _sal = resolve_salary_expectation(label_org, False, work_location)
+                                try: answer = f"{float(_sal):.1f}"
+                                except ValueError: answer = "1100.0"
+                            elif any(w in _lbl for w in ['year', 'experience', 'ano', 'anos', 'experiencia', 'tiempo']):
+                                try: answer = f"{float(str(years_of_experience)):.1f}"
+                                except ValueError: answer = "3.0"
+                            elif any(w in _lbl for w in ['day', 'dias', 'availability', 'disponibilidad', 'notice', 'aviso', 'start']):
+                                # "availability to start (in days)" -> immediate
+                                answer = "1.0"
+                            elif any(w in _lbl for w in ['level', 'tier', 'nivel', 'scale', 'escala', 'rate your', 'califica']):
+                                answer = "3.0"
+                            else:
+                                answer = "1.0"
+                        print_lg(f"[NumericFix] campo numerico '{label_org[:50]}' -> '{answer}' (respuesta original no numerica)")
 
                 if do_actions:
                     # City/location fields: strip accents so autocomplete matches correctly

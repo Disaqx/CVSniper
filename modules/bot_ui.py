@@ -462,33 +462,56 @@ ACCENT = "#7F5AF0"
 ACCENT2 = "#00E8C6"
 BORDER = "#2d2d30"
 
+# Derived button tints (flat hex; Tkinter has no rgba/blur, so we approximate the
+# glassmorphism accents with dark tinted fills that match the dashboard palette).
+BTN_NEUTRAL      = "#1c1c22"   # subtle "glass" pause button
+BTN_NEUTRAL_HV   = "#26262e"
+BTN_PURPLE       = "#241b3d"   # career-ops (purple tint of ACCENT)
+BTN_PURPLE_HV    = "#322452"
+BTN_PURPLE_FG    = "#c9b8ff"
+BTN_TEAL         = "#103530"   # optimize CV (teal tint of ACCENT2)
+BTN_TEAL_HV      = "#15463f"
+BTN_TEAL_FG      = "#00E8C6"
+BTN_STOP         = "#E74C3C"
+BTN_STOP_HV      = "#C0392B"
+
+# Input/field background — a soft translucent-feel dark (lighter than pure black,
+# matching the dashboard's rgba(0,0,0,.3) inputs) so fields don't look harsh.
+INPUT_BG         = "#16161b"
+TAB_ACTIVE_BG    = "#1a1a20"
+
 def _styled_label(parent, text, small=False):
     size = 8 if small else 9
     return tk.Label(parent, text=text, fg=FG_DIM, bg=BG2, font=("Segoe UI", size))
 
 def _styled_entry(parent, width=38):
-    e = tk.Entry(parent, bg=BG, fg=FG, insertbackground=FG, font=("Consolas", 9),
+    e = tk.Entry(parent, bg=INPUT_BG, fg=FG, insertbackground=ACCENT2, font=("Consolas", 9),
                  bd=0, highlightthickness=1, highlightbackground=BORDER,
                  highlightcolor=ACCENT, width=width, relief="flat")
     return e
 
 def _styled_text(parent, height=4, width=38):
-    t = tk.Text(parent, bg=BG, fg=FG, insertbackground=FG, font=("Consolas", 9),
+    t = tk.Text(parent, bg=INPUT_BG, fg=FG, insertbackground=ACCENT2, font=("Consolas", 9),
                 bd=0, highlightthickness=1, highlightbackground=BORDER,
                 highlightcolor=ACCENT, height=height, width=width, relief="flat",
-                wrap="word")
+                wrap="word", padx=8, pady=6)
     return t
 
 def _styled_check(parent, text, var):
     return tk.Checkbutton(parent, text=text, variable=var,
-                          fg=FG, bg=BG2, selectcolor=BG,
-                          activeforeground=FG, activebackground=BG2,
-                          font=("Segoe UI", 9), anchor="w")
+                          fg=FG, bg=BG2, selectcolor=INPUT_BG,
+                          activeforeground=ACCENT2, activebackground=BG2,
+                          font=("Segoe UI", 9), anchor="w", bd=0,
+                          highlightthickness=0, cursor="hand2")
 
 def _section_title(parent, text):
-    tk.Label(parent, text=text, fg=ACCENT, bg=BG2,
-             font=("Segoe UI Semibold", 9)).pack(anchor="w", padx=12, pady=(10, 2))
-    tk.Frame(parent, bg=BORDER, height=1).pack(fill="x", padx=12, pady=(0, 6))
+    wrap = tk.Frame(parent, bg=BG2)
+    wrap.pack(fill="x", padx=14, pady=(14, 4))
+    dot = tk.Frame(wrap, bg=ACCENT, width=3, height=13)
+    dot.pack(side="left", padx=(0, 7))
+    tk.Label(wrap, text=text.upper(), fg=FG, bg=BG2,
+             font=("Segoe UI Semibold", 9)).pack(side="left")
+    tk.Frame(parent, bg=BORDER, height=1).pack(fill="x", padx=14, pady=(0, 8))
 
 
 class GlassSettings(tk.Toplevel):
@@ -552,7 +575,7 @@ class GlassSettings(tk.Toplevel):
         self._tab_frames = {}
         self._active_tab = tk.StringVar(value="search")
 
-        tab_bar = tk.Frame(outer, bg=BG, height=32)
+        tab_bar = tk.Frame(outer, bg=BG, height=38)
         tab_bar.pack(fill="x")
         tab_bar.pack_propagate(False)
 
@@ -560,14 +583,21 @@ class GlassSettings(tk.Toplevel):
                 (T('cfg_tab_personal'), "personal"),
                 (T('cfg_tab_responses'), "responses"),
                 (T('cfg_tab_bot'), "bot")]
+        self._tab_underlines = {}
         for label, key in tabs:
-            btn = tk.Label(tab_bar, text=label, fg=FG_DIM, bg=BG,
-                           font=("Segoe UI", 9), cursor="hand2", padx=12)
-            btn.pack(side="left", fill="y")
-            btn.bind("<Button-1>", lambda e, k=key: self._switch_tab(k))
-            btn.bind("<Enter>", lambda e, b=btn: b.config(fg=FG) if b.cget("fg") != ACCENT else None)
+            col = tk.Frame(tab_bar, bg=BG)
+            col.pack(side="left", fill="y")
+            btn = tk.Label(col, text=label, fg=FG_DIM, bg=BG,
+                           font=("Segoe UI", 9), cursor="hand2", padx=14)
+            btn.pack(side="top", fill="both", expand=True)
+            underline = tk.Frame(col, bg=BG, height=2)
+            underline.pack(side="bottom", fill="x")
+            for w in (btn, col):
+                w.bind("<Button-1>", lambda e, k=key: self._switch_tab(k))
+            btn.bind("<Enter>", lambda e, b=btn, k=key: b.config(fg=FG) if self._active_tab.get() != k else None)
             btn.bind("<Leave>", lambda e, b=btn, k=key: b.config(fg=FG_DIM) if self._active_tab.get() != k else None)
             self._tab_btns[key] = btn
+            self._tab_underlines[key] = underline
 
         tk.Frame(outer, bg=BORDER, height=1).pack(fill="x")
 
@@ -603,8 +633,10 @@ class GlassSettings(tk.Toplevel):
             fr.pack_forget()
         for k, btn in self._tab_btns.items():
             btn.config(fg=FG_DIM, font=("Segoe UI", 9))
+            self._tab_underlines[k].config(bg=BG)
         self._tab_frames[key].pack(fill="both", expand=True)
-        self._tab_btns[key].config(fg=ACCENT, font=("Segoe UI Semibold", 9))
+        self._tab_btns[key].config(fg=ACCENT2, font=("Segoe UI Semibold", 9))
+        self._tab_underlines[key].config(bg=ACCENT)
         self._active_tab.set(key)
 
     # ── Scrollable frame helper ───────────────────────────────────────────────
@@ -662,8 +694,8 @@ class GlassSettings(tk.Toplevel):
             row.pack(anchor="w", padx=14, pady=(0, 2), fill="x")
             e = _styled_entry(row, width=width - 8)
             e.pack(side="left", fill="x", expand=True)
-            btn = tk.Button(row, text="EXAMINAR", fg="#FFFFFE", bg="#2D2D30",
-                            activeforeground="#FFFFFE", activebackground="#3A3A3F",
+            btn = tk.Button(row, text="EXAMINAR", fg=BTN_TEAL_FG, bg=BTN_TEAL,
+                            activeforeground=BTN_TEAL_FG, activebackground=BTN_TEAL_HV,
                             bd=0, padx=8, pady=2, font=("Segoe UI Bold", 7),
                             command=lambda: self._browse_file(e), cursor="hand2")
             btn.pack(side="left", padx=(6, 0))
@@ -997,8 +1029,8 @@ class BotUIApp:
         self.close_btn.bind("<Button-1>", lambda e: self.trigger_stop())
 
         # Settings button
-        self.gear_btn = tk.Label(self.header, text="CFG", fg="#4c4c52",
-                                 bg="#0a0a0c", font=("Segoe UI", 8),
+        self.gear_btn = tk.Label(self.header, text="⚙", fg="#4c4c52",
+                                 bg="#0a0a0c", font=("Segoe UI", 10),
                                  cursor="hand2")
         self.gear_btn.pack(side="right", padx=(0, 4))
         self.gear_btn.bind("<Enter>", lambda e: self.gear_btn.config(fg=ACCENT))
@@ -1006,8 +1038,8 @@ class BotUIApp:
         self.gear_btn.bind("<Button-1>", lambda e: self._open_settings())
 
         # Drag indicator
-        self.drag_lbl = tk.Label(self.header, text=":::", fg="#4c4c52",
-                                 bg="#0a0a0c", font=("Segoe UI", 9))
+        self.drag_lbl = tk.Label(self.header, text="⠿", fg="#4c4c52",
+                                 bg="#0a0a0c", font=("Segoe UI", 11))
         self.drag_lbl.pack(side="right")
 
         # API usage bar
@@ -1026,7 +1058,7 @@ class BotUIApp:
         self.api_bar_bg.pack(side="bottom", fill="x", padx=12, pady=(0, 2))
         self.api_bar_bg.pack_propagate(False)
 
-        self.api_bar_fill = tk.Frame(self.api_bar_bg, bg="#7F5AF0", height=3)
+        self.api_bar_fill = tk.Frame(self.api_bar_bg, bg=ACCENT2, height=3)
         self.api_bar_fill.place(x=0, y=0, relheight=1, width=0)
 
         # Buttons Container — row 1: Dashboard + Settings
@@ -1079,9 +1111,9 @@ class BotUIApp:
 
         # Pause Button
         self.pause_btn = tk.Button(self.btn_frame, text=T("btn_pause"),
-                                   fg="#FFFFFE", bg="#2D2D30",
+                                   fg="#FFFFFE", bg=BTN_NEUTRAL,
                                    activeforeground="#FFFFFE",
-                                   activebackground="#3A3A3F",
+                                   activebackground=BTN_NEUTRAL_HV,
                                    bd=0, padx=10, pady=4,
                                    font=("Segoe UI Bold", 8),
                                    command=self.toggle_pause,
@@ -1090,9 +1122,9 @@ class BotUIApp:
 
         # Career-Ops Button
         self.career_ops_btn = tk.Button(self.btn_frame, text="CAREER-OPS",
-                                        fg="#FFFFFE", bg="#2D2D30",
-                                        activeforeground="#FFFFFE",
-                                        activebackground="#3A3A3F",
+                                        fg=BTN_PURPLE_FG, bg=BTN_PURPLE,
+                                        activeforeground=BTN_PURPLE_FG,
+                                        activebackground=BTN_PURPLE_HV,
                                         bd=0, padx=8, pady=4,
                                         font=("Segoe UI Bold", 8),
                                         command=self.toggle_career_ops,
@@ -1101,9 +1133,9 @@ class BotUIApp:
 
         # Optimize CV Button
         self.optimize_btn = tk.Button(self.btn_frame, text=T("btn_optimize_cv"),
-                                      fg="#FFFFFE", bg="#2D2D30",
-                                      activeforeground="#FFFFFE",
-                                      activebackground="#3A3A3F",
+                                      fg=BTN_TEAL_FG, bg=BTN_TEAL,
+                                      activeforeground=BTN_TEAL_FG,
+                                      activebackground=BTN_TEAL_HV,
                                       bd=0, padx=8, pady=4,
                                       font=("Segoe UI Bold", 8),
                                       command=self._trigger_optimize_cv,
@@ -1112,9 +1144,9 @@ class BotUIApp:
 
         # Stop Button
         self.stop_btn = tk.Button(self.btn_frame, text=T("btn_stop"),
-                                  fg="#FFFFFE", bg="#E74C3C",
+                                  fg="#FFFFFE", bg=BTN_STOP,
                                   activeforeground="#FFFFFE",
-                                  activebackground="#C0392B",
+                                  activebackground=BTN_STOP_HV,
                                   bd=0, padx=10, pady=4,
                                   font=("Segoe UI Bold", 8),
                                   command=self.trigger_stop,
@@ -1217,7 +1249,7 @@ class BotUIApp:
             )
             GlassAlert(self.root, "Modo Career-Ops", alert_msg, queue.Queue())
         else:
-            self.career_ops_btn.config(bg="#2D2D30", fg="#FFFFFE", activebackground="#3A3A3F")
+            self.career_ops_btn.config(bg=BTN_PURPLE, fg=BTN_PURPLE_FG, activebackground=BTN_PURPLE_HV)
             self.title_label.config(text="CVSNIPER CONTROL", fg="#E6E6E8")
             self.add_log("System", "Modo Career-Ops desactivado. LinkedIn Easy Apply estándar activo.", "system")
 
@@ -1349,8 +1381,8 @@ class BotUIApp:
                                   activebackground="#00C9AA")
             self.dot_canvas.itemconfig(self.status_dot, fill="#F1C40F")
         else:
-            self.pause_btn.config(text=T("btn_pause"), bg="#2D2D30", fg="#FFFFFE",
-                                  activebackground="#3A3A3F")
+            self.pause_btn.config(text=T("btn_pause"), bg=BTN_NEUTRAL, fg="#FFFFFE",
+                                  activebackground=BTN_NEUTRAL_HV)
             if is_stopped:
                 self.dot_canvas.itemconfig(self.status_dot, fill="#E74C3C")
             else:

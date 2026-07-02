@@ -363,7 +363,13 @@ GitHub: https://github.com/Disaqx/CVSniper
 # ── Funciones de copia ─────────────────────────────────────────────────────────
 
 def should_ignore(path: Path) -> bool:
-    return path.name in IGNORE or path.name.startswith(".")
+    return (
+        path.name in IGNORE
+        or path.name.startswith(".")
+        or path.name.endswith((".bak", ".pyc", ".pyo"))
+        or ".bak-" in path.name
+        or path.suffix == ".log"
+    )
 
 
 def copy_tree(src: Path, dst: Path):

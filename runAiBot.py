@@ -1048,7 +1048,7 @@ def main() -> None:
             aiClient = get_ai_client()
 
             try:
-                about_company_for_ai = " ".join([word for word in (first_name+" "+last_name).split() if len(word) > 3])
+                about_company_for_ai = None  # TODO: extract real "About Company" info from LinkedIn job page
                 print_lg(f"Extracted about company info for AI: '{about_company_for_ai}'")
             except Exception as e:
                 print_lg("Failed to extract about company info!", e)

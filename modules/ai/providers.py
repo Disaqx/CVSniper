@@ -207,11 +207,23 @@ class OpenAILikeProvider(AIProvider):
             else:
                 prompt = extract_skills_prompt.format(job_description)
                 rf = extract_skills_response_format
-            return self._completion(
-                [{"role": "user", "content": prompt}],
-                response_format=rf,
-                stream=stream,
-            )
+            
+            try:
+                return self._completion(
+                    [{"role": "user", "content": prompt}],
+                    response_format=rf,
+                    stream=stream,
+                )
+            except Exception as inner_e:
+                # If json_schema is not supported (e.g. Groq via OpenAI endpoint), fallback to json_object
+                if "response_format" in str(inner_e).lower() or "json_schema" in str(inner_e).lower():
+                    print_lg("Provider does not support json_schema, falling back to json_object...")
+                    return self._completion(
+                        [{"role": "user", "content": prompt}],
+                        response_format={"type": "json_object"},
+                        stream=stream,
+                    )
+                raise inner_e
         except Exception as e:
             _ai_error_alert(f"Error extracting skills. {_API_INSTRUCTIONS}", e)
             return {"error": str(e)}

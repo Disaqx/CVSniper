@@ -47,6 +47,62 @@ def wait_span_click(driver: WebDriver, text: str, time: float=5.0, click: bool=T
             # print_lg(e)
             return False
 
+def wait_button_click(driver: WebDriver, texts: list[str], time: float=5.0, click: bool=True, scroll: bool=True, scrollTop: bool=False) -> WebElement | bool:
+    '''
+    Finds a clickable button/span matching ANY of the given `texts`, using multiple XPath strategies:
+      1. <span> with exact text (same as wait_span_click)
+      2. <button> with direct text content
+      3. <button> with aria-label containing the text
+    - Returns `WebElement` if found, else `False` if none found.
+    - Clicks on it if `click = True`.
+    - `time` is split across all strategies (time_per = time / 3 per strategy per text).
+    '''
+    if not texts:
+        return False
+    time_per = max(0.5, time / (len(texts) * 3))
+    for text in texts:
+        # Strategy 1: span with exact text (original approach)
+        try:
+            button = WebDriverWait(driver, time_per).until(
+                EC.presence_of_element_located((By.XPATH, './/span[normalize-space(.)="'+text+'"]'))
+            )
+            if scroll: scroll_to_view(driver, button, scrollTop)
+            if click:
+                try: button.click()
+                except Exception: driver.execute_script("arguments[0].click();", button)
+                buffer(click_gap)
+            return button
+        except Exception:
+            pass
+        # Strategy 2: button element with direct text
+        try:
+            button = WebDriverWait(driver, time_per).until(
+                EC.presence_of_element_located((By.XPATH, './/button[normalize-space(.)="'+text+'"]'))
+            )
+            if scroll: scroll_to_view(driver, button, scrollTop)
+            if click:
+                try: button.click()
+                except Exception: driver.execute_script("arguments[0].click();", button)
+                buffer(click_gap)
+            return button
+        except Exception:
+            pass
+        # Strategy 3: button with aria-label containing the text
+        try:
+            button = WebDriverWait(driver, time_per).until(
+                EC.presence_of_element_located((By.XPATH, './/button[contains(@aria-label, "'+text+'")]'))
+            )
+            if scroll: scroll_to_view(driver, button, scrollTop)
+            if click:
+                try: button.click()
+                except Exception: driver.execute_script("arguments[0].click();", button)
+                buffer(click_gap)
+            return button
+        except Exception:
+            pass
+    print_lg("Click Failed! Didn't find any of: " + str(texts))
+    return False
+
 def multi_sel(driver: WebDriver, texts: list, time: float=5.0) -> None:
     '''
     - For each text in the `texts`, tries to find and click `span` element with that text.

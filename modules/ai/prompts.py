@@ -159,20 +159,20 @@ Your task is to analyze the user's profile/CV and the job description.
 
 INSTRUCTIONS:
 - Return ONLY a valid JSON object in the exact format shown below — no extra text.
-- GOAL: Cast a wide net. Job descriptions are wish lists. Candidates rarely meet 100% of requirements and still get hired.
-- Set "meets_requirements" to FALSE only when the candidate is CLEARLY disqualified:
-  * Experience gap is large: role requires 5+ years and candidate has under 2 years
-  * Completely different domain (e.g., nurse applying for software architect)
-  * Hard legal/location requirement the candidate cannot meet (e.g., must be on-site in a country they are not in)
-  * Role is senior/director/executive level and candidate is junior
-  * Job is EXCLUSIVELY for people with disabilities / PcD (Pessoa com Deficiência) / persona con discapacidad, and the user's profile does not mention having a disability
+- GOAL: Find roles that strongly align with the candidate's core career path (e.g., IT Support, Help Desk, Systems Administration, Customer Service). Do NOT approve jobs that are completely unrelated (e.g., Sales, Marketing, Nursing, Construction) even if the candidate has some generic transferrable skills (like communication or typing).
+- Set "meets_requirements" to FALSE when the candidate is disqualified:
+  * Completely different domain (e.g., Sales Executive, Marketing Manager, Medical staff, Delivery driver).
+  * Experience gap is large: role requires 5+ years and candidate has under 2 years.
+  * Hard legal/location requirement the candidate cannot meet (e.g., must be on-site in a country they are not in).
+  * Role is senior/director/executive level and candidate is junior.
+  * Job is EXCLUSIVELY for people with disabilities / PcD (Pessoa com Deficiência) / persona con discapacidad, and the user's profile does not mention having a disability.
 - Set "meets_requirements" to TRUE when:
-  * The candidate works in the same field or a closely adjacent one
-  * The candidate meets at least 60% of core requirements
-  * Missing items are specific tools or certifications — these are learnable and not disqualifiers
-  * Experience years are close (within 1-2 years of the requirement)
+  * The role is directly in the candidate's field (IT, Helpdesk, Support, Customer Service).
+  * The candidate meets at least 60% of core requirements.
+  * Missing items are specific tools or certifications — these are learnable and not disqualifiers.
+  * Experience years are close (within 1-2 years of the requirement).
 - Do NOT reject because the candidate lacks 1-2 specific tools (e.g., a specific MDM platform, a specific ticketing system). If they have the fundamentals, they can learn the tool.
-- Assign a "score" from 1 to 10 based on overall match quality (7+ = strong match, 5-6 = reasonable match, below 5 = poor match).
+- Assign a "score" from 1 to 10 based on overall match quality (8-10 = strong match in core field, 5-7 = reasonable match, below 5 = poor match or unrelated field).
 
 Output Format:
 {{

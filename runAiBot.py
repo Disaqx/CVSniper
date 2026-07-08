@@ -621,8 +621,7 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str) -> None:
                                     if questions_list and errored != "stuck": 
                                         print_lg("Answered the following questions...", questions_list)
                                         print("\n\n" + "\n".join(str(question) for question in questions_list) + "\n\n")
-                                    if not wait_span_click(driver, "Review", 1, scrollTop=True):
-                                        wait_span_click(driver, "Revisar solicitud", 1, scrollTop=True) or wait_span_click(driver, "Revisar", 1, scrollTop=True)
+                                    wait_button_click(driver, ["Review", "Revisar solicitud", "Revisar"], 3, scrollTop=True)
                                     cur_pause_before_submit = pause_before_submit
                                     if errored != "stuck" and cur_pause_before_submit:
                                         decision = ui_confirm("Confirm your information", '1. Please verify your information.\n2. If you edited something, please return to this final screen.\n3. DO NOT CLICK "Submit Application".\n\n\n\n\nYou can turn off "Pause before submit" setting in config.py\nTo TEMPORARILY disable pausing, click "Disable Pause"', ["Disable Pause", "Discard Application", "Submit Application"])
@@ -630,14 +629,13 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str) -> None:
                                         pause_before_submit = False if "Disable Pause" == decision else True
                                         # try_xp(modal, ".//span[normalize-space(.)='Review']")
                                     follow_company(modal)
-                                    if (wait_span_click(driver, "Submit application", 5, scrollTop=True) or wait_span_click(driver, "Submit", 3, scrollTop=True)
-                                            or wait_span_click(driver, "Enviar solicitud", 5, scrollTop=True) or wait_span_click(driver, "Enviar", 3, scrollTop=True)):
+                                    if wait_button_click(driver, ["Submit application", "Submit", "Enviar solicitud", "Enviar"], 8, scrollTop=True):
                                         date_applied = datetime.now()
-                                        if not (wait_span_click(driver, "Done", 2) or wait_span_click(driver, "Listo", 2) or wait_span_click(driver, "Hecho", 2)):
+                                        if not wait_button_click(driver, ["Done", "Listo", "Hecho"], 4):
                                             actions.send_keys(Keys.ESCAPE).perform()
                                     elif errored != "stuck" and cur_pause_before_submit and "Yes" in ui_confirm("Failed to find Submit Application!", "You submitted the application, didn't you?", ["Yes", "No"]):
                                         date_applied = datetime.now()
-                                        wait_span_click(driver, "Done", 2) or wait_span_click(driver, "Listo", 2)
+                                        wait_button_click(driver, ["Done", "Listo", "Hecho"], 4)
                                     else:
                                         print_lg("Since, Submit Application failed, discarding the job application...")
                                         # if screenshot_name == "Not Available":  screenshot_name = screenshot(driver, job_id, "Failed to click Submit application")

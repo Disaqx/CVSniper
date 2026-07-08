@@ -1368,20 +1368,55 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                         text.clear()
                     except: pass
                     text.send_keys(answer_no_accent)
-                    sleep(2)
+                    sleep(3)  # Give LinkedIn more time to load autocomplete options
                     try:
                         options = driver.find_elements(By.XPATH, "//div[@role='option'] | //li[@role='option']")
+                        valid_options = [opt for opt in options if opt.is_displayed() and opt.text.strip().lower() not in ("", "select an option", "selecciona una opción", "selecciona una opcion")]
+                        
+                        # If no options appeared, retry: clear and retype
+                        if not valid_options:
+                            try: text.clear()
+                            except: pass
+                            text.send_keys(answer_no_accent[:3])  # Type just first 3 chars
+                            sleep(2)
+                            options = driver.find_elements(By.XPATH, "//div[@role='option'] | //li[@role='option']")
+                            valid_options = [opt for opt in options if opt.is_displayed() and opt.text.strip().lower() not in ("", "select an option", "selecciona una opción", "selecciona una opcion")]
+
                         clicked = False
-                        for opt in options:
-                            if opt.is_displayed() and opt.text.strip().lower() != "select an option":
-                                # Just click the first valid option that isn't the placeholder
-                                opt.click()
+                        if valid_options:
+                            # Score each option: prefer ones matching city name + country/state
+                            answer_lower = answer.lower()
+                            _country_lower = country.lower() if 'country' in dir() or country else ""
+                            _state_lower = state.lower() if 'state' in dir() or state else ""
+                            best_opt = valid_options[0]
+                            best_score = 0
+                            for opt in valid_options:
+                                opt_text = opt.text.strip().lower()
+                                score = 0
+                                if answer_lower in opt_text:
+                                    score += 3
+                                if _country_lower and _country_lower in opt_text:
+                                    score += 2
+                                if _state_lower and _state_lower in opt_text:
+                                    score += 1
+                                if score > best_score:
+                                    best_score = score
+                                    best_opt = opt
+                            try:
+                                best_opt.click()
                                 clicked = True
-                                break
+                                print_lg(f"[Location] Selected: '{best_opt.text.strip()}' (score={best_score})")
+                            except Exception:
+                                try:
+                                    driver.execute_script("arguments[0].click();", best_opt)
+                                    clicked = True
+                                except Exception:
+                                    pass
+                        
                         if not clicked:
                             text.send_keys(Keys.ARROW_DOWN)
                             sleep(0.5)
-                            text.send_keys(Keys.TAB)
+                            text.send_keys(Keys.ENTER)
                         sleep(1)
                     except: pass
                 else:
@@ -1771,8 +1806,10 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
 
             if overwrite_previous_answers or not prev_answer:
                 desired = True  # default: check the box
+                _local_decided = False  # Track whether a local rule made the decision
                 if is_sensitive_question(label_org):
                     desired = False
+                    _local_decided = True
                 else:
                     # --- Work model checkbox logic ---
                     # Detect if this is a work model question (Onsite/Hybrid/Remote)
@@ -1797,22 +1834,30 @@ def answer_questions(modal: WebElement, questions_list: set, work_location: str,
                         else:
                             # IT jobs or generic: all work models are fine (Onsite, Hybrid, Remote)
                             desired = True
+                        _local_decided = True
                     else:
                         db_match = match_rules(label_org)
                         if db_match:
                             val = str(db_match.get("value", "Yes"))
                             desired = val.lower() not in ("no", "false", "0")
+                            _local_decided = True
                         else:
                             common_ans = answer_common_questions(label_org, "Yes")
-                            desired = common_ans.lower() not in ("no", "false", "0")
+                            if common_ans.lower() != "yes":
+                                # answer_common_questions returned something specific
+                                desired = common_ans.lower() not in ("no", "false", "0")
+                                _local_decided = True
+                            # else: default "Yes" was returned unchanged — no local rule matched
 
-                    if use_AI and ai_client:
+                    # Only ask AI when NO local rule decided — AI is a fallback, not an override
+                    if not _local_decided and use_AI and ai_client:
                         if is_career_ops_mode():
                             raise CareerOpsActivatedException()
                         try:
                             ai_ans = ai_client.answer_question(label_org, options=["Yes", "No"], question_type="single_select", job_description=job_description, user_information_all=user_information_all)
                             if ai_ans and isinstance(ai_ans, str):
                                 desired = ai_ans.strip().lower() not in ("no", "false", "0")
+                                print_lg(f"[Checkbox AI] '{label_org[:50]}' -> {'check' if desired else 'uncheck'}")
                         except Exception as e:
                             print_lg("Failed to get AI answer for checkbox!", e)
 

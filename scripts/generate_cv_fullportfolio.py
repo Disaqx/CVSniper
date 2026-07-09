@@ -329,7 +329,7 @@ def generate_full_portfolio(cv_data, output_path, include_portfolio=True, projec
         f.write(html)
         
     import subprocess
-    base_dir = os.path.dirname(os.path.abspath(__file__))
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # repo root (script lives in scripts/)
     node_script = os.path.abspath(os.path.join(base_dir, "..", "career-ops", "generate-pdf.mjs"))
     
     print("Generating PDF via Playwright (HTML rendering)...")
@@ -472,7 +472,7 @@ def generate_cv_from_basic_info(first_name, last_name, phone, location, title, o
     generate_full_portfolio(cv_data, output_path, include_portfolio=include_portfolio, projects=projects, images_dir=images_dir)
 
 if __name__ == '__main__':
-    base_dir = os.path.dirname(os.path.abspath(__file__))
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # repo root (script lives in scripts/)
     cv_md_path = os.path.join(base_dir, "REVISED_CV.md")
     output_dir = os.path.join(base_dir, "all resumes")
     images_dir = images_dir_default

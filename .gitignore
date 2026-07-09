@@ -35,4 +35,4 @@ templates/templates/
 
 # Windows artefactos accidentales
 nul
-*.pyc
+*.pycqa_database.json.migrated

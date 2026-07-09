@@ -22,7 +22,7 @@ On first run, config templates are auto-copied from `config/*.default.py` → `c
 ## Building a release
 
 ```bash
-python build_release.py
+python scripts/build_release.py
 ```
 
 Produces `CVSniper_Release/` (folder) and `CVSniper_Release.zip`. The IGNORE set in `build_release.py` must include any temp/output dirs added to the project root, or they'll be copied into themselves recursively.
@@ -52,7 +52,8 @@ A single large file (~4500 lines) that is the main orchestrator. It:
 | `ai/geminiConnections.py` | Google Gemini integration (same interface) |
 | `ai/deepseekConnections.py` | DeepSeek-specific client (thin wrapper over OpenAI-like API) |
 | `ai/prompts.py` | All LLM prompt templates |
-| `ai/qa_database.py` | JSON cache of AI Q&A responses to avoid duplicate API calls |
+| `ai/qa_database.py` | JSON cache of AI Q&A responses (normalized + fuzzy matching, options-aware) to avoid duplicate API calls |
+| `external_apply.py` | Universal Applier v1 — handles non-Easy-Apply jobs: records the external link, and (if `external_apply_enabled`) auto-fills Greenhouse/Lever/Ashby forms using config + QA cache + AI. Workday/iCIMS and account-walled sites go to manual review |
 
 > Legacy directories `modules/modules/` and `modules/__deprecated__/` were removed. Do not recreate them — if you see `modules/modules/` reappear it's likely an import-typo artifact.
 
@@ -92,10 +93,28 @@ Groq (free tier) is the recommended default. Any OpenAI-compatible endpoint work
 |------|---------|
 | `all excels/all_applied_applications_history.csv` | Successful applications |
 | `all excels/failed_applications.csv` | Failed attempts with error reason |
-| `config/qa_database.json` | AI Q&A cache |
+| `all excels/qa_database.json` | AI Q&A cache (single source; the old root-level `qa_database.json` is auto-migrated on first run) |
 | `logs/log.txt` | Full execution log |
 | `all resumes/` | Generated/uploaded CV PDFs |
 
 ## No test suite
 
 There are no automated tests. Validation is done via `modules/validator.py` at startup and logging in `logs/log.txt`.
+
+## Repo layout notes
+
+- `scripts/` — dev/build utilities, not part of the running bot: `build_release.py`, `release.ps1`, `generate_cv_pdf.py`, `generate_cv_fullportfolio.py` (imported by `modules/ai/openaiConnections.py` as `scripts.generate_cv_fullportfolio`), `compress_pdf.py`, `merge_resumes.py`. They assume the repo root as CWD/base dir.
+- `docs/sketches/` — HTML design mockups for the UI, not used at runtime.
+
+## Progreso y Próximos Pasos (Roadmap)
+
+Esta sección documenta el estado actual del proyecto y las mejoras futuras solicitadas por el usuario para ser leídas en las próximas sesiones.
+
+**Completado (julio 2026):**
+1. ✅ **Rediseño de la UI de Configuración:** `GlassSettings` en `modules/bot_ui.py` usa la misma paleta del dashboard (`#0a0a0c`, `#7F5AF0`, `#00E8C6`), acrylic blur y tabs custom. Verificado visualmente.
+2. ✅ **Optimización de la Base de Datos QA:** `modules/ai/qa_database.py` ahora hace matching normalizado + difuso (sin cruzar skills distintas), valida respuestas cacheadas contra las opciones del select, cachea en memoria y lleva contadores de uso. Los providers consultan el caché antes de llamar a la API. La base legacy de la raíz se migró a `all excels/qa_database.json`.
+3. ✅ **Aplicador Universal v1:** `modules/external_apply.py` — antes esta rama crasheaba (`external_apply` se llamaba sin existir). Ahora captura el link externo siempre y, con `external_apply_enabled = True` en settings, autollena Greenhouse/Lever/Ashby/formularios simples (CV + mapeo de campos + QA cache + IA) con pausa opcional antes de enviar (`pause_before_submit_external`).
+
+**Pasos Faltantes (To-Do):**
+1. **Aplicador Universal v2:** soporte multi-página (Workday) — hoy va a revisión manual. La creación automática de cuentas queda descartada por diseño: exige verificación de email y CAPTCHA, es frágil y arriesgado para la cuenta del usuario.
+2. **Probar el Aplicador Universal en vivo:** correr el bot con `external_apply_enabled = True` y `pause_before_submit_external = True` sobre vacantes reales de Greenhouse/Lever y ajustar selectores según lo que falle.

@@ -16,7 +16,7 @@ from pathlib import Path
 
 # ── Configuracion ──────────────────────────────────────────────────────────────
 
-ROOT       = Path(__file__).parent
+ROOT       = Path(__file__).parent.parent  # repo root (script lives in scripts/)
 OUTPUT_DIR = ROOT / "CVSniper_Release"
 ZIP_NAME   = ROOT / "CVSniper_Release.zip"
 

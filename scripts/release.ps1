@@ -28,7 +28,7 @@ Set-Location $Root
 
 # ── Paso 1: Generar el ZIP limpio ──────────────────────────────────────────────
 Write-Host "[1/4] Generando release limpio..."
-python build_release.py
+python scripts/build_release.py
 if ($LASTEXITCODE -ne 0) {
     Write-Host "[ERROR] Fallo build_release.py" -ForegroundColor Red; exit 1
 }

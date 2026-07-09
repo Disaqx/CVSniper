@@ -67,6 +67,7 @@ from modules.easy_apply import (
     is_sensitive_question, answer_common_questions, answer_questions,
     follow_company, discard_job, randomly_answered_questions
 )
+from modules.external_apply import external_apply
 
 
 pyautogui.FAILSAFE = False
@@ -670,7 +671,10 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str) -> None:
                     else:
                         # Case 2: Apply externally
                         add_to_manual_jobs(job_id, title, company, current_eval_score, f"External Apply: {eval_reason}")
-                        skip, application_link, tabs_count = external_apply(pagination_element, job_id, job_link, resume, date_listed, application_link, screenshot_name)
+                        skip, application_link, tabs_count = external_apply(job_id, job_link, resume, date_listed, application_link, screenshot_name, tabs_count=tabs_count, ai_client=aiClient, job_description=description)
+                        if not skip:
+                            date_applied = datetime.now()
+                            external_jobs_count += 1
                         if dailyEasyApplyLimitReached and not is_career_ops_mode():
                             print_lg("\n###############  Daily application limit for Easy Apply is reached!  ###############\n")
                             return

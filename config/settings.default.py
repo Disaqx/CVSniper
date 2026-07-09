@@ -8,6 +8,15 @@ ui_language = "es"
 # Keep the External Application tabs open?
 close_tabs = False
 
+# >>>>>>>>>>> Universal Applier (External Apply) <<<<<<<<<<<
+
+# Auto-fill external applications (Greenhouse, Lever, Ashby y formularios simples)?
+# Workday/iCIMS y plataformas que exigen crear cuenta siempre quedan para revisión manual.
+external_apply_enabled = False
+
+# Pause for confirmation before submitting an external application?
+pause_before_submit_external = True
+
 # Follow easy applied companies
 follow_companies = True
 

@@ -149,7 +149,7 @@ class OpenAILikeProvider(AIProvider):
     ) -> str | dict:
         try:
             if not error_message:
-                cached = get_answer_from_database(question)
+                cached = get_answer_from_database(question, options=options)
                 if cached:
                     print_lg(f"Found answer in QA Database: {cached}")
                     return cached
@@ -179,7 +179,7 @@ class OpenAILikeProvider(AIProvider):
             print_lg("Prompt we are passing to AI: ", prompt)
             response = self._completion([{"role": "user", "content": prompt}], stream=stream)
             if isinstance(response, str) and not response.startswith("{'error'"):
-                save_to_qa_database(question, response)
+                save_to_qa_database(question, response, options=options)
             return response
         except Exception as e:
             _ai_error_alert(f"Error answering question. {_API_INSTRUCTIONS}", e)
@@ -292,7 +292,7 @@ class GeminiProvider(AIProvider):
     ) -> str | dict:
         try:
             if not error_message:
-                cached = get_answer_from_database(question)
+                cached = get_answer_from_database(question, options=options)
                 if cached:
                     print_lg(f"Found answer in QA Database: {cached}")
                     return cached
@@ -321,7 +321,7 @@ class GeminiProvider(AIProvider):
 
             answer = self._completion(prompt)
             if isinstance(answer, str) and not answer.startswith("{'error'"):
-                save_to_qa_database(question, answer)
+                save_to_qa_database(question, answer, options=options)
             return answer
         except Exception as e:
             critical_error_log("Error answering question with Gemini!", e)

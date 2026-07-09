@@ -489,7 +489,8 @@ def _card_of(parent):
 
 def _styled_label(parent, text, small=False):
     size = 8 if small else 9
-    return tk.Label(parent, text=text, fg=FG_DIM, bg=PANEL, font=("Segoe UI", size))
+    return tk.Label(parent, text=text, fg=FG_DIM, bg=PANEL, font=("Segoe UI", size),
+                    wraplength=560, justify="left")
 
 def _styled_entry(parent, width=38):
     e = tk.Entry(parent, bg=INPUT_BG, fg=FG, insertbackground=ACCENT2, font=("Segoe UI", 10),
@@ -504,12 +505,125 @@ def _styled_text(parent, height=4, width=38):
                 wrap="word", padx=10, pady=8)
     return t
 
-def _styled_check(parent, text, var):
-    return tk.Checkbutton(parent, text=text, variable=var,
-                          fg=FG, bg=PANEL, selectcolor=INPUT_BG,
-                          activeforeground=ACCENT2, activebackground=PANEL,
-                          font=("Segoe UI", 10), anchor="w", bd=0,
-                          highlightthickness=0, cursor="hand2")
+# ── Icon glyphs (Segoe Fluent Icons — monochrome, minimal; Win10 fallback) ────
+
+_ICON_FONT_FAMILY = None
+
+def _icon_font(size=10):
+    global _ICON_FONT_FAMILY
+    if _ICON_FONT_FAMILY is None:
+        try:
+            import tkinter.font as _tf
+            fams = set(_tf.families())
+            _ICON_FONT_FAMILY = ("Segoe Fluent Icons" if "Segoe Fluent Icons" in fams
+                                 else "Segoe MDL2 Assets" if "Segoe MDL2 Assets" in fams
+                                 else "Segoe UI Symbol")
+        except Exception:
+            _ICON_FONT_FAMILY = "Segoe UI Symbol"
+    return (_ICON_FONT_FAMILY, size)
+
+ICO_GEAR  = ""   # Settings
+ICO_CLOSE = ""   # Cancel
+ICO_GRIP  = ""   # GripperBarVertical
+
+
+class ToggleSwitch(tk.Canvas):
+    """Flat pill toggle bound to a BooleanVar — replaces raw checkboxes."""
+
+    def __init__(self, parent, variable, bg=None):
+        self._bg = bg or PANEL
+        super().__init__(parent, width=42, height=22, bg=self._bg,
+                         highlightthickness=0, bd=0, cursor="hand2")
+        self.var = variable
+        self.bind("<Button-1>", lambda e: self.toggle())
+        self._draw()
+
+    def toggle(self):
+        self.var.set(not self.var.get())
+        self._draw()
+
+    def _pill(self, x0, y0, x1, y1, fill):
+        r = (y1 - y0) / 2
+        self.create_oval(x0, y0, x0 + 2 * r, y1, fill=fill, width=0)
+        self.create_oval(x1 - 2 * r, y0, x1, y1, fill=fill, width=0)
+        self.create_rectangle(x0 + r, y0, x1 - r, y1, fill=fill, width=0)
+
+    def _draw(self):
+        self.delete("all")
+        on = bool(self.var.get())
+        self._pill(1, 3, 41, 19, ACCENT2 if on else "#2a2a32")
+        kx = 24 if on else 2
+        self.create_oval(kx, 4, kx + 14, 18,
+                         fill="#0a0a0c" if on else "#8a97a8", width=0)
+
+
+class Segmented(tk.Frame):
+    """Chip-button group; the selected chip lights up.
+
+    options: list of (stored_value, display_text). Replaces both the ugly
+    OptionMenu dropdowns (single) and the checkbox grids (multi) while
+    keeping the exact stored values the bot logic expects.
+    """
+
+    def __init__(self, parent, options, multi=False, cols=0, bg=None):
+        super().__init__(parent, bg=bg or PANEL)
+        self.multi = multi
+        self._chips = {}
+        if multi:
+            self.vars = {v: tk.BooleanVar(value=False) for v, _ in options}
+        else:
+            self.var = tk.StringVar(value="")
+        for i, (value, display) in enumerate(options):
+            chip = tk.Label(self, text=display, font=("Segoe UI Semibold", 9),
+                            padx=13, pady=5, bd=0, cursor="hand2")
+            if cols:
+                chip.grid(row=i // cols, column=i % cols, sticky="w",
+                          padx=(0, 6), pady=(0, 6))
+            else:
+                chip.pack(side="left", padx=(0, 6), pady=(0, 2))
+            chip.bind("<Button-1>", lambda e, v=value: self._click(v))
+            chip.bind("<Enter>", lambda e, v=value: self._hover(v, True))
+            chip.bind("<Leave>", lambda e, v=value: self._hover(v, False))
+            self._chips[value] = chip
+        self._paint()
+
+    def _selected(self, v):
+        return self.vars[v].get() if self.multi else self.var.get() == v
+
+    def _click(self, v):
+        if self.multi:
+            self.vars[v].set(not self.vars[v].get())
+        else:
+            self.var.set(v)
+        self._paint()
+
+    def _hover(self, v, inside):
+        if not self._selected(v):
+            self._chips[v].config(bg="#1d1d25" if inside else INPUT_BG)
+
+    def _paint(self):
+        for v, chip in self._chips.items():
+            if self._selected(v):
+                chip.config(bg=ACCENT, fg="#FFFFFE",
+                            highlightthickness=1, highlightbackground=ACCENT)
+            else:
+                chip.config(bg=INPUT_BG, fg=FG_DIM,
+                            highlightthickness=1, highlightbackground=BORDER)
+
+    def set_single(self, value):
+        self.var.set(value)
+        self._paint()
+
+    def set_multi(self, values):
+        for v, bv in self.vars.items():
+            bv.set(v in values)
+        self._paint()
+
+
+def _norm_options(options):
+    """Accepts ['A', 'B'] or [('a', 'Display A'), ...] → list of tuples."""
+    return [(o, o) if isinstance(o, str) else tuple(o) for o in options]
+
 
 def _section_title(parent, text):
     """Creates a dashboard-style card; following rows are packed inside it."""
@@ -572,14 +686,14 @@ class GlassSettings(tk.Toplevel):
         hdr.pack(fill="x", padx=0)
         hdr.pack_propagate(False)
 
-        logo = tk.Label(hdr, text=" ⚙ ", fg="#0a0a0c", bg=ACCENT,
-                        font=("Segoe UI Bold", 10))
+        logo = tk.Label(hdr, text=f" {ICO_GEAR} ", fg="#0a0a0c", bg=ACCENT,
+                        font=_icon_font(10))
         logo.pack(side="left", padx=(14, 9), pady=10)
         tk.Label(hdr, text=T('cfg_title'), fg=FG, bg=BG,
                  font=("Segoe UI Semibold", 11)).pack(side="left")
 
-        close_lbl = tk.Label(hdr, text="  ✕  ", fg=FG_DIM, bg=BG,
-                             font=("Segoe UI Bold", 11), cursor="hand2")
+        close_lbl = tk.Label(hdr, text=f"  {ICO_CLOSE}  ", fg=FG_DIM, bg=BG,
+                             font=_icon_font(10), cursor="hand2")
         close_lbl.pack(side="right", padx=8)
         close_lbl.bind("<Enter>", lambda e: close_lbl.config(fg="#E74C3C"))
         close_lbl.bind("<Leave>", lambda e: close_lbl.config(fg=FG_DIM))
@@ -778,46 +892,62 @@ class GlassSettings(tk.Toplevel):
         val = _read_py_var(filepath, varname)
         if val is not None:
             var.set(bool(val))
-        cb = _styled_check(parent, label_text, var)
-        cb.pack(anchor="w", padx=12, pady=4)
+        row = tk.Frame(parent, bg=PANEL)
+        row.pack(fill="x", padx=12, pady=5)
+        sw = ToggleSwitch(row, var)
+        sw.pack(side="right", padx=(10, 0))
+        lbl = tk.Label(row, text=label_text, fg=FG, bg=PANEL,
+                       font=("Segoe UI", 10), anchor="w", justify="left",
+                       cursor="hand2", wraplength=440)
+        lbl.pack(side="left", fill="x", expand=True)
+        lbl.bind("<Button-1>", lambda e: sw.toggle())
         self._fields[field_key] = ("bool", var, filepath, varname)
 
     def _add_multicheck(self, parent, field_key, label_text, filepath, varname, options, cols=3):
         parent = _card_of(parent)
         _styled_label(parent, label_text).pack(anchor="w", padx=12, pady=(8, 2))
-        container = tk.Frame(parent, bg=PANEL)
-        container.pack(anchor="w", padx=12, pady=(2, 6), fill="x")
+        opts = _norm_options(options)
+        seg = Segmented(parent, opts, multi=True, cols=cols)
+        seg.pack(anchor="w", padx=12, pady=(2, 4), fill="x")
         current_val = _read_py_var(filepath, varname) or []
-        if not isinstance(current_val, list):
-            current_val = []
-        check_vars = {}
-        for i, opt in enumerate(options):
-            var = tk.BooleanVar(value=(opt in current_val))
-            cb = _styled_check(container, opt, var)
-            cb.grid(row=i // cols, column=i % cols, sticky="w", padx=(0, 18), pady=1)
-            check_vars[opt] = var
-        self._fields[field_key] = ("multicheck", check_vars, filepath, varname)
+        if isinstance(current_val, list):
+            seg.set_multi(current_val)
+        self._fields[field_key] = ("multicheck", seg.vars, filepath, varname)
 
-    def _add_dropdown(self, parent, field_key, label_text, filepath, varname, options):
+    def _add_dropdown(self, parent, field_key, label_text, filepath, varname, options, cols=0):
         parent = _card_of(parent)
         _styled_label(parent, label_text).pack(anchor="w", padx=12, pady=(8, 2))
-        var = tk.StringVar()
+        opts = _norm_options(options)
         val = _read_py_var(filepath, varname)
-        current = str(val) if val is not None else (options[0] if options else "")
-        if current not in options and options:
-            options = [current] + options
-        var.set(current)
-        menu = tk.OptionMenu(parent, var, *options)
-        menu.config(bg=INPUT_BG, fg=FG, activebackground=ACCENT, activeforeground="#FFFFFE",
-                    font=("Segoe UI", 10), bd=0, highlightthickness=1,
-                    highlightbackground=BORDER, highlightcolor=ACCENT,
-                    relief="flat", anchor="w", width=28, padx=10, pady=6,
-                    indicatoron=False, cursor="hand2")
-        menu["menu"].config(bg=PANEL, fg=FG, activebackground=ACCENT,
-                            activeforeground="#FFFFFE", font=("Segoe UI", 10),
-                            bd=0, tearoff=0)
-        menu.pack(anchor="w", padx=12, pady=(0, 4))
-        self._fields[field_key] = ("dropdown", var, filepath, varname)
+        current = str(val) if val is not None else (opts[0][0] if opts else "")
+        if current and current not in [v for v, _ in opts]:
+            opts = [(current, current)] + opts
+        seg = Segmented(parent, opts, multi=False, cols=cols)
+        seg.pack(anchor="w", padx=12, pady=(0, 4), fill="x")
+        seg.set_single(current)
+        self._fields[field_key] = ("dropdown", seg.var, filepath, varname)
+
+    def _add_scale(self, parent, field_key, label_text, filepath, varname, frm=1, to=10):
+        parent = _card_of(parent)
+        _styled_label(parent, label_text).pack(anchor="w", padx=12, pady=(8, 2))
+        row = tk.Frame(parent, bg=PANEL)
+        row.pack(fill="x", padx=12, pady=(0, 4))
+        val_lbl = tk.Label(row, text="", fg=ACCENT2, bg=PANEL,
+                           font=("Segoe UI Semibold", 11), width=3, anchor="e")
+        val_lbl.pack(side="right", padx=(10, 0))
+        s = tk.Scale(row, from_=frm, to=to, orient="horizontal", showvalue=False,
+                     bg="#2f2f38", troughcolor=INPUT_BG, activebackground=ACCENT,
+                     highlightthickness=0, bd=0, relief="flat",
+                     sliderrelief="flat", sliderlength=22, width=10,
+                     cursor="hand2", command=lambda v: val_lbl.config(text=v))
+        v = _read_py_var(filepath, varname)
+        try:
+            s.set(int(v))
+        except (TypeError, ValueError):
+            s.set(frm)
+        val_lbl.config(text=str(s.get()))
+        s.pack(side="left", fill="x", expand=True)
+        self._fields[field_key] = ("scale", s, filepath, varname)
 
     # ── Build tabs ────────────────────────────────────────────────────────────
 
@@ -840,16 +970,19 @@ class GlassSettings(tk.Toplevel):
 
         _section_title(p, T("cfg_sec_filters"))
         self._add_entry(p, "switch_number", "Cambiar búsqueda cada N aplicaciones", self._SEARCH, "switch_number", width=10)
-        self._add_dropdown(p, "date_posted", "Fecha publicada", self._SEARCH, "date_posted",
-                           ["Past week", "Past 24 hours", "Past month", "Any time"])
+        self._add_dropdown(p, "date_posted", "Fecha de publicación", self._SEARCH, "date_posted",
+                           [("Past 24 hours", "Últimas 24 h"), ("Past week", "Última semana"),
+                            ("Past month", "Último mes"), ("Any time", "Cualquier fecha")])
         self._add_dropdown(p, "sort_by", "Ordenar por", self._SEARCH, "sort_by",
-                           ["Most recent", "Most relevant"])
+                           [("Most recent", "Más recientes"), ("Most relevant", "Más relevantes")])
         self._add_multicheck(p, "on_site", "Modalidad de trabajo", self._SEARCH, "on_site",
-                             ["On-site", "Hybrid", "Remote"])
+                             [("On-site", "Presencial"), ("Hybrid", "Híbrido"), ("Remote", "Remoto")])
         self._add_multicheck(p, "experience_level", "Nivel de experiencia", self._SEARCH, "experience_level",
-                             ["Internship", "Entry level", "Associate", "Mid-Senior level", "Director", "Executive"], cols=3)
+                             [("Internship", "Prácticas"), ("Entry level", "Junior"), ("Associate", "Asociado"),
+                              ("Mid-Senior level", "Semi-Senior"), ("Director", "Director"), ("Executive", "Ejecutivo")], cols=3)
         self._add_multicheck(p, "job_type", "Tipo de empleo", self._SEARCH, "job_type",
-                             ["Full-time", "Part-time", "Contract", "Temporary", "Internship", "Volunteer"], cols=3)
+                             [("Full-time", "Tiempo completo"), ("Part-time", "Medio tiempo"), ("Contract", "Contrato"),
+                              ("Temporary", "Temporal"), ("Internship", "Prácticas"), ("Volunteer", "Voluntariado")], cols=3)
         self._add_bool(p, "easy_apply_only", "Solo Easy Apply", self._SEARCH, "easy_apply_only")
         self._add_bool(p, "randomize_search_order", "Aleatorizar orden de búsqueda", self._SEARCH, "randomize_search_order")
 
@@ -871,33 +1004,42 @@ class GlassSettings(tk.Toplevel):
         self._add_entry(p, "street", "Calle (street)", self._PERS, "street")
         self._add_entry(p, "university", "Institución educativa (university)", self._PERS, "university")
         self._add_dropdown(p, "degree", "Nivel de educación (degree)", self._PERS, "degree",
-                           ["High School", "Associate's", "Bachelor's", "Master's", "Doctorate", "Other"])
+                           [("High School", "Bachillerato"), ("Associate's", "Técnico"), ("Bachelor's", "Pregrado"),
+                            ("Master's", "Maestría"), ("Doctorate", "Doctorado"), ("Other", "Otro")], cols=3)
         self._add_entry(p, "graduation_year", "Año de graduación (graduation_year)", self._PERS, "graduation_year", width=10)
         self._add_entry(p, "field_of_study", "Campo de estudio / Major (field_of_study)", self._PERS, "field_of_study")
         self._add_entry(p, "identification_number", "Número de identificación", self._PERS, "identification_number")
 
         _section_title(p, T("cfg_sec_eeo"))
+        _styled_label(_card_of(p), "Respuestas para formularios de igualdad de oportunidades (empleos en EE. UU.)", small=True).pack(anchor="w", padx=12, pady=(6, 0))
         self._add_dropdown(p, "gender", "Género", self._PERS, "gender",
-                           ["Decline to self identify", "Male", "Female", "Other", "Non-binary"])
-        self._add_entry(p, "ethnicity", "Etnia", self._PERS, "ethnicity")
-        self._add_dropdown(p, "disability_status", "Discapacidad", self._PERS, "disability_status",
-                           ["No", "Yes", "Decline to self identify"])
-        self._add_dropdown(p, "veteran_status", "Veterano", self._PERS, "veteran_status",
-                           ["No", "I am not a protected veteran",
-                            "I identify as one or more of the classifications of a protected veteran",
-                            "Decline to self identify"])
+                           [("Male", "Masculino"), ("Female", "Femenino"), ("Non-binary", "No binario"),
+                            ("Decline to self identify", "Prefiero no decir")], cols=4)
+        self._add_dropdown(p, "ethnicity", "Etnia", self._PERS, "ethnicity",
+                           [("Hispanic/Latino", "Hispano / Latino"), ("White", "Blanco"),
+                            ("Black or African American", "Afrodescendiente"), ("Asian", "Asiático"),
+                            ("Decline to self-identify", "Prefiero no decir")], cols=3)
+        self._add_dropdown(p, "disability_status", "¿Tienes alguna discapacidad?", self._PERS, "disability_status",
+                           [("No", "No"), ("Yes", "Sí"), ("Decline to self identify", "Prefiero no decir")])
+        self._add_dropdown(p, "veteran_status", "¿Veterano militar de EE. UU.?", self._PERS, "veteran_status",
+                           [("No", "No"), ("I am not a protected veteran", "No soy veterano protegido"),
+                            ("Decline to self identify", "Prefiero no decir")], cols=3)
 
     def _build_tab_responses(self, p):
         _section_title(p, T("cfg_sec_exp"))
         self._add_entry(p, "years_of_experience", "Años de experiencia a reportar", self._QUEST, "years_of_experience", width=10)
-        self._add_entry(p, "desired_salary", "Salario deseado (número)", self._QUEST, "desired_salary", width=16)
-        self._add_entry(p, "current_ctc", "CTC actual (número)", self._QUEST, "current_ctc", width=16)
-        self._add_entry(p, "notice_period", "Período de aviso en días", self._QUEST, "notice_period", width=10)
-        self._add_dropdown(p, "require_visa", "¿Requiere visa de trabajo?", self._QUEST, "require_visa",
-                           ["No", "Yes"])
+        self._add_entry(p, "desired_salary", "Salario anual deseado — solo número, en la moneda de la vacante (ej. 80000000 si es COP)", self._QUEST, "desired_salary", width=16)
+        self._add_entry(p, "current_ctc", "Salario anual actual — solo número, misma moneda (los formularios lo llaman CTC / current compensation)", self._QUEST, "current_ctc", width=16)
+        self._add_entry(p, "notice_period", "Días de preaviso para dejar tu empleo actual", self._QUEST, "notice_period", width=10)
+        self._add_dropdown(p, "require_visa", "¿Necesitas que la empresa patrocine tu visa de trabajo?", self._QUEST, "require_visa",
+                           [("No", "No"), ("Yes", "Sí")])
         self._add_entry(p, "recent_employer", "Empleador más reciente", self._QUEST, "recent_employer")
-        self._add_entry(p, "confidence_level", "Nivel de confianza 1-10", self._QUEST, "confidence_level", width=10)
-        self._add_entry(p, "us_citizenship", "Ciudadanía US", self._QUEST, "us_citizenship")
+        self._add_scale(p, "confidence_level", "Qué tan seguras/positivas son las respuestas del bot (1 = conservador, 10 = muy seguro)", self._QUEST, "confidence_level", frm=1, to=10)
+        self._add_dropdown(p, "us_citizenship", "Estatus migratorio en EE. UU. — solo aplica a vacantes de USA", self._QUEST, "us_citizenship",
+                           [("U.S. Citizen/Permanent Resident", "Ciudadano o residente permanente de EE. UU."),
+                            ("Non-citizen allowed to work for any employer", "Autorizado a trabajar para cualquier empleador en EE. UU."),
+                            ("Non-citizen seeking work authorization", "Necesitaría autorización de trabajo"),
+                            ("Other", "Otro / No aplica (vivo fuera de EE. UU.)")], cols=1)
 
         _section_title(p, T("cfg_sec_links"))
         self._add_entry(p, "linkedIn", "URL de LinkedIn", self._QUEST, "linkedIn")
@@ -911,10 +1053,8 @@ class GlassSettings(tk.Toplevel):
         self._add_entry(p, "default_resume_path", "Ruta del CV (PDF)", self._QUEST, "default_resume_path", browse=True)
 
     def _build_tab_bot(self, p):
-        _section_title(p, T("cfg_sec_linkedin"))
-        self._add_entry(p, "username", "Email de LinkedIn (usuario)", self._SECR, "username")
-        self._add_entry(p, "password", "Contraseña de LinkedIn", self._SECR, "password", mask=True)
-
+        # LinkedIn credentials intentionally NOT shown here: the bot uses the
+        # Chrome profile's active session; secrets.py remains the fallback.
         _section_title(p, T("cfg_sec_behavior"))
         self._add_bool(p, "pause_before_submit", "Pausar antes de enviar cada aplicación", self._QUEST, "pause_before_submit")
         self._add_bool(p, "pause_at_failed_question", "Pausar si no puede responder una pregunta", self._QUEST, "pause_at_failed_question")
@@ -939,16 +1079,17 @@ class GlassSettings(tk.Toplevel):
         self._add_bool(p, "stop_date_cycle_at_24hr", "Parar ciclo al llegar a 24h", self._SETT, "stop_date_cycle_at_24hr")
 
         _section_title(p, T("lang_label"))
-        self._add_dropdown(p, "ui_language", T("lang_label"), self._SETT, "ui_language",
-                           ["es", "en"])
+        self._add_dropdown(p, "ui_language", "Idioma de la interfaz", self._SETT, "ui_language",
+                           [("es", "Español"), ("en", "English")])
 
         _section_title(p, T("cfg_sec_ai"))
-        _styled_label(_card_of(p), "Proveedor:  groq (gratis) | gemini | openai | deepseek", small=True).pack(anchor="w", padx=12, pady=(4, 0))
-        self._add_entry(p, "ai_provider", "Proveedor de IA (ai_provider)", self._SECR, "ai_provider", width=16)
-        self._add_entry(p, "llm_api_key", "API Key (groq.com → API Keys → Create key)", self._SECR, "llm_api_key", width=38)
-        self._add_entry(p, "llm_model", "Modelo (llama-3.1-8b-instant para Groq)", self._SECR, "llm_model", width=30)
-        self._add_entry(p, "llm_api_url", "URL de API (solo para openai/ollama)", self._SECR, "llm_api_url", width=38)
-        self._add_bool(p, "use_AI", "Activar IA (use_AI)", self._SECR, "use_AI")
+        self._add_bool(p, "use_AI", "Usar IA para evaluar vacantes y responder preguntas", self._SECR, "use_AI")
+        self._add_dropdown(p, "ai_provider", "Proveedor de IA", self._SECR, "ai_provider",
+                           [("groq", "Groq (gratis)"), ("gemini", "Gemini"), ("openai", "OpenAI"),
+                            ("deepseek", "DeepSeek"), ("ollama", "Ollama (local)")])
+        self._add_entry(p, "llm_api_key", "API Key (en groq.com → API Keys → Create key)", self._SECR, "llm_api_key", width=38, mask=True)
+        self._add_entry(p, "llm_model", "Modelo (ej. llama-3.1-8b-instant para Groq)", self._SECR, "llm_model", width=30)
+        self._add_entry(p, "llm_api_url", "URL de API (solo para OpenAI-compatibles / Ollama)", self._SECR, "llm_api_url", width=38)
 
     # ── Save logic ────────────────────────────────────────────────────────────
 
@@ -979,6 +1120,8 @@ class GlassSettings(tk.Toplevel):
                     val = lines
                 elif ftype == "bool":
                     val = widget.get()
+                elif ftype == "scale":
+                    val = int(widget.get())
                 elif ftype == "multicheck":
                     val = [opt for opt, bv in widget.items() if bv.get()]
                 elif ftype == "dropdown":
@@ -1070,8 +1213,8 @@ class BotUIApp:
         self.title_label.pack(side="left")
 
         # Close button
-        self.close_btn = tk.Label(self.header, text="X", fg="#94A1B2",
-                                  bg="#0a0a0c", font=("Segoe UI Bold", 10),
+        self.close_btn = tk.Label(self.header, text=ICO_CLOSE, fg="#94A1B2",
+                                  bg="#0a0a0c", font=_icon_font(9),
                                   cursor="hand2")
         self.close_btn.pack(side="right", padx=(8, 0))
         self.close_btn.bind("<Enter>", lambda e: self.close_btn.config(fg="#E74C3C"))
@@ -1079,8 +1222,8 @@ class BotUIApp:
         self.close_btn.bind("<Button-1>", lambda e: self.trigger_stop())
 
         # Settings button
-        self.gear_btn = tk.Label(self.header, text="⚙", fg="#4c4c52",
-                                 bg="#0a0a0c", font=("Segoe UI", 10),
+        self.gear_btn = tk.Label(self.header, text=ICO_GEAR, fg="#4c4c52",
+                                 bg="#0a0a0c", font=_icon_font(10),
                                  cursor="hand2")
         self.gear_btn.pack(side="right", padx=(0, 4))
         self.gear_btn.bind("<Enter>", lambda e: self.gear_btn.config(fg=ACCENT))
@@ -1088,8 +1231,8 @@ class BotUIApp:
         self.gear_btn.bind("<Button-1>", lambda e: self._open_settings())
 
         # Drag indicator
-        self.drag_lbl = tk.Label(self.header, text="⠿", fg="#4c4c52",
-                                 bg="#0a0a0c", font=("Segoe UI", 11))
+        self.drag_lbl = tk.Label(self.header, text=ICO_GRIP, fg="#4c4c52",
+                                 bg="#0a0a0c", font=_icon_font(10))
         self.drag_lbl.pack(side="right")
 
         # API usage bar

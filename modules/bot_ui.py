@@ -475,43 +475,57 @@ BTN_TEAL_FG      = "#00E8C6"
 BTN_STOP         = "#E74C3C"
 BTN_STOP_HV      = "#C0392B"
 
-# Input/field background — a soft translucent-feel dark (lighter than pure black,
-# matching the dashboard's rgba(0,0,0,.3) inputs) so fields don't look harsh.
-INPUT_BG         = "#16161b"
+# Input/field background — darker than the panel (matches the dashboard's
+# rgba(0,0,0,.3) inputs) so fields read as wells inside each card.
+INPUT_BG         = "#0f0f13"
 TAB_ACTIVE_BG    = "#1a1a20"
+# Section card background — the settings window groups fields into panels that
+# mimic the dashboard's glass cards (flat approximation, Tk has no blur).
+PANEL            = "#15151a"
+
+def _card_of(parent):
+    """Rows added after a _section_title() land inside that section's card."""
+    return getattr(parent, "_current_card", parent)
 
 def _styled_label(parent, text, small=False):
     size = 8 if small else 9
-    return tk.Label(parent, text=text, fg=FG_DIM, bg=BG2, font=("Segoe UI", size))
+    return tk.Label(parent, text=text, fg=FG_DIM, bg=PANEL, font=("Segoe UI", size))
 
 def _styled_entry(parent, width=38):
-    e = tk.Entry(parent, bg=INPUT_BG, fg=FG, insertbackground=ACCENT2, font=("Consolas", 9),
+    e = tk.Entry(parent, bg=INPUT_BG, fg=FG, insertbackground=ACCENT2, font=("Segoe UI", 10),
                  bd=0, highlightthickness=1, highlightbackground=BORDER,
                  highlightcolor=ACCENT, width=width, relief="flat")
     return e
 
 def _styled_text(parent, height=4, width=38):
-    t = tk.Text(parent, bg=INPUT_BG, fg=FG, insertbackground=ACCENT2, font=("Consolas", 9),
+    t = tk.Text(parent, bg=INPUT_BG, fg=FG, insertbackground=ACCENT2, font=("Segoe UI", 10),
                 bd=0, highlightthickness=1, highlightbackground=BORDER,
                 highlightcolor=ACCENT, height=height, width=width, relief="flat",
-                wrap="word", padx=8, pady=6)
+                wrap="word", padx=10, pady=8)
     return t
 
 def _styled_check(parent, text, var):
     return tk.Checkbutton(parent, text=text, variable=var,
-                          fg=FG, bg=BG2, selectcolor=INPUT_BG,
-                          activeforeground=ACCENT2, activebackground=BG2,
-                          font=("Segoe UI", 9), anchor="w", bd=0,
+                          fg=FG, bg=PANEL, selectcolor=INPUT_BG,
+                          activeforeground=ACCENT2, activebackground=PANEL,
+                          font=("Segoe UI", 10), anchor="w", bd=0,
                           highlightthickness=0, cursor="hand2")
 
 def _section_title(parent, text):
-    wrap = tk.Frame(parent, bg=BG2)
-    wrap.pack(fill="x", padx=14, pady=(14, 4))
-    dot = tk.Frame(wrap, bg=ACCENT, width=3, height=13)
-    dot.pack(side="left", padx=(0, 7))
-    tk.Label(wrap, text=text.upper(), fg=FG, bg=BG2,
-             font=("Segoe UI Semibold", 9)).pack(side="left")
-    tk.Frame(parent, bg=BORDER, height=1).pack(fill="x", padx=14, pady=(0, 8))
+    """Creates a dashboard-style card; following rows are packed inside it."""
+    card = tk.Frame(parent, bg=PANEL, bd=0,
+                    highlightbackground=BORDER, highlightcolor=BORDER,
+                    highlightthickness=1)
+    card.pack(fill="x", padx=16, pady=(14, 2))
+    head = tk.Frame(card, bg=PANEL)
+    head.pack(fill="x", padx=14, pady=(13, 3))
+    tk.Frame(head, bg=ACCENT, width=3, height=15).pack(side="left", padx=(0, 9))
+    tk.Label(head, text=text.upper(), fg=FG, bg=PANEL,
+             font=("Segoe UI Semibold", 10)).pack(side="left")
+    body = tk.Frame(card, bg=PANEL)
+    body.pack(fill="x", padx=4, pady=(0, 12))
+    parent._current_card = body
+    return body
 
 
 class GlassSettings(tk.Toplevel):
@@ -534,7 +548,7 @@ class GlassSettings(tk.Toplevel):
         self.resizable(True, True)
 
         scaling = get_dpi_scaling()
-        w, h = int(580 * scaling), int(600 * scaling)
+        w, h = int(660 * scaling), int(680 * scaling)
         sw = self.winfo_screenwidth()
         sh = self.winfo_screenheight()
         x = (sw - w) // 2
@@ -554,16 +568,19 @@ class GlassSettings(tk.Toplevel):
         outer.place(x=1, y=1, relwidth=1, relheight=1, width=-2, height=-2)
 
         # Header bar
-        hdr = tk.Frame(outer, bg=BG, height=36)
+        hdr = tk.Frame(outer, bg=BG, height=46)
         hdr.pack(fill="x", padx=0)
         hdr.pack_propagate(False)
 
-        tk.Label(hdr, text=f"  {T('cfg_title')}", fg=ACCENT, bg=BG,
-                 font=("Segoe UI Bold", 10)).pack(side="left", padx=8)
+        logo = tk.Label(hdr, text=" ⚙ ", fg="#0a0a0c", bg=ACCENT,
+                        font=("Segoe UI Bold", 10))
+        logo.pack(side="left", padx=(14, 9), pady=10)
+        tk.Label(hdr, text=T('cfg_title'), fg=FG, bg=BG,
+                 font=("Segoe UI Semibold", 11)).pack(side="left")
 
-        close_lbl = tk.Label(hdr, text="  X  ", fg=FG_DIM, bg=BG,
-                             font=("Segoe UI Bold", 10), cursor="hand2")
-        close_lbl.pack(side="right", padx=4)
+        close_lbl = tk.Label(hdr, text="  ✕  ", fg=FG_DIM, bg=BG,
+                             font=("Segoe UI Bold", 11), cursor="hand2")
+        close_lbl.pack(side="right", padx=8)
         close_lbl.bind("<Enter>", lambda e: close_lbl.config(fg="#E74C3C"))
         close_lbl.bind("<Leave>", lambda e: close_lbl.config(fg=FG_DIM))
         close_lbl.bind("<Button-1>", lambda e: self.destroy())
@@ -575,7 +592,7 @@ class GlassSettings(tk.Toplevel):
         self._tab_frames = {}
         self._active_tab = tk.StringVar(value="search")
 
-        tab_bar = tk.Frame(outer, bg=BG, height=38)
+        tab_bar = tk.Frame(outer, bg=BG, height=42)
         tab_bar.pack(fill="x")
         tab_bar.pack_propagate(False)
 
@@ -588,7 +605,7 @@ class GlassSettings(tk.Toplevel):
             col = tk.Frame(tab_bar, bg=BG)
             col.pack(side="left", fill="y")
             btn = tk.Label(col, text=label, fg=FG_DIM, bg=BG,
-                           font=("Segoe UI", 9), cursor="hand2", padx=14)
+                           font=("Segoe UI", 10), cursor="hand2", padx=17)
             btn.pack(side="top", fill="both", expand=True)
             underline = tk.Frame(col, bg=BG, height=2)
             underline.pack(side="bottom", fill="x")
@@ -602,24 +619,29 @@ class GlassSettings(tk.Toplevel):
         tk.Frame(outer, bg=BORDER, height=1).pack(fill="x")
 
         # Content area
-        self._content = tk.Frame(outer, bg=BG2)
+        self._content = tk.Frame(outer, bg=BG)
         self._content.pack(fill="both", expand=True)
 
         # Save / Cancel bar
-        btn_bar = tk.Frame(outer, bg=BG, height=44)
+        btn_bar = tk.Frame(outer, bg=BG, height=54)
         btn_bar.pack(fill="x", side="bottom")
         btn_bar.pack_propagate(False)
         tk.Frame(btn_bar, bg=BORDER, height=1).pack(fill="x", side="top")
 
-        tk.Button(btn_bar, text=T("cfg_cancel"), fg=FG_DIM, bg=BG,
-                  activeforeground=FG, activebackground=BG2,
-                  bd=0, padx=14, pady=5, font=("Segoe UI Bold", 8),
-                  command=self.destroy, cursor="hand2").pack(side="right", padx=8, pady=7)
+        cancel_btn = tk.Button(btn_bar, text=T("cfg_cancel"), fg=FG_DIM, bg=BG,
+                               activeforeground=FG, activebackground=BG2,
+                               bd=0, padx=18, pady=7, font=("Segoe UI Semibold", 9),
+                               highlightthickness=1, highlightbackground=BORDER,
+                               command=self.destroy, cursor="hand2")
+        cancel_btn.pack(side="right", padx=(4, 12), pady=9)
 
-        tk.Button(btn_bar, text=f"  {T('cfg_save')}  ", fg="#101012", bg=ACCENT2,
-                  activeforeground="#101012", activebackground="#00c9aa",
-                  bd=0, padx=14, pady=5, font=("Segoe UI Bold", 8),
-                  command=self._save_all, cursor="hand2").pack(side="right", padx=4, pady=7)
+        save_btn = tk.Button(btn_bar, text=f"  {T('cfg_save')}  ", fg="#0a0a0c", bg=ACCENT2,
+                             activeforeground="#0a0a0c", activebackground="#00c9aa",
+                             bd=0, padx=20, pady=7, font=("Segoe UI Bold", 9),
+                             command=self._save_all, cursor="hand2")
+        save_btn.pack(side="right", padx=4, pady=9)
+        save_btn.bind("<Enter>", lambda e: save_btn.config(bg="#2df2d2"))
+        save_btn.bind("<Leave>", lambda e: save_btn.config(bg=ACCENT2))
 
         self._fields = {}   # key -> (type, widget)
         self._build_all_tabs()
@@ -632,22 +654,36 @@ class GlassSettings(tk.Toplevel):
         for k, fr in self._tab_frames.items():
             fr.pack_forget()
         for k, btn in self._tab_btns.items():
-            btn.config(fg=FG_DIM, font=("Segoe UI", 9))
+            btn.config(fg=FG_DIM, font=("Segoe UI", 10))
             self._tab_underlines[k].config(bg=BG)
         self._tab_frames[key].pack(fill="both", expand=True)
-        self._tab_btns[key].config(fg=ACCENT2, font=("Segoe UI Semibold", 9))
+        self._tab_btns[key].config(fg=ACCENT2, font=("Segoe UI Semibold", 10))
         self._tab_underlines[key].config(bg=ACCENT)
         self._active_tab.set(key)
 
     # ── Scrollable frame helper ───────────────────────────────────────────────
 
     def _make_scroll_frame(self, parent):
-        canvas = tk.Canvas(parent, bg=BG2, bd=0, highlightthickness=0)
-        sb = tk.Scrollbar(parent, orient="vertical", command=canvas.yview)
+        canvas = tk.Canvas(parent, bg=BG, bd=0, highlightthickness=0)
+        style = ttk.Style(canvas)
+        try:
+            style.theme_use("clam")
+        except Exception:
+            pass
+        style.configure("Glass.Vertical.TScrollbar", background="#26262e",
+                        troughcolor=BG, bordercolor=BG, arrowcolor=FG_DIM,
+                        relief="flat", gripcount=0, width=9)
+        style.map("Glass.Vertical.TScrollbar", background=[("active", "#3a3a44")])
+        # thumb-only layout — drops the boxy arrow buttons
+        style.layout("Glass.Vertical.TScrollbar", [
+            ("Vertical.Scrollbar.trough", {"sticky": "ns", "children": [
+                ("Vertical.Scrollbar.thumb", {"expand": "1", "sticky": "nswe"})]})])
+        sb = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview,
+                           style="Glass.Vertical.TScrollbar")
         canvas.configure(yscrollcommand=sb.set)
         sb.pack(side="right", fill="y")
         canvas.pack(side="left", fill="both", expand=True)
-        inner = tk.Frame(canvas, bg=BG2)
+        inner = tk.Frame(canvas, bg=BG)
         win_id = canvas.create_window((0, 0), window=inner, anchor="nw")
 
         def _on_configure(e):
@@ -687,40 +723,48 @@ class GlassSettings(tk.Toplevel):
             entry_widget.delete(0, tk.END)
             entry_widget.insert(0, file_path)
 
-    def _add_entry(self, parent, field_key, label_text, filepath, varname, width=36, browse=False):
-        _styled_label(parent, label_text).pack(anchor="w", padx=14, pady=(6, 1))
+    def _add_entry(self, parent, field_key, label_text, filepath, varname, width=36, browse=False, mask=False):
+        parent = _card_of(parent)
+        _styled_label(parent, label_text).pack(anchor="w", padx=12, pady=(8, 2))
         if browse:
-            row = tk.Frame(parent, bg=BG2)
-            row.pack(anchor="w", padx=14, pady=(0, 2), fill="x")
+            row = tk.Frame(parent, bg=PANEL)
+            row.pack(anchor="w", padx=12, pady=(0, 4), fill="x")
             e = _styled_entry(row, width=width - 8)
-            e.pack(side="left", fill="x", expand=True)
+            e.pack(side="left", fill="x", expand=True, ipady=4)
             btn = tk.Button(row, text="EXAMINAR", fg=BTN_TEAL_FG, bg=BTN_TEAL,
                             activeforeground=BTN_TEAL_FG, activebackground=BTN_TEAL_HV,
-                            bd=0, padx=8, pady=2, font=("Segoe UI Bold", 7),
+                            bd=0, padx=10, pady=5, font=("Segoe UI Bold", 8),
                             command=lambda: self._browse_file(e), cursor="hand2")
-            btn.pack(side="left", padx=(6, 0))
+            btn.pack(side="left", padx=(8, 0))
         else:
             e = _styled_entry(parent, width=width)
-            e.pack(anchor="w", padx=14, pady=(0, 2))
-            
+            if width >= 20:
+                e.pack(anchor="w", padx=12, pady=(0, 4), fill="x", ipady=4)
+            else:
+                e.pack(anchor="w", padx=12, pady=(0, 4), ipady=4)
+
+        if mask:
+            e.config(show="•")
         val = _read_py_var(filepath, varname)
         if val is not None:
             e.insert(0, str(val))
         self._fields[field_key] = ("entry", e, filepath, varname)
 
     def _add_text(self, parent, field_key, label_text, filepath, varname, height=4):
-        _styled_label(parent, label_text).pack(anchor="w", padx=14, pady=(6, 1))
+        parent = _card_of(parent)
+        _styled_label(parent, label_text).pack(anchor="w", padx=12, pady=(8, 2))
         t = _styled_text(parent, height=height)
-        t.pack(anchor="w", padx=14, pady=(0, 2), fill="x")
+        t.pack(anchor="w", padx=12, pady=(0, 4), fill="x")
         val = _read_py_var(filepath, varname)
         if val is not None:
             t.insert("1.0", str(val).strip())
         self._fields[field_key] = ("text", t, filepath, varname)
 
     def _add_list(self, parent, field_key, label_text, filepath, varname, height=3):
-        _styled_label(parent, f"{label_text}  (una por línea)", small=True).pack(anchor="w", padx=14, pady=(6, 1))
+        parent = _card_of(parent)
+        _styled_label(parent, f"{label_text}  (una por línea)", small=True).pack(anchor="w", padx=12, pady=(8, 2))
         t = _styled_text(parent, height=height)
-        t.pack(anchor="w", padx=14, pady=(0, 2), fill="x")
+        t.pack(anchor="w", padx=12, pady=(0, 4), fill="x")
         val = _read_py_var(filepath, varname)
         if isinstance(val, list):
             t.insert("1.0", "\n".join(str(v) for v in val))
@@ -729,18 +773,20 @@ class GlassSettings(tk.Toplevel):
         self._fields[field_key] = ("list", t, filepath, varname)
 
     def _add_bool(self, parent, field_key, label_text, filepath, varname):
+        parent = _card_of(parent)
         var = tk.BooleanVar()
         val = _read_py_var(filepath, varname)
         if val is not None:
             var.set(bool(val))
         cb = _styled_check(parent, label_text, var)
-        cb.pack(anchor="w", padx=14, pady=3)
+        cb.pack(anchor="w", padx=12, pady=4)
         self._fields[field_key] = ("bool", var, filepath, varname)
 
     def _add_multicheck(self, parent, field_key, label_text, filepath, varname, options, cols=3):
-        _styled_label(parent, label_text).pack(anchor="w", padx=14, pady=(6, 1))
-        container = tk.Frame(parent, bg=BG2)
-        container.pack(anchor="w", padx=14, pady=(2, 6), fill="x")
+        parent = _card_of(parent)
+        _styled_label(parent, label_text).pack(anchor="w", padx=12, pady=(8, 2))
+        container = tk.Frame(parent, bg=PANEL)
+        container.pack(anchor="w", padx=12, pady=(2, 6), fill="x")
         current_val = _read_py_var(filepath, varname) or []
         if not isinstance(current_val, list):
             current_val = []
@@ -753,7 +799,8 @@ class GlassSettings(tk.Toplevel):
         self._fields[field_key] = ("multicheck", check_vars, filepath, varname)
 
     def _add_dropdown(self, parent, field_key, label_text, filepath, varname, options):
-        _styled_label(parent, label_text).pack(anchor="w", padx=14, pady=(6, 1))
+        parent = _card_of(parent)
+        _styled_label(parent, label_text).pack(anchor="w", padx=12, pady=(8, 2))
         var = tk.StringVar()
         val = _read_py_var(filepath, varname)
         current = str(val) if val is not None else (options[0] if options else "")
@@ -761,21 +808,22 @@ class GlassSettings(tk.Toplevel):
             options = [current] + options
         var.set(current)
         menu = tk.OptionMenu(parent, var, *options)
-        menu.config(bg=BG, fg=FG, activebackground=ACCENT, activeforeground="#FFFFFE",
-                    font=("Segoe UI", 9), bd=0, highlightthickness=1,
+        menu.config(bg=INPUT_BG, fg=FG, activebackground=ACCENT, activeforeground="#FFFFFE",
+                    font=("Segoe UI", 10), bd=0, highlightthickness=1,
                     highlightbackground=BORDER, highlightcolor=ACCENT,
-                    relief="flat", anchor="w", width=28)
-        menu["menu"].config(bg=BG, fg=FG, activebackground=ACCENT,
-                            activeforeground="#FFFFFE", font=("Segoe UI", 9),
+                    relief="flat", anchor="w", width=28, padx=10, pady=6,
+                    indicatoron=False, cursor="hand2")
+        menu["menu"].config(bg=PANEL, fg=FG, activebackground=ACCENT,
+                            activeforeground="#FFFFFE", font=("Segoe UI", 10),
                             bd=0, tearoff=0)
-        menu.pack(anchor="w", padx=14, pady=(0, 4))
+        menu.pack(anchor="w", padx=12, pady=(0, 4))
         self._fields[field_key] = ("dropdown", var, filepath, varname)
 
     # ── Build tabs ────────────────────────────────────────────────────────────
 
     def _build_all_tabs(self):
         for key in ["search", "personal", "responses", "bot"]:
-            outer = tk.Frame(self._content, bg=BG2)
+            outer = tk.Frame(self._content, bg=BG)
             inner = self._make_scroll_frame(outer)
             self._tab_frames[key] = outer
             getattr(self, f"_build_tab_{key}")(inner)
@@ -865,7 +913,7 @@ class GlassSettings(tk.Toplevel):
     def _build_tab_bot(self, p):
         _section_title(p, T("cfg_sec_linkedin"))
         self._add_entry(p, "username", "Email de LinkedIn (usuario)", self._SECR, "username")
-        self._add_entry(p, "password", "Contraseña de LinkedIn", self._SECR, "password")
+        self._add_entry(p, "password", "Contraseña de LinkedIn", self._SECR, "password", mask=True)
 
         _section_title(p, T("cfg_sec_behavior"))
         self._add_bool(p, "pause_before_submit", "Pausar antes de enviar cada aplicación", self._QUEST, "pause_before_submit")
@@ -874,6 +922,8 @@ class GlassSettings(tk.Toplevel):
         self._add_bool(p, "run_non_stop", "Correr sin parar (run_non_stop)", self._SETT, "run_non_stop")
         self._add_bool(p, "follow_companies", "Seguir empresas al aplicar", self._SETT, "follow_companies")
         self._add_bool(p, "close_tabs", "Cerrar tabs de aplicaciones externas", self._SETT, "close_tabs")
+        self._add_bool(p, "external_apply_enabled", "Aplicador universal: autollenar solicitudes externas (Greenhouse/Lever)", self._SETT, "external_apply_enabled")
+        self._add_bool(p, "pause_before_submit_external", "Pausar antes de enviar solicitudes externas", self._SETT, "pause_before_submit_external")
 
         _section_title(p, T("cfg_sec_browser"))
         self._add_entry(p, "click_gap", "Pausa entre clicks (seg)", self._SETT, "click_gap", width=10)
@@ -893,7 +943,7 @@ class GlassSettings(tk.Toplevel):
                            ["es", "en"])
 
         _section_title(p, T("cfg_sec_ai"))
-        _styled_label(p, "Proveedor:  groq (gratis) | gemini | openai | deepseek", small=True).pack(anchor="w", padx=14, pady=(2, 1))
+        _styled_label(_card_of(p), "Proveedor:  groq (gratis) | gemini | openai | deepseek", small=True).pack(anchor="w", padx=12, pady=(4, 0))
         self._add_entry(p, "ai_provider", "Proveedor de IA (ai_provider)", self._SECR, "ai_provider", width=16)
         self._add_entry(p, "llm_api_key", "API Key (groq.com → API Keys → Create key)", self._SECR, "llm_api_key", width=38)
         self._add_entry(p, "llm_model", "Modelo (llama-3.1-8b-instant para Groq)", self._SECR, "llm_model", width=30)

@@ -41,11 +41,6 @@ CONFIG_IGNORE = {
     "search.py", "settings.py", "resume.py", "user_config.json",
 }
 
-CLEAN_USER_CONFIG = {
-    "_comment": "CVSniper user configuration. Edit from the web UI at http://127.0.0.1:5000",
-    "personals": {}, "questions": {}, "search": {}, "secrets": {}
-}
-
 # ── Scripts generados en el release ───────────────────────────────────────────
 
 # Doble-click para instalar todo
@@ -403,10 +398,6 @@ def copy_config(src: Path, dst: Path):
             shutil.copy2(default_file, dst / f"{cfg_name}.py")
             print(f"  [config] {cfg_name}.py <- template limpio")
 
-    (dst / "user_config.json").write_text(
-        json.dumps(CLEAN_USER_CONFIG, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
-    print("  [config] user_config.json <- vacio")
 
     resume_src = src / "resume.py"
     if resume_src.exists():

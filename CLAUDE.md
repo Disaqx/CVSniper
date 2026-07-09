@@ -58,11 +58,11 @@ A single large file (~4500 lines) that is the main orchestrator. It:
 > Legacy directories `modules/modules/` and `modules/__deprecated__/` were removed. Do not recreate them — if you see `modules/modules/` reappear it's likely an import-typo artifact.
 
 ### Flask dashboard: `app.py`
-Standalone Flask server (launched as a subprocess by `bot_ui.py`). Serves `templates/` HTML + handles REST routes for reading/writing `config/user_config.json` and reading CSV outputs. All config changes from the UI are written to `user_config.json`, then `runAiBot.py` re-imports the Python config files on reload.
+Standalone READ-ONLY Flask server (launched in a thread by `bot_ui.py`). Serves the applied-jobs dashboard (`templates/index.html`) from the output CSVs. It does NOT configure the bot — all configuration happens in the Tkinter settings window (`GlassSettings` in `modules/bot_ui.py`), which edits the `config/*.py` files directly and hot-reloads them.
 
-## Config system (two layers)
+## Config system
 
-**Layer 1 — Python files in `config/`** (source of truth for the bot):
+**Python files in `config/`** (single source of truth for the bot):
 - `personals.py` — name, phone, address, education, EEO answers
 - `secrets.py` — LinkedIn credentials, AI provider settings
 - `search.py` — job search terms, LinkedIn filters, bad_words list
@@ -71,8 +71,7 @@ Standalone Flask server (launched as a subprocess by `bot_ui.py`). Serves `templ
 
 All have `.default.py` templates committed to git. The real files are gitignored.
 
-**Layer 2 — `config/user_config.json`** (bridge for the web UI):
-The Flask dashboard reads/writes this JSON. `runAiBot.py` reloads it on config changes via the UI. Do not treat `user_config.json` as the source of truth — the `.py` files are.
+> `config/user_config.json` is a leftover from when the dashboard edited config; nothing reads it anymore.
 
 ## AI provider configuration (`config/secrets.py`)
 

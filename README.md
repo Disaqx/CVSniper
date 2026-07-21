@@ -45,6 +45,8 @@ cd CVSniper
 **2. Instala las dependencias:**
 ```bash
 pip install selenium undetected-chromedriver flask flask-cors openai google-generativeai pyautogui
+pip install -r requirements.txt
+
 ```
 
 O usa el script incluido según tu sistema operativo:

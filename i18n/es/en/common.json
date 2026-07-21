@@ -1,0 +1,23 @@
+{
+    "status_idle": "Status: Idle",
+    "status_initializing": "Initializing",
+    "status_configured": "Status: Configured",
+    "status_config_req": "Configuration required",
+    "msg_ready": "Bot ready to continue.",
+    "msg_fill_config": "Please complete your data in the configuration panel.",
+    "btn_confirm": "CONFIRM?",
+    "btn_stopping": "STOPPING...",
+    "msg_confirm_stop": "Click CONFIRM again to stop the bot.",
+    "msg_stopping": "Stopping bot...",
+    "log_paused": "Bot paused.",
+    "log_resumed": "Bot resumed.",
+    "lang_label": "Interface Language",
+    "btn_skip": "SKIP",
+    "btn_save": "SAVE",
+    "btn_browse": "BROWSE",
+    "btn_dashboard": "Dashboard",
+    "browse_pdf_title": "Select CV (PDF)",
+    "hint_one_per_line": "(one per line)",
+    "alert_api_key_title": "Missing AI API Key",
+    "alert_api_key_msg": "AI is enabled but the API Key is missing.\n\nIn settings (⚙ button) → Bot tab → AI section:\n→ Paste your Groq API Key (free at console.groq.com)\n\nSave the changes to continue."
+}

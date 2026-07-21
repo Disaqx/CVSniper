@@ -1,16 +1,18 @@
-import tkinter as tk
-from tkinter import ttk, scrolledtext, filedialog
-import threading
-import queue
-import ctypes
-import time
-import os
-import re
 import ast
+import ctypes
+import os
+import queue
+import re
+import threading
+import time
+import tkinter as tk
 import webbrowser
-from ctypes import c_int, c_void_p, Structure, sizeof, windll, pointer, byref
-from ctypes import wintypes
+from ctypes import (Structure, byref, c_int, c_void_p, pointer, sizeof, windll,
+                    wintypes)
+from tkinter import filedialog, scrolledtext, ttk
+
 from modules.i18n import T, get_language
+
 
 def _fix_window_rendering(widget):
     """Strip WS_EX_LAYERED after the window is fully shown via after().
@@ -47,8 +49,9 @@ def start_flask_dashboard():
             import sys
             _base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             sys.path.insert(0, _base)
-            from app import app as flask_app
             import logging
+
+            from app import app as flask_app
             log = logging.getLogger('werkzeug')
             log.setLevel(logging.ERROR)  # suppress Flask request logs
             flask_app.run(host="127.0.0.1", port=FLASK_PORT, debug=False, use_reloader=False)
@@ -88,7 +91,7 @@ is_paused = False
 is_stopped = False
 career_ops_mode = False
 active_driver = None
-current_ui_status = "Status: Idle"
+current_ui_status = T("status_idle")
 current_ui_details = ""
 current_ui_action = ""
 
@@ -348,9 +351,9 @@ class GlassAskText(tk.Toplevel):
         entry.select_range(0, "end")
         btn_f = tk.Frame(frame, bg="#0a0a0c")
         btn_f.pack(fill="x", side="bottom", pady=12)
-        tk.Button(btn_f, text="SALTAR", fg="#888", bg="#0a0a0c", bd=0,
+        tk.Button(btn_f, text=T("btn_skip"), fg="#888", bg="#0a0a0c", bd=0,
                   font=("Segoe UI", 9), command=self._skip, cursor="hand2").pack(side="left", padx=20)
-        tk.Button(btn_f, text="GUARDAR", fg="#FFFFFE", bg="#7F5AF0", activebackground="#9270F2",
+        tk.Button(btn_f, text=T("btn_save"), fg="#FFFFFE", bg="#7F5AF0", activebackground="#9270F2",
                   bd=0, padx=20, pady=6, font=("Segoe UI Bold", 9),
                   command=self._save, cursor="hand2").pack(side="right", padx=20)
         self.bind("<Return>", lambda e: self._save())
@@ -829,8 +832,8 @@ class GlassSettings(tk.Toplevel):
 
     def _browse_file(self, entry_widget):
         file_path = filedialog.askopenfilename(
-            title="Seleccionar CV (PDF)",
-            filetypes=[("Archivos PDF", "*.pdf"), ("Todos los archivos", "*.*")]
+            title=T("browse_pdf_title"),
+            filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")]
         )
         if file_path:
             file_path = os.path.normpath(file_path)
@@ -845,7 +848,7 @@ class GlassSettings(tk.Toplevel):
             row.pack(anchor="w", padx=12, pady=(0, 4), fill="x")
             e = _styled_entry(row, width=width - 8)
             e.pack(side="left", fill="x", expand=True, ipady=4)
-            btn = tk.Button(row, text="EXAMINAR", fg=BTN_TEAL_FG, bg=BTN_TEAL,
+            btn = tk.Button(row, text=T("btn_browse"), fg=BTN_TEAL_FG, bg=BTN_TEAL,
                             activeforeground=BTN_TEAL_FG, activebackground=BTN_TEAL_HV,
                             bd=0, padx=10, pady=5, font=("Segoe UI Bold", 8),
                             command=lambda: self._browse_file(e), cursor="hand2")
@@ -876,7 +879,7 @@ class GlassSettings(tk.Toplevel):
 
     def _add_list(self, parent, field_key, label_text, filepath, varname, height=3):
         parent = _card_of(parent)
-        _styled_label(parent, f"{label_text}  (una por línea)", small=True).pack(anchor="w", padx=12, pady=(8, 2))
+        _styled_label(parent, f"{label_text}  {T('hint_one_per_line')}", small=True).pack(anchor="w", padx=12, pady=(8, 2))
         t = _styled_text(parent, height=height)
         t.pack(anchor="w", padx=12, pady=(0, 4), fill="x")
         val = _read_py_var(filepath, varname)
@@ -960,136 +963,136 @@ class GlassSettings(tk.Toplevel):
 
     def _build_tab_search(self, p):
         _section_title(p, T("cfg_sec_search_main"))
-        self._add_list(p, "search_terms", "Términos de búsqueda (search_terms)", self._SEARCH, "search_terms", height=5)
-        self._add_entry(p, "search_location", "Ubicación (search_location)", self._SEARCH, "search_location")
+        self._add_list(p, "search_terms", T("cfg_field_search_terms"), self._SEARCH, "search_terms", height=5)
+        self._add_entry(p, "search_location", T("cfg_field_search_location"), self._SEARCH, "search_location")
 
         _section_title(p, T("cfg_sec_relevance"))
-        self._add_list(p, "primary_focus_keywords", "Palabras clave PRINCIPALES (Help Desk, Tech Support...)", self._SEARCH, "primary_focus_keywords", height=3)
-        self._add_list(p, "secondary_focus_keywords", "Palabras clave SECUNDARIAS (solo Remote/Hybrid)", self._SEARCH, "secondary_focus_keywords", height=3)
-        self._add_bool(p, "enable_job_focus_filter", "Activar filtro de relevancia (skip trabajos irrelevantes)", self._SEARCH, "enable_job_focus_filter")
+        self._add_list(p, "primary_focus_keywords", T("cfg_field_primary_focus_keywords"), self._SEARCH, "primary_focus_keywords", height=3)
+        self._add_list(p, "secondary_focus_keywords", T("cfg_field_secondary_focus_keywords"), self._SEARCH, "secondary_focus_keywords", height=3)
+        self._add_bool(p, "enable_job_focus_filter", T("cfg_field_enable_job_focus_filter"), self._SEARCH, "enable_job_focus_filter")
 
         _section_title(p, T("cfg_sec_filters"))
-        self._add_entry(p, "switch_number", "Cambiar búsqueda cada N aplicaciones", self._SEARCH, "switch_number", width=10)
-        self._add_dropdown(p, "date_posted", "Fecha de publicación", self._SEARCH, "date_posted",
-                           [("Past 24 hours", "Últimas 24 h"), ("Past week", "Última semana"),
-                            ("Past month", "Último mes"), ("Any time", "Cualquier fecha")])
-        self._add_dropdown(p, "sort_by", "Ordenar por", self._SEARCH, "sort_by",
-                           [("Most recent", "Más recientes"), ("Most relevant", "Más relevantes")])
-        self._add_multicheck(p, "on_site", "Modalidad de trabajo", self._SEARCH, "on_site",
-                             [("On-site", "Presencial"), ("Hybrid", "Híbrido"), ("Remote", "Remoto")])
-        self._add_multicheck(p, "experience_level", "Nivel de experiencia", self._SEARCH, "experience_level",
-                             [("Internship", "Prácticas"), ("Entry level", "Junior"), ("Associate", "Asociado"),
-                              ("Mid-Senior level", "Semi-Senior"), ("Director", "Director"), ("Executive", "Ejecutivo")], cols=3)
-        self._add_multicheck(p, "job_type", "Tipo de empleo", self._SEARCH, "job_type",
-                             [("Full-time", "Tiempo completo"), ("Part-time", "Medio tiempo"), ("Contract", "Contrato"),
-                              ("Temporary", "Temporal"), ("Internship", "Prácticas"), ("Volunteer", "Voluntariado")], cols=3)
-        self._add_bool(p, "easy_apply_only", "Solo Easy Apply", self._SEARCH, "easy_apply_only")
-        self._add_bool(p, "randomize_search_order", "Aleatorizar orden de búsqueda", self._SEARCH, "randomize_search_order")
+        self._add_entry(p, "switch_number", T("cfg_field_switch_number"), self._SEARCH, "switch_number", width=10)
+        self._add_dropdown(p, "date_posted", T("cfg_field_date_posted"), self._SEARCH, "date_posted",
+                           [("Past 24 hours", T("opt_past_24_hours")), ("Past week", T("opt_past_week")),
+                            ("Past month", T("opt_past_month")), ("Any time", T("opt_any_time"))])
+        self._add_dropdown(p, "sort_by", T("cfg_field_sort_by"), self._SEARCH, "sort_by",
+                           [("Most recent", T("opt_most_recent")), ("Most relevant", T("opt_most_relevant"))])
+        self._add_multicheck(p, "on_site", T("cfg_field_on_site"), self._SEARCH, "on_site",
+                             [("On-site", T("opt_on_site")), ("Hybrid", T("opt_hybrid")), ("Remote", T("opt_remote"))])
+        self._add_multicheck(p, "experience_level", T("cfg_field_experience_level"), self._SEARCH, "experience_level",
+                             [("Internship", T("opt_internship")), ("Entry level", T("opt_entry_level")), ("Associate", T("opt_associate")),
+                              ("Mid-Senior level", T("opt_mid_senior")), ("Director", T("opt_director")), ("Executive", T("opt_executive"))], cols=3)
+        self._add_multicheck(p, "job_type", T("cfg_field_job_type"), self._SEARCH, "job_type",
+                             [("Full-time", T("opt_full_time")), ("Part-time", T("opt_part_time")), ("Contract", T("opt_contract")),
+                              ("Temporary", T("opt_temporary")), ("Internship", T("opt_internship")), ("Volunteer", T("opt_volunteer"))], cols=3)
+        self._add_bool(p, "easy_apply_only", T("cfg_field_easy_apply_only"), self._SEARCH, "easy_apply_only")
+        self._add_bool(p, "randomize_search_order", T("cfg_field_randomize_search_order"), self._SEARCH, "randomize_search_order")
 
         _section_title(p, T("cfg_sec_avoid"))
-        self._add_list(p, "bad_words", "Palabras malas en descripción (bad_words)", self._SEARCH, "bad_words", height=3)
-        self._add_list(p, "about_company_bad_words", "Palabras malas en empresa", self._SEARCH, "about_company_bad_words", height=2)
-        self._add_entry(p, "current_experience", "Experiencia actual en años (-1 = ignorar)", self._SEARCH, "current_experience", width=10)
+        self._add_list(p, "bad_words", T("cfg_field_bad_words"), self._SEARCH, "bad_words", height=3)
+        self._add_list(p, "about_company_bad_words", T("cfg_field_about_company_bad_words"), self._SEARCH, "about_company_bad_words", height=2)
+        self._add_entry(p, "current_experience", T("cfg_field_current_experience"), self._SEARCH, "current_experience", width=10)
 
     def _build_tab_personal(self, p):
         _section_title(p, T("cfg_sec_personal"))
-        self._add_entry(p, "first_name", "Nombre (first_name)", self._PERS, "first_name")
-        self._add_entry(p, "middle_name", "Segundo nombre (middle_name)", self._PERS, "middle_name")
-        self._add_entry(p, "last_name", "Apellido (last_name)", self._PERS, "last_name")
-        self._add_entry(p, "phone_number", "Teléfono (phone_number)", self._PERS, "phone_number")
-        self._add_entry(p, "current_city", "Ciudad actual (current_city)", self._PERS, "current_city")
-        self._add_entry(p, "state", "Estado/Departamento (state)", self._PERS, "state")
-        self._add_entry(p, "country", "País (country)", self._PERS, "country")
-        self._add_entry(p, "zipcode", "Código postal (zipcode)", self._PERS, "zipcode")
-        self._add_entry(p, "street", "Calle (street)", self._PERS, "street")
-        self._add_entry(p, "university", "Institución educativa (university)", self._PERS, "university")
-        self._add_dropdown(p, "degree", "Nivel de educación (degree)", self._PERS, "degree",
-                           [("High School", "Bachillerato"), ("Associate's", "Técnico"), ("Bachelor's", "Pregrado"),
-                            ("Master's", "Maestría"), ("Doctorate", "Doctorado"), ("Other", "Otro")], cols=3)
-        self._add_entry(p, "graduation_year", "Año de graduación (graduation_year)", self._PERS, "graduation_year", width=10)
-        self._add_entry(p, "field_of_study", "Campo de estudio / Major (field_of_study)", self._PERS, "field_of_study")
-        self._add_entry(p, "identification_number", "Número de identificación", self._PERS, "identification_number")
+        self._add_entry(p, "first_name", T("cfg_field_first_name"), self._PERS, "first_name")
+        self._add_entry(p, "middle_name", T("cfg_field_middle_name"), self._PERS, "middle_name")
+        self._add_entry(p, "last_name", T("cfg_field_last_name"), self._PERS, "last_name")
+        self._add_entry(p, "phone_number", T("cfg_field_phone_number"), self._PERS, "phone_number")
+        self._add_entry(p, "current_city", T("cfg_field_current_city"), self._PERS, "current_city")
+        self._add_entry(p, "state", T("cfg_field_state"), self._PERS, "state")
+        self._add_entry(p, "country", T("cfg_field_country"), self._PERS, "country")
+        self._add_entry(p, "zipcode", T("cfg_field_zipcode"), self._PERS, "zipcode")
+        self._add_entry(p, "street", T("cfg_field_street"), self._PERS, "street")
+        self._add_entry(p, "university", T("cfg_field_university"), self._PERS, "university")
+        self._add_dropdown(p, "degree", T("cfg_field_degree"), self._PERS, "degree",
+                           [("High School", T("opt_high_school")), ("Associate's", T("opt_associates")), ("Bachelor's", T("opt_bachelors")),
+                            ("Master's", T("opt_masters")), ("Doctorate", T("opt_doctorate")), ("Other", T("opt_other"))], cols=3)
+        self._add_entry(p, "graduation_year", T("cfg_field_graduation_year"), self._PERS, "graduation_year", width=10)
+        self._add_entry(p, "field_of_study", T("cfg_field_field_of_study"), self._PERS, "field_of_study")
+        self._add_entry(p, "identification_number", T("cfg_field_identification_number"), self._PERS, "identification_number")
 
         _section_title(p, T("cfg_sec_eeo"))
-        _styled_label(_card_of(p), "Respuestas para formularios de igualdad de oportunidades (empleos en EE. UU.)", small=True).pack(anchor="w", padx=12, pady=(6, 0))
-        self._add_dropdown(p, "gender", "Género", self._PERS, "gender",
-                           [("Male", "Masculino"), ("Female", "Femenino"), ("Non-binary", "No binario"),
-                            ("Decline to self identify", "Prefiero no decir")], cols=4)
-        self._add_dropdown(p, "ethnicity", "Etnia", self._PERS, "ethnicity",
-                           [("Hispanic/Latino", "Hispano / Latino"), ("White", "Blanco"),
-                            ("Black or African American", "Afrodescendiente"), ("Asian", "Asiático"),
-                            ("Decline to self-identify", "Prefiero no decir")], cols=3)
-        self._add_dropdown(p, "disability_status", "¿Tienes alguna discapacidad?", self._PERS, "disability_status",
-                           [("No", "No"), ("Yes", "Sí"), ("Decline to self identify", "Prefiero no decir")])
-        self._add_dropdown(p, "veteran_status", "¿Veterano militar de EE. UU.?", self._PERS, "veteran_status",
-                           [("No", "No"), ("I am not a protected veteran", "No soy veterano protegido"),
-                            ("Decline to self identify", "Prefiero no decir")], cols=3)
+        _styled_label(_card_of(p), T("cfg_field_eeo_note"), small=True).pack(anchor="w", padx=12, pady=(6, 0))
+        self._add_dropdown(p, "gender", T("cfg_field_gender"), self._PERS, "gender",
+                           [("Male", "Male"), ("Female", "Female"), ("Non-binary", "Non-binary"),
+                            ("Decline to self identify", T("opt_decline"))], cols=4)
+        self._add_dropdown(p, "ethnicity", T("cfg_field_ethnicity"), self._PERS, "ethnicity",
+                           [("Hispanic/Latino", "Hispanic/Latino"), ("White", "White"),
+                            ("Black or African American", "Black or African American"), ("Asian", "Asian"),
+                            ("Decline to self-identify", T("opt_decline"))], cols=3)
+        self._add_dropdown(p, "disability_status", T("cfg_field_disability_status"), self._PERS, "disability_status",
+                           [("No", T("opt_no")), ("Yes", T("opt_yes")), ("Decline to self identify", T("opt_decline"))])
+        self._add_dropdown(p, "veteran_status", T("cfg_field_veteran_status"), self._PERS, "veteran_status",
+                           [("No", T("opt_no")), ("I am not a protected veteran", "I am not a protected veteran"),
+                            ("Decline to self identify", T("opt_decline"))], cols=3)
 
     def _build_tab_responses(self, p):
         _section_title(p, T("cfg_sec_exp"))
-        self._add_entry(p, "years_of_experience", "Años de experiencia a reportar", self._QUEST, "years_of_experience", width=10)
-        self._add_entry(p, "desired_salary", "Salario anual deseado — solo número, en la moneda de la vacante (ej. 80000000 si es COP)", self._QUEST, "desired_salary", width=16)
-        self._add_entry(p, "current_ctc", "Salario anual actual — solo número, misma moneda (los formularios lo llaman CTC / current compensation)", self._QUEST, "current_ctc", width=16)
-        self._add_entry(p, "notice_period", "Días de preaviso para dejar tu empleo actual", self._QUEST, "notice_period", width=10)
-        self._add_dropdown(p, "require_visa", "¿Necesitas que la empresa patrocine tu visa de trabajo?", self._QUEST, "require_visa",
-                           [("No", "No"), ("Yes", "Sí")])
-        self._add_entry(p, "recent_employer", "Empleador más reciente", self._QUEST, "recent_employer")
-        self._add_scale(p, "confidence_level", "Qué tan seguras/positivas son las respuestas del bot (1 = conservador, 10 = muy seguro)", self._QUEST, "confidence_level", frm=1, to=10)
-        self._add_dropdown(p, "us_citizenship", "Estatus migratorio en EE. UU. — solo aplica a vacantes de USA", self._QUEST, "us_citizenship",
-                           [("U.S. Citizen/Permanent Resident", "Ciudadano o residente permanente de EE. UU."),
-                            ("Non-citizen allowed to work for any employer", "Autorizado a trabajar para cualquier empleador en EE. UU."),
-                            ("Non-citizen seeking work authorization", "Necesitaría autorización de trabajo"),
-                            ("Other", "Otro / No aplica (vivo fuera de EE. UU.)")], cols=1)
+        self._add_entry(p, "years_of_experience", T("cfg_field_years_of_experience"), self._QUEST, "years_of_experience", width=10)
+        self._add_entry(p, "desired_salary", T("cfg_field_desired_salary"), self._QUEST, "desired_salary", width=16)
+        self._add_entry(p, "current_ctc", T("cfg_field_current_ctc"), self._QUEST, "current_ctc", width=16)
+        self._add_entry(p, "notice_period", T("cfg_field_notice_period"), self._QUEST, "notice_period", width=10)
+        self._add_dropdown(p, "require_visa", T("cfg_field_require_visa"), self._QUEST, "require_visa",
+                           [("No", T("opt_no")), ("Yes", T("opt_yes"))])
+        self._add_entry(p, "recent_employer", T("cfg_field_recent_employer"), self._QUEST, "recent_employer")
+        self._add_scale(p, "confidence_level", T("cfg_field_confidence_level"), self._QUEST, "confidence_level", frm=1, to=10)
+        self._add_dropdown(p, "us_citizenship", T("cfg_field_us_citizenship"), self._QUEST, "us_citizenship",
+                           [("U.S. Citizen/Permanent Resident", "U.S. Citizen/Permanent Resident"),
+                            ("Non-citizen allowed to work for any employer", "Non-citizen allowed to work for any employer"),
+                            ("Non-citizen seeking work authorization", "Non-citizen seeking work authorization"),
+                            ("Other", "Other")], cols=1)
 
         _section_title(p, T("cfg_sec_links"))
-        self._add_entry(p, "linkedIn", "URL de LinkedIn", self._QUEST, "linkedIn")
-        self._add_entry(p, "website", "Portfolio / Website", self._QUEST, "website")
+        self._add_entry(p, "linkedIn", T("cfg_field_linkedin"), self._QUEST, "linkedIn")
+        self._add_entry(p, "website", T("cfg_field_website"), self._QUEST, "website")
 
         _section_title(p, T("cfg_sec_texts"))
-        self._add_entry(p, "linkedin_headline", "Titular de LinkedIn", self._QUEST, "linkedin_headline")
-        self._add_text(p, "linkedin_summary", "Resumen de LinkedIn", self._QUEST, "linkedin_summary", height=5)
-        self._add_text(p, "cover_letter", "Carta de presentación", self._QUEST, "cover_letter", height=8)
-        self._add_text(p, "user_information_all", "Información completa para IA", self._QUEST, "user_information_all", height=8)
-        self._add_entry(p, "default_resume_path", "Ruta del CV (PDF)", self._QUEST, "default_resume_path", browse=True)
+        self._add_entry(p, "linkedin_headline", T("cfg_field_linkedin_headline"), self._QUEST, "linkedin_headline")
+        self._add_text(p, "linkedin_summary", T("cfg_field_linkedin_summary"), self._QUEST, "linkedin_summary", height=5)
+        self._add_text(p, "cover_letter", T("cfg_field_cover_letter"), self._QUEST, "cover_letter", height=8)
+        self._add_text(p, "user_information_all", T("cfg_field_user_information_all"), self._QUEST, "user_information_all", height=8)
+        self._add_entry(p, "default_resume_path", T("cfg_field_default_resume_path"), self._QUEST, "default_resume_path", browse=True)
 
     def _build_tab_bot(self, p):
         # LinkedIn credentials intentionally NOT shown here: the bot uses the
         # Chrome profile's active session; secrets.py remains the fallback.
         _section_title(p, T("cfg_sec_behavior"))
-        self._add_bool(p, "pause_before_submit", "Pausar antes de enviar cada aplicación", self._QUEST, "pause_before_submit")
-        self._add_bool(p, "pause_at_failed_question", "Pausar si no puede responder una pregunta", self._QUEST, "pause_at_failed_question")
-        self._add_bool(p, "overwrite_previous_answers", "Sobreescribir respuestas anteriores", self._QUEST, "overwrite_previous_answers")
-        self._add_bool(p, "run_non_stop", "Correr sin parar (run_non_stop)", self._SETT, "run_non_stop")
-        self._add_bool(p, "follow_companies", "Seguir empresas al aplicar", self._SETT, "follow_companies")
-        self._add_bool(p, "close_tabs", "Cerrar tabs de aplicaciones externas", self._SETT, "close_tabs")
-        self._add_bool(p, "external_apply_enabled", "Aplicador universal: autollenar solicitudes externas (Greenhouse/Lever)", self._SETT, "external_apply_enabled")
-        self._add_bool(p, "pause_before_submit_external", "Pausar antes de enviar solicitudes externas", self._SETT, "pause_before_submit_external")
+        self._add_bool(p, "pause_before_submit", T("cfg_field_pause_before_submit"), self._QUEST, "pause_before_submit")
+        self._add_bool(p, "pause_at_failed_question", T("cfg_field_pause_at_failed_question"), self._QUEST, "pause_at_failed_question")
+        self._add_bool(p, "overwrite_previous_answers", T("cfg_field_overwrite_previous_answers"), self._QUEST, "overwrite_previous_answers")
+        self._add_bool(p, "run_non_stop", T("cfg_field_run_non_stop"), self._SETT, "run_non_stop")
+        self._add_bool(p, "follow_companies", T("cfg_field_follow_companies"), self._SETT, "follow_companies")
+        self._add_bool(p, "close_tabs", T("cfg_field_close_tabs"), self._SETT, "close_tabs")
+        self._add_bool(p, "external_apply_enabled", T("cfg_field_external_apply_enabled"), self._SETT, "external_apply_enabled")
+        self._add_bool(p, "pause_before_submit_external", T("cfg_field_pause_before_submit_external"), self._SETT, "pause_before_submit_external")
 
         _section_title(p, T("cfg_sec_browser"))
-        self._add_entry(p, "click_gap", "Pausa entre clicks (seg)", self._SETT, "click_gap", width=10)
-        self._add_bool(p, "run_in_background", "Correr en fondo (sin Chrome visible)", self._SETT, "run_in_background")
-        self._add_bool(p, "smooth_scroll", "Scroll suave", self._SETT, "smooth_scroll")
-        self._add_bool(p, "stealth_mode", "Modo stealth (anti-bot)", self._SETT, "stealth_mode")
-        self._add_bool(p, "safe_mode", "Modo seguro (perfil invitado)", self._SETT, "safe_mode")
-        self._add_bool(p, "keep_screen_awake", "Mantener pantalla activa", self._SETT, "keep_screen_awake")
+        self._add_entry(p, "click_gap", T("cfg_field_click_gap"), self._SETT, "click_gap", width=10)
+        self._add_bool(p, "run_in_background", T("cfg_field_run_in_background"), self._SETT, "run_in_background")
+        self._add_bool(p, "smooth_scroll", T("cfg_field_smooth_scroll"), self._SETT, "smooth_scroll")
+        self._add_bool(p, "stealth_mode", T("cfg_field_stealth_mode"), self._SETT, "stealth_mode")
+        self._add_bool(p, "safe_mode", T("cfg_field_safe_mode"), self._SETT, "safe_mode")
+        self._add_bool(p, "keep_screen_awake", T("cfg_field_keep_screen_awake"), self._SETT, "keep_screen_awake")
 
         _section_title(p, T("cfg_sec_cycles"))
-        self._add_bool(p, "alternate_sortby", "Alternar orden de resultados", self._SETT, "alternate_sortby")
-        self._add_bool(p, "cycle_date_posted", "Ciclar filtro de fecha automáticamente", self._SETT, "cycle_date_posted")
-        self._add_bool(p, "stop_date_cycle_at_24hr", "Parar ciclo al llegar a 24h", self._SETT, "stop_date_cycle_at_24hr")
+        self._add_bool(p, "alternate_sortby", T("cfg_field_alternate_sortby"), self._SETT, "alternate_sortby")
+        self._add_bool(p, "cycle_date_posted", T("cfg_field_cycle_date_posted"), self._SETT, "cycle_date_posted")
+        self._add_bool(p, "stop_date_cycle_at_24hr", T("cfg_field_stop_date_cycle_at_24hr"), self._SETT, "stop_date_cycle_at_24hr")
 
         _section_title(p, T("lang_label"))
-        self._add_dropdown(p, "ui_language", "Idioma de la interfaz", self._SETT, "ui_language",
+        self._add_dropdown(p, "ui_language", T("cfg_field_ui_language"), self._SETT, "ui_language",
                            [("es", "Español"), ("en", "English")])
 
         _section_title(p, T("cfg_sec_ai"))
-        self._add_bool(p, "use_AI", "Usar IA para evaluar vacantes y responder preguntas", self._SECR, "use_AI")
-        self._add_dropdown(p, "ai_provider", "Proveedor de IA", self._SECR, "ai_provider",
+        self._add_bool(p, "use_AI", T("cfg_field_use_AI"), self._SECR, "use_AI")
+        self._add_dropdown(p, "ai_provider", T("cfg_field_ai_provider"), self._SECR, "ai_provider",
                            [("groq", "Groq (gratis)"), ("gemini", "Gemini"), ("openai", "OpenAI"),
                             ("deepseek", "DeepSeek"), ("ollama", "Ollama (local)")])
-        self._add_entry(p, "llm_api_key", "API Key (en groq.com → API Keys → Create key)", self._SECR, "llm_api_key", width=38, mask=True)
-        self._add_entry(p, "llm_model", "Modelo (ej. llama-3.1-8b-instant para Groq)", self._SECR, "llm_model", width=30)
-        self._add_entry(p, "llm_api_url", "URL de API (solo para OpenAI-compatibles / Ollama)", self._SECR, "llm_api_url", width=38)
+        self._add_entry(p, "llm_api_key", T("cfg_field_llm_api_key"), self._SECR, "llm_api_key", width=38, mask=True)
+        self._add_entry(p, "llm_model", T("cfg_field_llm_model"), self._SECR, "llm_model", width=30)
+        self._add_entry(p, "llm_api_url", T("cfg_field_llm_api_url"), self._SECR, "llm_api_url", width=38)
 
     # ── Save logic ────────────────────────────────────────────────────────────
 
@@ -1141,7 +1144,8 @@ class GlassSettings(tk.Toplevel):
             self._show_result(T('cfg_saved_ok'))
             # Reload all config modules so the running bot picks up new values immediately
             try:
-                import importlib, sys as _sys
+                import importlib
+                import sys as _sys
                 for _mod in ['config.personals', 'config.questions', 'config.search',
                              'config.secrets', 'config.settings']:
                     if _mod in _sys.modules:
@@ -1152,7 +1156,7 @@ class GlassSettings(tk.Toplevel):
             except Exception as _re:
                 print(f"[Settings] Config reload after save failed: {_re}")
             # If language changed, rebuild the settings panel in the new language
-            from modules.i18n import get_language, _lang_cache
+            from modules.i18n import _lang_cache, get_language
             _lang_cache.clear()  # force re-read after write
             if get_language() != _lang_before:
                 parent = self.master
@@ -1259,7 +1263,7 @@ class BotUIApp:
         self.top_btn_frame.pack(side="bottom", fill="x", padx=12, pady=(0, 2))
 
         self.dashboard_btn = tk.Button(
-            self.top_btn_frame, text="Dashboard",
+            self.top_btn_frame, text=T("btn_dashboard"),
             fg="#00E8C6", bg="#131316",
             activeforeground="#00E8C6", activebackground="#1a1a20",
             bd=0, padx=10, pady=3,
@@ -1358,7 +1362,7 @@ class BotUIApp:
         self._settings_win = None
         self._stop_confirm = False
         self._current_lang = get_language()
-        self.add_log("System", "CVSniper Control initialized.", "system")
+        self.add_log("System", T("status_init_msg"), "system")
 
         self.poll_updates()
 
@@ -1374,7 +1378,7 @@ class BotUIApp:
         # Flash button to confirm
         self.dashboard_btn.config(bg="#00E8C6", fg="#0a0a0c")
         self.root.after(600, lambda: self.dashboard_btn.config(bg="#131316", fg="#00E8C6"))
-        self.add_log("System", f"Dashboard abierto: {FLASK_URL}", "action")
+        self.add_log("System", f"{T('dashboard_opened')}: {FLASK_URL}", "action")
 
     def _trigger_optimize_cv(self):
         threading.Thread(target=self._optimize_cv_flow, daemon=True).start()
@@ -1393,7 +1397,8 @@ class BotUIApp:
             inc_port = ui_confirm(T("cv_port_title"), T("cv_port_question"), [T("cv_port_btn_yes"), T("cv_port_btn_no")])
             self.add_log("System", T("cv_log_optimizing"), "system")
             try:
-                from modules.ai.openaiConnections import ai_optimize_existing_cv
+                from modules.ai.openaiConnections import \
+                    ai_optimize_existing_cv
                 success = ai_optimize_existing_cv(file_path, include_portfolio=(inc_port == _yes))
             except Exception as ex:
                 self.add_log("System", f"Exception: {ex}", "status")
@@ -1403,13 +1408,13 @@ class BotUIApp:
                 ui_alert(T("cv_success_title"), T("cv_success_opt"))
             else:
                 self.add_log("System", T("cv_log_err_opt"), "status")
-                ui_alert(T("cv_success_title") if False else "Error",
-                         "No se pudo optimizar el CV.\n\nVerifica que tu API Key sea válida en Ajustes → Bot → IA Settings.\nSi usas Gemini, genera una nueva key en aistudio.google.com\nSi usas Groq, verifica en console.groq.com")
+                ui_alert(T("cv_error_title"), T("cv_error_msg"))
         elif choice == _scratch:
             inc_port = ui_confirm(T("cv_port_title"), T("cv_port_question"), [T("cv_port_btn_yes"), T("cv_port_btn_no")])
             self.add_log("System", T("cv_log_generating"), "system")
             try:
-                from modules.ai.openaiConnections import ai_generate_cv_from_config
+                from modules.ai.openaiConnections import \
+                    ai_generate_cv_from_config
                 success = ai_generate_cv_from_config(include_portfolio=(inc_port == _yes))
             except Exception as ex:
                 self.add_log("System", f"Exception: {ex}", "status")
@@ -1419,8 +1424,7 @@ class BotUIApp:
                 ui_alert(T("cv_success_title"), T("cv_success_gen"))
             else:
                 self.add_log("System", T("cv_log_err_gen"), "status")
-                ui_alert("Error",
-                         "No se pudo generar el CV.\n\nVerifica que tu API Key sea válida en Ajustes → Bot → IA Settings.\nSi usas Gemini, genera una nueva key en aistudio.google.com\nSi usas Groq, verifica en console.groq.com")
+                ui_alert(T("cv_error_title"), T("cv_generate_error_msg"))
 
     def toggle_pause(self):
         global is_paused
@@ -1431,20 +1435,14 @@ class BotUIApp:
         career_ops_mode = not career_ops_mode
         if career_ops_mode:
             self.career_ops_btn.config(bg="#7F5AF0", fg="#FFFFFE", activebackground="#9270F2")
-            self.title_label.config(text="CVSNIPER - CAREER-OPS", fg="#00E8C6")
-            self.add_log("System", "Modo Career-Ops activado. Se omitirá Easy Apply; todos los matches se abrirán manualmente.", "system")
-            alert_msg = (
-                "El Modo Career-Ops está activo:\n\n"
-                "- Omitiendo postulaciones automáticas (Easy Apply).\n"
-                "- Buscando y evaluando todas las vacantes usando IA.\n"
-                "- Al encontrar 5 coincidencias, te preguntará si deseas abrirlas para postular manualmente.\n"
-                "- Podrás confirmar si ya aplicaste para continuar con el siguiente ciclo."
-            )
-            GlassAlert(self.root, "Modo Career-Ops", alert_msg, queue.Queue())
+            self.title_label.config(text=T("title_career_ops"), fg="#00E8C6")
+            self.add_log("System", T("career_ops_on"), "system")
+            alert_msg = T("career_ops_msg")
+            GlassAlert(self.root, T("career_ops_title"), alert_msg, queue.Queue())
         else:
             self.career_ops_btn.config(bg=BTN_PURPLE, fg=BTN_PURPLE_FG, activebackground=BTN_PURPLE_HV)
-            self.title_label.config(text="CVSNIPER CONTROL", fg="#E6E6E8")
-            self.add_log("System", "Modo Career-Ops desactivado. LinkedIn Easy Apply estándar activo.", "system")
+            self.title_label.config(text=T("title"), fg="#E6E6E8")
+            self.add_log("System", T("career_ops_off"), "system")
 
     def trigger_stop(self):
         if not self._stop_confirm:

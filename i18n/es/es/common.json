@@ -1,0 +1,17 @@
+{
+    "status_idle": "Estado: Inactivo",
+    "status_initializing": "Inicializando",
+    "status_configured": "Estado: Configurado",
+    "status_config_req": "Configuracion requerida",
+    "msg_ready": "Bot listo para continuar.",
+    "msg_fill_config": "Por favor completa tus datos en la configuracion.",
+    "btn_confirm": "CONFIRMAR?",
+    "btn_stopping": "DETENIENDO...",
+    "msg_confirm_stop": "Haz clic en CONFIRMAR nuevamente para detener el bot.",
+    "msg_stopping": "Deteniendo bot...",
+    "log_paused": "Bot pausado.",
+    "log_resumed": "Bot reanudado.",
+    "lang_label": "Idioma de la Interfaz",
+    "alert_api_key_title": "Falta API Key de IA",
+    "alert_api_key_msg": "La IA esta activada pero falta la API Key.\n\nEn los ajustes (boton ⚙) → tab Bot → seccion IA:\n→ Pega tu API Key de Groq (gratis en console.groq.com)\n\nGuarda los cambios para continuar."
+}

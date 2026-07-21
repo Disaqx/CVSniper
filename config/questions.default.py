@@ -46,7 +46,7 @@ notice_period = 30
 recent_employer = ""
 
 # Nivel de confianza 1-10 / Confidence level 1-10
-confidence_level = 8
+confidence_level = "8"
 
 # Nivel de inglés / English proficiency level
 # Opciones: "none", "a1", "a2", "b1", "b2", "c1", "c2", "native"

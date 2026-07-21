@@ -5,8 +5,9 @@ Extrae datos del CV del usuario con IA y configura todos los archivos de config 
 Llamado en el primer inicio cuando faltan datos personales.
 '''
 
-import os
 import json
+import os
+
 from modules.i18n import T
 
 _BASE   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -141,7 +142,8 @@ def run_cv_wizard() -> bool:
     Entry point. Shows the wizard dialog and runs auto-configuration if user uploads CV.
     Returns True if wizard completed (even partially), False if user chose manual setup.
     """
-    from modules.bot_ui import ui_confirm, ui_alert, ui_update_status, _is_api_key_missing
+    from modules.bot_ui import (_is_api_key_missing, ui_alert, ui_confirm,
+                                ui_update_status)
 
     if _is_api_key_missing():
         ui_alert(T("wiz_api_key_title"), T("wiz_api_key_msg"))
@@ -204,7 +206,8 @@ def run_job_terms_wizard() -> bool:
     search_terms, primary_focus_keywords, and secondary_focus_keywords.
     Returns True if terms were successfully generated and saved.
     """
-    from modules.bot_ui import _read_py_var, _write_py_var, ui_confirm, ui_alert, ui_update_status
+    from modules.bot_ui import (_read_py_var, _write_py_var, ui_alert,
+                                ui_confirm, ui_update_status)
 
     search_terms = _read_py_var(_SEARCH, "search_terms")
     if search_terms and isinstance(search_terms, list) and len(search_terms) > 0:
@@ -259,7 +262,7 @@ def _ask_missing_fields(data: dict) -> dict:
     """
     from modules.bot_ui import ui_ask_text, ui_confirm
 
-    title = "Completar configuracion"
+    title = T("wizard_title_complete")
 
     def _missing(key):
         val = data.get(key)
@@ -283,48 +286,40 @@ def _ask_missing_fields(data: dict) -> dict:
 
     # ── 1. Nombre ─────────────────────────────────────────────────────────────
     _ask("first_name",
-         "¿Cuál es tu PRIMER nombre?\n"
-         "(solo el primero — ej: Camilo)")
+         T("wizard_prompt_first_name"))
 
     _ask("last_name",
-         "¿Cuáles son tus APELLIDOS?\n"
-         "(uno o dos apellidos — ej: García López)")
+         T("wizard_prompt_last_name"))
 
     if _missing("middle_name"):
         v = ui_ask_text(title,
-            "¿Tienes segundo nombre? (puedes saltar)", "")
+            T("wizard_prompt_middle_name"), "")
         if v:
             data["middle_name"] = v
 
     # ── 2. Contacto ───────────────────────────────────────────────────────────
     _ask("phone_number",
-         "Número de teléfono con código de país:\n"
-         "(ej: 573001234567 para Colombia)")
+         T("wizard_prompt_phone"))
 
     # ── 3. Ubicación ──────────────────────────────────────────────────────────
     _ask("current_city",
-         "¿En qué ciudad vives actualmente?\n"
-         "(ej: Bogotá)")
+         T("wizard_prompt_current_city"))
 
     _ask("country",
-         "¿En qué país vives?\n"
-         "(ej: Colombia)")
+         T("wizard_prompt_country"))
 
     _ask("state",
-         "¿En qué departamento o estado vives?\n"
-         "(ej: Cundinamarca, Antioquia)")
+         T("wizard_prompt_state"))
 
     _ask("zipcode",
-         "¿Cuál es tu código postal?\n"
-         "(puedes dejarlo vacío si no lo sabes)", "")
+         T("wizard_prompt_zipcode"), "")
 
     if _missing("search_location"):
         city    = data.get("current_city", "")
         country = data.get("country", "")
         default = f"{city}, {country}".strip(", ") if (city or country) else ""
         v = ui_ask_text(title,
-            "¿En qué ciudad/país buscas trabajo?\n"
-            "(ej: Bogota, Colombia)",
+            T("wizard_prompt_search_location"),
             default)
         if v:
             data["search_location"] = v
@@ -332,15 +327,13 @@ def _ask_missing_fields(data: dict) -> dict:
     # ── 4. Cargos a buscar ────────────────────────────────────────────────────
     if _missing("search_terms"):
         v = ui_ask_text(title,
-            "¿Qué cargos buscas en LinkedIn?\n"
-            "Escribe separados por comas:\n"
-            "(ej: Psicólogo clínico, Psicólogo escolar, Psicólogo organizacional)")
+            T("wizard_prompt_search_terms"))
         if v:
             data["search_terms"] = [t.strip() for t in v.split(",") if t.strip()]
 
     # ── 5. Experiencia ────────────────────────────────────────────────────────
     if _missing("years_of_experience"):
-        v = ui_ask_text(title, "¿Cuántos años de experiencia laboral tienes?\n(número)")
+        v = ui_ask_text(title, T("wizard_prompt_years_experience"))
         if v:
             try:
                 data["years_of_experience"] = int(v)
@@ -349,27 +342,24 @@ def _ask_missing_fields(data: dict) -> dict:
 
     # ── 6. Educación ──────────────────────────────────────────────────────────
     _ask("university",
-         "¿En qué institución estudiaste?\n"
-         "(universidad o colegio — ej: Universidad Nacional de Colombia)")
+         T("wizard_prompt_university"))
 
     if _missing("degree"):
-        choice = ui_confirm(title, "Nivel educativo más alto completado:",
+        choice = ui_confirm(title, T("wizard_prompt_degree"),
                             ["Bachelor's", "Master's", "Doctorate"])
         if choice:
             data["degree"] = choice
         else:
             v = ui_ask_text(title,
-                "Nivel educativo:\n"
-                "High School / Associate's / Bachelor's / Master's / Doctorate / Other")
+                T("wizard_prompt_degree_alt"))
             if v:
                 data["degree"] = v
 
     _ask("field_of_study",
-         "¿Cuál fue tu área de estudio o carrera?\n"
-         "(ej: Psicología, Administración de Empresas, Ingeniería de Sistemas)")
+         T("wizard_prompt_field_of_study"))
 
     _ask("graduation_year",
-         "¿En qué año te graduaste? (ej: 2020)")
+         T("wizard_prompt_graduation_year"))
 
     # ── 7. EEO — Etnia ────────────────────────────────────────────────────────
     if _missing("ethnicity"):
@@ -377,13 +367,13 @@ def _ask_missing_fields(data: dict) -> dict:
         default_eth = "Hispanic/Latino" if any(c in country_lower for c in _LATAM_COUNTRIES) else ""
         if not default_eth or _missing("ethnicity"):
             eth_choice = ui_confirm(title,
-                "Origen étnico (formularios EEO de empleadores):",
+                T("wizard_prompt_ethnicity"),
                 ["Hispanic/Latino", "White", "Black or African American"])
             if eth_choice:
                 data["ethnicity"] = eth_choice
             else:
                 eth2 = ui_confirm(title,
-                    "Origen étnico (continuación):",
+                    T("wizard_prompt_ethnicity_alt"),
                     ["Asian", "Other", "Decline"])
                 if eth2:
                     data["ethnicity"] = eth2
@@ -393,7 +383,7 @@ def _ask_missing_fields(data: dict) -> dict:
     # ── 8. Género ─────────────────────────────────────────────────────────────
     if _missing("gender"):
         choice = ui_confirm(title,
-            "Género (para formularios EEO, puedes saltar):",
+            T("wizard_prompt_gender"),
             ["Male", "Female", "Decline"])
         if choice:
             data["gender"] = choice if choice != "Decline" else "Decline"
@@ -401,7 +391,7 @@ def _ask_missing_fields(data: dict) -> dict:
     # ── 9 (nuevo). Discapacidad ───────────────────────────────────────────────
     if _missing("disability_status"):
         choice = ui_confirm(title,
-            "¿Tienes alguna discapacidad? (formulario EEO):",
+            T("wizard_prompt_disability"),
             ["No", "Yes", "Decline"])
         if choice:
             data["disability_status"] = choice
@@ -409,7 +399,7 @@ def _ask_missing_fields(data: dict) -> dict:
     # ── 9 (nuevo). Veterano ──────────────────────────────────────────────────
     if _missing("veteran_status"):
         choice = ui_confirm(title,
-            "¿Eres veterano militar? (formulario EEO):",
+            T("wizard_prompt_veteran"),
             ["No", "Yes", "Decline"])
         if choice:
             data["veteran_status"] = choice
@@ -417,8 +407,7 @@ def _ask_missing_fields(data: dict) -> dict:
     # ── 9. Visa ───────────────────────────────────────────────────────────────
     if _missing("require_visa"):
         choice = ui_confirm(title,
-            "¿Necesitas visa de trabajo para el país donde vas a aplicar?\n"
-            "(si aplicas a empleos remotos internacionales responde Yes)",
+            T("wizard_prompt_require_visa"),
             ["No", "Yes"])
         if choice:
             data["require_visa"] = choice
@@ -426,7 +415,7 @@ def _ask_missing_fields(data: dict) -> dict:
     # ── 10. Salario deseado ───────────────────────────────────────────────────
     if _missing("desired_salary"):
         v = ui_ask_text(title,
-            "Salario deseado en números (puedes dejar 0 para saltar):", "0")
+            T("wizard_prompt_desired_salary"), "0")
         if v and v.strip() != "0":
             try:
                 data["desired_salary"] = int(v)
@@ -483,7 +472,8 @@ def _call_ai(cv_text: str) -> dict | None:
 
 def _call_gemini(prompt: str) -> dict | None:
     try:
-        from modules.ai.geminiConnections import gemini_create_client, gemini_completion
+        from modules.ai.geminiConnections import (gemini_completion,
+                                                  gemini_create_client)
         client = gemini_create_client()
         if not client:
             return None

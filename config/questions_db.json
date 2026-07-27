@@ -1,0 +1,122 @@
+{
+  "mappings": [
+    {
+      "category": "visa",
+      "patterns": ["sponsorship", "visa", "patrocinio", "visado", "permiso de trabajo", "derecho a trabajar", "autorizacion para trabajar"],
+      "var_name": "require_visa"
+    },
+    {
+      "category": "relocation",
+      "patterns": ["relocate", "relocation", "reubicarse", "reubicacion", "reubicar", "traslado", "mudarse", "cambio de residencia", "trasladarse", "dispuesto a mudarse", "dispuesto a trasladarse"],
+      "value": "Yes"
+    },
+    {
+      "category": "shifts",
+      "patterns": ["disponibilidad", "7/24", "turnos", "rotativos", "shift", "shifts", "availability", "schedule", "horario", "fines de semana", "weekend", "disponibilidad de turnos", "jornada"],
+      "value": "Yes"
+    },
+    {
+      "category": "current_salary",
+      "patterns": [
+        "current salary", "current ctc", "salario actual", "sueldo actual", "compensacion actual", 
+        "ultimo salario", "ultimo sueldo", "present salary", "present ctc", "ingresos actuales",
+        "salario anterior", "sueldo anterior", "ultimo", "ultimo", "anterior"
+      ],
+      "var_name": "current_ctc"
+    },
+    {
+      "category": "desired_salary",
+      "patterns": [
+        "salary", "compensation", "ctc", "pay", "salario", "salarial", "sueldo", "remuneracion",
+        "expectativa", "expectativas", "pretension", "pretensiones", "pretendido", "pretendida",
+        "aspiracion", "aspiraciones", "tarifa", "cobro", "pago", "expectativa salarial",
+        "pretension salarial", "aspiracion salarial",
+        "rate", "monthly rate", "desired rate", "desired monthly", "desired salary",
+        "expected salary", "expected rate", "hourly rate", "tarifa mensual", "tarifa por hora",
+        "monto deseado", "cuanto deseas", "cuanto esperas", "rango salarial", "banda salarial"
+      ],
+      "var_name": "desired_salary"
+    },
+    {
+      "category": "experience",
+      "patterns": ["experience", "years", "experiencia", "anos", "ano", "tiempo", "trayectoria", "antiguedad", "duracion"],
+      "var_name": "years_of_experience"
+    },
+    {
+      "category": "phone",
+      "patterns": ["phone", "mobile", "telefono", "celular", "movil", "numero de contacto", "telefono celular"],
+      "var_name": "phone_number"
+    },
+    {
+      "category": "address",
+      "patterns": ["street", "calle", "direccion", "residencia", "domicilio", "avenida", "carrera"],
+      "var_name": "street"
+    },
+    {
+      "category": "city",
+      "patterns": ["city", "ciudad", "municipio", "localidad", "barrio"],
+      "var_name": "current_city"
+    },
+    {
+      "category": "state",
+      "patterns": ["state", "province", "estado", "provincia", "departamento", "region"],
+      "var_name": "state"
+    },
+    {
+      "category": "zip",
+      "patterns": ["zip", "postal", "code", "codigo postal"],
+      "var_name": "zipcode"
+    },
+    {
+      "category": "country",
+      "patterns": ["country", "pais", "nacion"],
+      "var_name": "country"
+    },
+    {
+      "category": "school",
+      "patterns": ["school", "university", "college", "universidad", "colegio", "escuela", "institucion", "estudio", "educacion", "estudios"],
+      "var_name": "university"
+    },
+    {
+      "category": "gender",
+      "patterns": ["gender", "sex", "genero", "sexo", "identidad de genero"],
+      "var_name": "gender"
+    },
+    {
+      "category": "disability",
+      "patterns": ["disability", "discapacidad", "limitacion", "handicap", "condicion de discapacidad"],
+      "var_name": "disability_status"
+    },
+    {
+      "category": "veteran",
+      "patterns": ["veteran", "protected", "veterano", "protegido"],
+      "var_name": "veteran_status"
+    },
+    {
+      "category": "citizenship",
+      "patterns": ["citizenship", "employment eligibility", "ciudadania", "nacionalidad", "permiso", "elegibilidad de empleo"],
+      "var_name": "us_citizenship"
+    },
+    {
+      "category": "notice",
+      "patterns": ["notice", "aviso", "preaviso", "notificacion", "incorporacion", "disponibilidad para ingresar", "tiempo de preaviso", "plazo de preaviso"],
+      "var_name": "notice_period"
+    },
+    {
+      "category": "summary",
+      "patterns": ["summary", "resumen", "perfil", "extracto", "sobre mi", "sobre ti", "descripcion de tu perfil"],
+      "var_name": "linkedin_summary"
+    },
+    {
+      "category": "cover_letter",
+      "patterns": ["cover", "carta", "presentacion", "carta de presentacion"],
+      "var_name": "cover_letter"
+    },
+    {
+      "category": "degree",
+      "patterns": ["degree", "titulo universitario", "licenciatura", "bachelor", "pregrado", "ingenieria", "graduado", "educacion", "education level", "nivel de educacion", "academic level", "nivel academico"],
+      "value": "No",
+      "value_text": "High School Diploma"
+    }
+  ]
+}

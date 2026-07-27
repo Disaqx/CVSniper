@@ -1,0 +1,12 @@
+setuptools>=70.0.0
+wheel>=0.43.0
+flask>=3.0.0
+flask-cors>=4.0.0
+selenium>=4.0.0
+pyautogui>=0.9.54
+pillow>=10.0.0
+openai>=1.0.0
+google-generativeai>=0.8.0
+undetected-chromedriver>=3.5.0
+fpdf2>=2.7.0
+pymupdf>=1.24.0

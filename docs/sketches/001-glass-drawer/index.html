@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CVSniper · Glass Drawer</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0a0c; --panel:rgba(24,24,28,0.72); --panel-solid:#161619;
+  --border:rgba(255,255,255,0.08); --border-strong:rgba(255,255,255,0.14);
+  --fg:#E6E6E8; --dim:#94A1B2; --accent:#7F5AF0; --accent2:#00E8C6;
+  --danger:#E74C3C; --ok:#2ECC71; --radius:14px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:'Inter',-apple-system,'Segoe UI',sans-serif; color:var(--fg);
+  background:
+    radial-gradient(900px 500px at 12% -8%, rgba(127,90,240,.20), transparent 60%),
+    radial-gradient(800px 460px at 92% 4%, rgba(0,232,198,.14), transparent 55%),
+    var(--bg);
+  min-height:100vh; -webkit-font-smoothing:antialiased; padding:28px;
+}
+.wrap{max-width:1180px;margin:0 auto}
+.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px}
+.brand{display:flex;align-items:center;gap:12px}
+.logo{width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,var(--accent),var(--accent2));
+  display:grid;place-items:center;font-weight:800;font-size:18px;color:#0a0a0c;box-shadow:0 6px 22px rgba(127,90,240,.45)}
+.brand h1{font-size:18px;font-weight:700;letter-spacing:.3px}
+.brand .sub{font-size:12px;color:var(--dim);margin-top:1px}
+.actions{display:flex;gap:10px}
+.btn{font-family:inherit;border:1px solid var(--border-strong);background:var(--panel);
+  color:var(--fg);padding:10px 16px;border-radius:11px;font-size:13px;font-weight:600;cursor:pointer;
+  backdrop-filter:blur(14px);transition:.16s}
+.btn:hover{border-color:var(--accent);transform:translateY(-1px)}
+.btn.primary{background:linear-gradient(135deg,var(--accent),#6c46e8);border:none;box-shadow:0 6px 20px rgba(127,90,240,.4)}
+.btn.primary:hover{box-shadow:0 8px 26px rgba(127,90,240,.55)}
+/* stat strip */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px}
+.stat{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;backdrop-filter:blur(16px)}
+.stat .n{font-size:26px;font-weight:700}
+.stat .l{font-size:12px;color:var(--dim);margin-top:2px}
+.stat .n.teal{color:var(--accent2)} .stat .n.purple{color:var(--accent)}
+/* table card */
+.card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);backdrop-filter:blur(16px);overflow:hidden}
+.card-head{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border)}
+.card-head h2{font-size:14px;font-weight:600;letter-spacing:.3px}
+.search-in{background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:9px;color:var(--fg);padding:7px 12px;font-size:13px;font-family:inherit;width:200px}
+.search-in:focus{outline:none;border-color:var(--accent)}
+table{width:100%;border-collapse:collapse}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.7px;color:var(--dim);text-align:left;padding:12px 18px;font-weight:600;border-bottom:1px solid var(--border)}
+td{padding:13px 18px;font-size:13px;border-bottom:1px solid rgba(255,255,255,.04)}
+tr:last-child td{border-bottom:none}
+tbody tr:hover{background:rgba(127,90,240,.07)}
+td a{color:var(--accent2);text-decoration:none}
+td a:hover{text-decoration:underline}
+.tick{color:var(--ok);font-weight:700}
+.badge{display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(0,232,198,.12);color:var(--accent2);border:1px solid rgba(0,232,198,.25)}
+/* drawer */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(2px);opacity:0;pointer-events:none;transition:.25s;z-index:100}
+.overlay.open{opacity:1;pointer-events:auto}
+.drawer{position:fixed;top:0;right:-760px;width:min(720px,100vw);height:100vh;
+  background:rgba(16,16,19,.86);backdrop-filter:blur(26px);border-left:1px solid var(--border-strong);
+  z-index:101;display:flex;flex-direction:column;transition:right .3s cubic-bezier(.4,0,.2,1);box-shadow:-20px 0 60px rgba(0,0,0,.5)}
+.drawer.open{right:0}
+.drawer-head{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid var(--border)}
+.drawer-head h2{font-size:16px;font-weight:700}
+.x{background:none;border:none;color:var(--dim);font-size:22px;cursor:pointer;line-height:1}
+.x:hover{color:var(--danger)}
+.tabs{display:flex;gap:4px;padding:12px 22px 0;border-bottom:1px solid var(--border)}
+.tab{background:none;border:none;color:var(--dim);font-family:inherit;font-size:13px;font-weight:600;padding:9px 14px;cursor:pointer;border-radius:9px 9px 0 0;position:relative}
+.tab.active{color:var(--fg)}
+.tab.active::after{content:"";position:absolute;left:10px;right:10px;bottom:-1px;height:2px;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:2px}
+.pane{padding:22px;overflow-y:auto;flex:1}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.field{margin-bottom:14px}
+.field label{display:block;font-size:12px;color:var(--dim);margin-bottom:6px;font-weight:500}
+.field input,.field select{width:100%;background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:9px;color:var(--fg);padding:10px 12px;font-size:13px;font-family:inherit}
+.field input:focus,.field select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(127,90,240,.15)}
+.drawer-foot{padding:16px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:10px}
+.save-status{font-size:12px;color:var(--accent2);align-self:center;margin-right:auto;opacity:0;transition:.2s}
+.save-status.show{opacity:1}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div class="brand">
+      <div class="logo">C</div>
+      <div><h1>CVSniper</h1><div class="sub">Panel de control · LinkedIn Easy Apply</div></div>
+    </div>
+    <div class="actions">
+      <button class="btn">↻ Refrescar</button>
+      <button class="btn primary" onclick="document.getElementById('ov').classList.add('open');document.getElementById('dr').classList.add('open')">⚙ Configuración</button>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="n">47</div><div class="l">Postulaciones enviadas</div></div>
+    <div class="stat"><div class="n teal">12</div><div class="l">Esta semana</div></div>
+    <div class="stat"><div class="n purple">8</div><div class="l">Respuestas / vistas</div></div>
+    <div class="stat"><div class="n">3</div><div class="l">Fallidas</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <h2>Historial de postulaciones</h2>
+      <input class="search-in" placeholder="Buscar empresa o cargo…">
+    </div>
+    <table>
+      <thead><tr><th>#</th><th>Cargo</th><th>Empresa</th><th>Reclutador</th><th>Fecha</th><th>Estado</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>Psicólogo Organizacional</td><td>Grupo Andes</td><td><a href="#">Laura M.</a></td><td>2026-06-25</td><td><span class="badge">Aplicado</span></td></tr>
+        <tr><td>2</td><td>Analista de Bienestar</td><td>Amancay SAS</td><td><a href="#">Carlos R.</a></td><td>2026-06-24</td><td><span class="badge">Aplicado</span></td></tr>
+        <tr><td>3</td><td>Coordinador Psicosocial</td><td>Fundación Crecer</td><td>—</td><td>2026-06-23</td><td><span class="tick">✓ Visto</span></td></tr>
+        <tr><td>4</td><td>Psicólogo Educativo</td><td>Colegio San José</td><td><a href="#">Ana P.</a></td><td>2026-06-22</td><td><span class="badge">Aplicado</span></td></tr>
+        <tr><td>5</td><td>Especialista Selección</td><td>TalentoHR</td><td><a href="#">Diego V.</a></td><td>2026-06-21</td><td><span class="badge">Aplicado</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="overlay" id="ov" onclick="this.classList.remove('open');document.getElementById('dr').classList.remove('open')"></div>
+<div class="drawer" id="dr">
+  <div class="drawer-head"><h2>⚙ Configuración del Bot</h2>
+    <button class="x" onclick="document.getElementById('ov').classList.remove('open');document.getElementById('dr').classList.remove('open')">×</button></div>
+  <div class="tabs">
+    <button class="tab active" onclick="setTab(this,0)">Perfil</button>
+    <button class="tab" onclick="setTab(this,1)">Aplicaciones</button>
+    <button class="tab" onclick="setTab(this,2)">Búsqueda</button>
+    <button class="tab" onclick="setTab(this,3)">Preguntas IA</button>
+  </div>
+  <div class="pane">
+    <div class="grid2">
+      <div class="field"><label>Nombre</label><input value="Camilo Andrés"></div>
+      <div class="field"><label>Apellido</label><input value="Villarraga Sandoval"></div>
+      <div class="field"><label>Teléfono</label><input value="300 338 3616"></div>
+      <div class="field"><label>Ciudad actual</label><input value="El Colegio, Cundinamarca"></div>
+      <div class="field"><label>Institución educativa</label><input value="Universidad Distrital"></div>
+      <div class="field"><label>Nivel de educación</label><select><option>Pregrado · Psicólogo</option></select></div>
+      <div class="field"><label>Año de graduación</label><input value="2024"></div>
+      <div class="field"><label>Campo de estudio</label><input value="Psicología"></div>
+    </div>
+  </div>
+  <div class="drawer-foot">
+    <span class="save-status" id="ss">✓ Guardado</span>
+    <button class="btn">Validar</button>
+    <button class="btn primary" onclick="var s=document.getElementById('ss');s.classList.add('show');setTimeout(()=>s.classList.remove('show'),1800)">Guardar cambios</button>
+  </div>
+</div>
+<script>
+function setTab(el,i){document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));el.classList.add('active')}
+</script>
+</body>
+</html>

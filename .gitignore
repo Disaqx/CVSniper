@@ -1,0 +1,43 @@
+__pycache__
+.vscode
+.idea
+
+all excels
+all resumes
+logs
+
+old
+
+config/personals.py
+config/secrets.py
+config/questions.py
+config/resume.py
+config/search.py
+config/settings.py
+REVISED_CV.md
+qa_database.json
+config/user_config.json
+.venv
+apikeys.py
+scratch/
+
+# Release build output
+CVSniper_Release/
+CVSniper_Release.zip
+
+# Carpetas duplicadas / Duplicate nested folders
+modules/modules/
+setup/setup/
+templates/templates/
+
+# Claude Code / Antigravity IDE local data
+.claude/
+
+# Windows artefactos accidentales
+nul
+*.pycqa_database.json.migrated
+
+# Local QA cache: contains the answers you gave, including contact details
+qa_database.json
+qa_database.json.migrated
+all excels/

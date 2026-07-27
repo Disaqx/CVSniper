@@ -1,0 +1,27 @@
+# Windows scripts need CRLF: cmd.exe can split a .bat wrongly with LF endings,
+# especially around GOTO and labels. Forced regardless of the cloning machine.
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+*.ps1   text eol=crlf
+*.psm1  text eol=crlf
+
+# Shell scripts need LF or bash refuses to run them
+*.sh    text eol=lf
+
+# Cross-platform sources and docs
+*.py    text eol=lf
+*.md    text eol=lf
+*.json  text eol=lf
+*.html  text eol=lf
+*.css   text eol=lf
+*.js    text eol=lf
+*.txt   text eol=lf
+
+# Binaries: leave them alone
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.ico   binary
+*.pdf   binary
+*.exe   binary
+*.dll   binary

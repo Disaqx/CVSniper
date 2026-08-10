@@ -28,9 +28,10 @@ first_name = first_name.strip()
 middle_name = middle_name.strip()
 last_name = last_name.strip()
 full_name = first_name + " " + middle_name + " " + last_name if middle_name else first_name + " " + last_name
-notice_period_months = str(notice_period // 30)
-notice_period_weeks = str(notice_period // 7)
-notice_period = str(notice_period)
+notice_period_int = int(notice_period) if isinstance(notice_period, str) else notice_period
+notice_period_months = str(notice_period_int // 30)
+notice_period_weeks = str(notice_period_int // 7)
+notice_period = str(notice_period_int)
 
 # Recruiters ask "when can you start?" far more often than "what is your notice
 # period?", and almost never using the word notice. Matching only on notice /

@@ -14,7 +14,7 @@ from modules.helpers import print_lg, critical_error_log, convert_to_json
 from modules.ai.prompts import (
     extract_skills_prompt, extract_skills_response_format,
     deepseek_extract_skills_prompt,
-    ai_answer_prompt, evaluate_job_prompt,
+    ai_answer_prompt, evaluate_job_prompt, build_evaluate_job_prompt,
 )
 from modules.ai.qa_database import get_answer_from_database, save_to_qa_database
 
@@ -189,7 +189,7 @@ class OpenAILikeProvider(AIProvider):
         try:
             print_lg(f"Evaluating job using {self.provider_name} AI...")
             user_info = user_information_all or ""
-            prompt = evaluate_job_prompt.format(user_info, job_description)
+            prompt = build_evaluate_job_prompt(user_info, job_description)
             return self._completion(
                 [{"role": "user", "content": prompt}],
                 response_format={"type": "json_object"},
@@ -331,7 +331,7 @@ class GeminiProvider(AIProvider):
         try:
             print_lg("Evaluating job using Gemini AI...")
             user_info = user_information_all or ""
-            prompt = evaluate_job_prompt.format(user_info, job_description)
+            prompt = build_evaluate_job_prompt(user_info, job_description)
             return self._completion(prompt, is_json=True)
         except Exception as e:
             critical_error_log("Error evaluating job with Gemini!", e)

@@ -8,7 +8,7 @@ param(
     [string]$Version
 )
 
-$Root = $PSScriptRoot
+$Root = Split-Path -Parent $PSScriptRoot
 $ZipPath = "$Root\CVSniper_Release.zip"
 $NotesFile = "$Root\_release_notes_tmp.md"
 

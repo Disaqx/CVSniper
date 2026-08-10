@@ -89,6 +89,68 @@ Five files under `config/`, all managed from the settings window. They are
 **gitignored** — they hold your personal data and your API keys, and never
 leave your machine.
 
+> Screening logic is covered by `tests/` — run `py -3 tests/test_filtros.py`
+> after changing a filter. See `tests/README.md` for why they are written the
+> way they are.
+
+### The mode switch
+
+Top-right of the control panel is a three-position switch. Left is Easy Apply
+only, the middle is both, right is external only. It writes itself back to
+`application_mode` in `settings.py`, so it survives a restart, and the bot
+re-reads it between jobs — flipping it mid-run takes effect on the next listing.
+
+| Position | What it does |
+|---|---|
+| **EASY** (left) | Adds `f_LF=f_AL` to the search URL, so LinkedIn returns nothing else. The fastest mode |
+| **BOTH** (middle) | No Easy Apply filter at all |
+| **EXT** (right) | LinkedIn has no "not Easy Apply" filter, so the bot walks every result and skips the Easy Apply ones itself. Slower by design |
+
+The filter is re-checked on every page of results, not just once after the
+filter panel. LinkedIn puts `f_LF=f_AL` back by itself on some navigations, and
+that drift is what used to turn an external-only run into an Easy Apply one
+halfway through.
+
+### External applications
+
+An external job is one whose Apply button leaves LinkedIn. The bot clicks Apply
+**once** and works out what happened — an Easy Apply modal, a new tab, or this
+tab navigating away — then reopens the application page in a tab of its own.
+
+With `external_apply_enabled = False` nothing is filled in: the link is just
+recorded in the CSV. That is a cheap way to find out which ATS platforms your
+searches actually turn up before trusting the auto-fill with any of them.
+
+With it True, the platform decides what happens next:
+
+| | Platforms | Behaviour |
+|---|---|---|
+| Auto-filled | Greenhouse, Lever, Ashby, Workable, Recruitee, SmartRecruiters, Breezy, Teamtailor, and any unrecognised single-page form | CV uploaded first (many parse it and prefill the rest), then text fields, dropdowns, React comboboxes, radio groups and consent checkboxes |
+| Manual | Workday, iCIMS, SuccessFactors, Taleo/Oracle, BrassRing, Eightfold | Account creation, email verification and usually CAPTCHA. The link is recorded and nothing is touched |
+
+Submitting is conservative. It happens only when every **required** field could
+be answered — one unanswered required field and the application is left alone,
+with the field names in the log. `pause_before_submit_external = True` asks for
+confirmation first; False fills, submits, verifies and moves on unattended.
+
+A submitted application always closes its tab. `close_tabs` decides the rest:
+True closes the unfinished ones too (the link is still in the CSV), False leaves
+them open to finish by hand.
+
+"Submitted" means a confirmation message appeared, or the form vanished *and*
+the URL changed. A URL change on its own is not enough — a validation error that
+scrolls the page also changes it, and that used to count as an application sent.
+
+**Known limit:** if LinkedIn navigates the results tab itself instead of opening
+one (rare — apply links are forced to `target=_blank`), coming back re-renders
+the page and the bot may lose the rest of that page of results before moving to
+the next search term.
+
+**Pause** blocks the bot at the next checkpoint. Checkpoints sit before every AI
+call, on each page of the Easy Apply modal, and on each field of an external
+form — but a request already in flight to the LLM cannot be cancelled, so
+expect a few seconds before it settles.
+
 ### `personals.py` — who you are
 
 `first_name` · `middle_name` · `last_name` · `phone_number` · `current_city` ·
@@ -114,8 +176,41 @@ leave your machine.
 `industry` · `bad_words` · `about_company_bad_words` ·
 `primary_focus_keywords` · `secondary_focus_keywords` · `switch_number`
 
-`bad_words` and the focus keywords are what stop the bot wasting applications
-on listings that were never a fit.
+**Remote jobs anywhere.** `search_location` only ever finds jobs tied to that one
+place. Set `remote_worldwide = True` and every search term is also run against
+each entry in `remote_search_locations` with LinkedIn's Remote filter forced on,
+which is how you reach markets that pay better than your own. It multiplies the
+run time by the number of locations, so keep the list short.
+
+Know what that filter actually does, though. **LinkedIn's "Remote" means "you
+don't come to an office" — not "we hire from anywhere".** A job listed Remote in
+Mexico can still require you to live in Mexico, and LinkedIn has no filter for
+that; the restriction only ever appears in the description. There is also no
+freelance filter — `remote_job_types = ["C"]` (Contract) is the closest thing,
+and it is where most hire-from-anywhere work sits.
+
+So the location list is only half of it. `work_authorized_countries` is the
+other half: list the countries you can work from without the employer
+sponsoring anything, and postings that demand residency somewhere else get
+dropped after their description is read. `Worldwide` is the entry that actually
+surfaces globally-open roles — it carries LinkedIn's `geoId=92000000`. Any other
+location can be pinned by writing it as `Name|geoId`.
+
+**How picky the bot is.** Five settings decide how many listings survive
+screening. Loosen them if the bot is skipping jobs you would have applied to;
+tighten them if it is applying to junk.
+
+| Setting | Effect |
+|---|---|
+| `ai_min_score` | The main knob. The AI scores each posting 0-100 and anything below this is skipped. `0` never skips, `25` skips only a different profession, `70` applies only where you meet every stated requirement |
+| `ai_prescreen_strict` | Also honour the AI's own pass/fail verdict on hard requirements. Off by default — that verdict fails a candidate for missing any listed skill |
+| `experience_tolerance` | Years above `current_experience` you will still apply to. Postings list the ceiling of a range and settle for less |
+| `enable_job_focus_filter` | Off by default. When on, a job is dropped unless its title matches `primary_focus_keywords` — precise, but it silently discards every title you did not anticipate |
+| `title_bad_words` | The cheap alternative: instead of listing every title you want, list the few you don't. Runs either way |
+| `work_authorized_countries` | Drops the "remote" job that still wants you living in another country. Defaults to your `country` from `personals.py` |
+
+`bad_words` and `title_bad_words` are matched as whole words, case- and
+accent-insensitive. Keep them short — every entry is a job you will never see.
 
 ### `questions.py` — answers and resume
 
@@ -197,22 +292,40 @@ CVSniper/
    └─ reuse the Chrome session if there is one, otherwise sign in
 
 3. SEARCH
-   └─ for every term in search_terms:
+   └─ for every term in search_terms, in search_location:
        ├─ apply the configured filters
        └─ walk the results page by page
+   └─ then again in each remote_search_locations, Remote only
 
 4. SCREEN EACH LISTING
-   ├─ already applied?           -> skip
-   ├─ matches bad_words?         -> skip
-   ├─ outside the focus filter?  -> skip
-   └─ AI checks it against your profile -> apply or skip, with a reason
+   ├─ already applied?              -> skip
+   ├─ wrong kind for the mode
+   │  (Easy Apply vs external)?     -> skip
+   ├─ title in title_bad_words?     -> skip
+   ├─ matches bad_words?            -> skip
+   ├─ years required above your
+   │  experience + tolerance?       -> skip
+   ├─ "remote" but requires living
+   │  somewhere you cannot work?    -> skip
+   ├─ outside the focus filter?     -> skip (only if it is enabled)
+   └─ AI scores it against your profile
+      └─ below ai_min_score?        -> skip, with a reason
 
 5. APPLY
-   ├─ personal details from your config
-   ├─ questions already answered before, from qa_database.json
-   ├─ new questions -> the AI answers and the answer is cached
-   ├─ optional manual review (pause_before_submit)
-   └─ submit
+   └─ click Apply ONCE and see where it goes:
+       ├─ Easy Apply modal -> walk its pages
+       │   ├─ personal details from your config
+       │   ├─ questions already answered before, from qa_database.json
+       │   ├─ new questions -> the AI answers and the answer is cached
+       │   ├─ optional manual review (pause_before_submit)
+       │   └─ submit
+       ├─ a page outside LinkedIn -> reopen it in its own tab
+       │   ├─ walled ATS (Workday, iCIMS...)? -> record the link, done
+       │   ├─ upload the CV, fill the form, tick the consent boxes
+       │   ├─ any required field unanswered? -> record the link, done
+       │   ├─ optional manual review (pause_before_submit_external)
+       │   └─ submit, verify, close the tab
+       └─ nowhere -> skip
 
 6. RECORD
    ├─ applied -> all excels/all_applied_applications_history.csv

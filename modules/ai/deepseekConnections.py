@@ -257,7 +257,7 @@ def deepseek_evaluate_job(client: OpenAI, job_description: str, user_information
     try:
         print_lg("Evaluating if job matches user's CV using DeepSeek AI...")
         user_info = user_information_all or ""
-        prompt = evaluate_job_prompt.format(user_info, job_description)
+        prompt = build_evaluate_job_prompt(user_info, job_description)
         messages = [{"role": "user", "content": prompt}]
         return deepseek_completion(client, messages, response_format={"type": "json_object"})
     except Exception as e:

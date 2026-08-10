@@ -58,7 +58,8 @@ ANSWER:"""
 # Judging whether a posting is worth applying to
 # ---------------------------------------------------------------------------
 
-evaluate_job_prompt = """You are screening a job posting for a candidate, the way an honest recruiter would.
+evaluate_job_prompt = """You are screening a job posting for a candidate who is
+actively job hunting and wants to apply broadly.
 
 CANDIDATE PROFILE
 -----------------
@@ -68,28 +69,83 @@ JOB POSTING
 -----------
 {}
 
-Judge the fit on evidence in the posting and the profile, not on optimism.
-Weigh the hard requirements — years of experience, mandatory technologies,
-degrees, work authorisation, location — above the nice-to-haves. A posting the
-candidate would be filtered out of on the first automated screen is not a match,
-however appealing the role sounds.
+Your job is to spot the few postings that are a waste of an application — not to
+find reasons to say no. An application costs the candidate almost nothing, and
+postings routinely list more than the employer settles for.
+
+Treat as NOT disqualifying, on their own:
+  - missing some of the listed skills, tools or certifications
+  - asking for a few more years of experience than the candidate has
+  - a degree listed as "preferred", "desirable" or "a plus"
+  - a remote posting listed in another country that does NOT say where the
+    candidate must live
+  - unfamiliar industry, product or company size
+
+Treat as genuinely disqualifying:
+  - a different profession entirely (e.g. a nurse, a lawyer, a welder)
+  - a legal barrier the candidate cannot clear: citizenship or work
+    authorisation they do not hold, a licence or clearance they do not have
+  - a language the posting requires and the candidate does not speak
+  - seniority far beyond the candidate's (a director or head-of role when the
+    candidate is early career)
+  - on-site work in a city the candidate cannot reach
+  - a REMOTE role that still restricts where the candidate may live, to
+    somewhere they are not: "must reside in", "must be located in", "must be
+    authorised to work in", "residents of X only", "no visa sponsorship" in a
+    posting scoped to one country. Remote on a job board means "no office", not
+    "hires from anywhere" — read the posting for the real restriction.
+    A remote role open to the candidate's own country or region is fine.
 
 Reply with a single JSON object, no markdown fences and no text around it:
 
 {{
   "meets_requirements": true or false,
-  "reason": "two or three sentences: what matches, what is missing, and the one thing most likely to get this application rejected",
+  "reason": "two or three sentences: what matches, what is missing, and whether anything here is a real barrier",
   "score": 0 to 100,
   "role": "the job title exactly as it appears in the posting"
 }}
 
 Scoring guide:
-   0-39   missing hard requirements, would be screened out
-  40-69   partial fit, worth applying only if the candidate is casting wide
-  70-100  meets the stated requirements
+   0-24   a different profession, or a barrier the candidate cannot clear
+  25-49   a stretch, but an application is not wasted
+  50-74   a reasonable fit with gaps the candidate could be trained on
+  75-100  meets the stated requirements
 
-Be honest about a low score. The point is to spend the candidate's applications
-where they can actually land."""
+Set "meets_requirements" to false ONLY for the genuinely disqualifying cases
+listed above. A gap in skills or years is a lower score, not a false."""
+
+
+def build_evaluate_job_prompt(user_info: str, job_description: str) -> str:
+    '''
+    Fills `evaluate_job_prompt`, prepending where the candidate actually lives
+    and may legally work.
+
+    Without this the model has only `user_information_all`, a free-text blurb
+    that usually never states a country — so it cannot tell a remote job that
+    hires from anywhere from one that quietly requires living in the country it
+    was posted in. That is the single most common way a worldwide remote sweep
+    wastes applications.
+    '''
+    try:
+        from config.personals import country as _pais
+    except Exception:
+        _pais = ""
+    try:
+        from config.search import work_authorized_countries as _autorizado
+    except Exception:
+        _autorizado = []
+
+    cabecera = []
+    if _pais:
+        cabecera.append(f"Lives in: {_pais}")
+    if _autorizado:
+        cabecera.append("Can legally work, without the employer sponsoring anything, in: "
+                        + ", ".join(str(p) for p in _autorizado))
+    if cabecera:
+        cabecera.append("Anywhere else would need sponsorship or relocation.")
+        user_info = "\n".join(cabecera) + "\n\n" + (user_info or "")
+
+    return evaluate_job_prompt.format(user_info or "", job_description)
 
 
 # ---------------------------------------------------------------------------

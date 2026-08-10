@@ -96,6 +96,12 @@ alert_queue = queue.Queue()
 is_paused = False
 is_stopped = False
 career_ops_mode = False
+# Which kind of application the bot handles: "easy_apply", "external" or "both".
+# Loaded from config/settings.py on first read, then owned by the main-window
+# switch — the bot reads it live, so flipping it mid-run takes effect on the
+# next job rather than needing a restart.
+APPLICATION_MODES = ("easy_apply", "external", "both")
+application_mode = None
 active_driver = None
 current_ui_status = "Status: Idle"
 current_ui_details = ""
@@ -495,6 +501,83 @@ PANEL            = "#15151a"
 def _card_of(parent):
     """Rows added after a _section_title() land inside that section's card."""
     return getattr(parent, "_current_card", parent)
+
+class ModeSwitch(tk.Canvas):
+    '''
+    Three-position segmented switch for the application mode, drawn on a
+    Canvas because Tk has no segmented control.
+
+    Left = Easy Apply only, middle = both, right = external only — the physical
+    order of the switch, which is why it does not follow APPLICATION_MODES
+    (that tuple is the set of valid values, and its order is the cycling order
+    of the old button).
+
+    Clicking a third jumps straight to it; clicking the active one does
+    nothing. The colours match BotUIApp._MODE_NAME's palette so the panel reads
+    the same whether you look at the switch or at the log line it writes.
+    '''
+
+    ORDER = ("easy_apply", "both", "external")
+    COLORS = {
+        "easy_apply": "#00E8C6",   # teal: the safe, fully automated path
+        "both":       "#7F5AF0",   # purple
+        "external":   "#FF8C42",   # orange: leaves LinkedIn
+    }
+    LABEL_KEYS = {
+        "easy_apply": "sw_mode_easy",
+        "both":       "sw_mode_both",
+        "external":   "sw_mode_ext",
+    }
+
+    def __init__(self, parent, scaling=1.0, on_change=None, **kw):
+        # 38 px is the narrowest that keeps "AMBAS"/"BOTH" clear of the knob
+        # sitting next to it at this font size.
+        self.seg_w = max(34, int(38 * scaling))
+        self.h = max(14, int(17 * scaling))
+        super().__init__(parent, width=self.seg_w * 3 + 2, height=self.h,
+                         bg=BG, highlightthickness=0, bd=0, cursor="hand2", **kw)
+        self.on_change = on_change
+        self._font = ("Segoe UI Bold", max(6, int(6 * scaling)))
+        self.bind("<Button-1>", self._on_click)
+        self.redraw()
+
+    def _rounded(self, x1, y1, x2, y2, r, **kw):
+        r = min(r, (y2 - y1) // 2, (x2 - x1) // 2)
+        pts = [x1 + r, y1, x2 - r, y1, x2, y1, x2, y1 + r, x2, y2 - r, x2, y2,
+               x2 - r, y2, x1 + r, y2, x1, y2, x1, y2 - r, x1, y1 + r, x1, y1]
+        return self.create_polygon(pts, smooth=True, **kw)
+
+    def redraw(self):
+        self.delete("all")
+        modo = get_application_mode()
+        if modo not in self.ORDER:
+            modo = "easy_apply"
+        w, h = self.seg_w * 3 + 2, self.h
+        self._rounded(0, 0, w - 1, h - 1, h // 2, fill=BTN_NEUTRAL, outline=BORDER)
+
+        idx = self.ORDER.index(modo)
+        x1 = 1 + idx * self.seg_w
+        self._rounded(x1, 1, x1 + self.seg_w, h - 2, (h - 3) // 2,
+                      fill=self.COLORS[modo], outline="")
+
+        for i, clave in enumerate(self.ORDER):
+            activo = (i == idx)
+            # Dark text on the bright knob, dim grey on the unlit segments.
+            color = "#101012" if activo else "#6a6a72"
+            self.create_text(1 + i * self.seg_w + self.seg_w // 2, h // 2,
+                             text=T(self.LABEL_KEYS[clave]), fill=color,
+                             font=self._font)
+
+    def _on_click(self, event):
+        idx = min(2, max(0, int((event.x - 1) // self.seg_w)))
+        elegido = self.ORDER[idx]
+        if elegido == get_application_mode():
+            return
+        set_application_mode(elegido)
+        self.redraw()
+        if self.on_change:
+            self.on_change(elegido)
+
 
 def _styled_label(parent, text, small=False):
     size = 8 if small else 9
@@ -993,7 +1076,19 @@ class GlassSettings(tk.Toplevel):
         self._add_list(p, "search_terms", T("lbl_search_terms"), self._SEARCH, "search_terms", height=5)
         self._add_entry(p, "search_location", T("lbl_search_location"), self._SEARCH, "search_location")
 
+        _section_title(p, T("cfg_sec_remote"))
+        self._add_bool(p, "remote_worldwide", T("lbl_remote_worldwide"), self._SEARCH, "remote_worldwide")
+        self._add_list(p, "remote_search_locations", T("lbl_remote_locations"), self._SEARCH, "remote_search_locations", height=4)
+        self._add_multicheck(p, "remote_job_types", T("lbl_remote_job_types"), self._SEARCH, "remote_job_types",
+                             [("F", T("opt_fulltime")), ("P", T("opt_parttime")), ("C", T("opt_contract")),
+                              ("T", T("opt_temporary"))], cols=4)
+        self._add_list(p, "work_authorized_countries", T("lbl_work_countries"), self._SEARCH, "work_authorized_countries", height=2)
+        self._add_bool(p, "enable_residency_filter", T("lbl_residency_filter"), self._SEARCH, "enable_residency_filter")
+
         _section_title(p, T("cfg_sec_relevance"))
+        self._add_entry(p, "ai_min_score", T("lbl_ai_min_score"), self._SEARCH, "ai_min_score", width=10)
+        self._add_bool(p, "ai_prescreen_strict", T("lbl_ai_strict"), self._SEARCH, "ai_prescreen_strict")
+        self._add_list(p, "title_bad_words", T("lbl_title_bad_words"), self._SEARCH, "title_bad_words", height=3)
         self._add_list(p, "primary_focus_keywords", T("lbl_primary_keywords"), self._SEARCH, "primary_focus_keywords", height=3)
         self._add_list(p, "secondary_focus_keywords", T("lbl_secondary_keywords"), self._SEARCH, "secondary_focus_keywords", height=3)
         self._add_bool(p, "enable_job_focus_filter", T("lbl_enable_focus"), self._SEARCH, "enable_job_focus_filter")
@@ -1020,6 +1115,7 @@ class GlassSettings(tk.Toplevel):
         self._add_list(p, "bad_words", T("lbl_bad_words"), self._SEARCH, "bad_words", height=3)
         self._add_list(p, "about_company_bad_words", T("lbl_company_bad_words"), self._SEARCH, "about_company_bad_words", height=2)
         self._add_entry(p, "current_experience", T("lbl_current_experience"), self._SEARCH, "current_experience", width=10)
+        self._add_entry(p, "experience_tolerance", T("lbl_experience_tolerance"), self._SEARCH, "experience_tolerance", width=10)
 
     def _build_tab_personal(self, p):
         _section_title(p, T("cfg_sec_personal"))
@@ -1135,7 +1231,12 @@ class GlassSettings(tk.Toplevel):
             try:
                 if ftype == "entry":
                     raw = widget.get().strip()
-                    numeric_fields = {'switch_number', 'current_experience', 'desired_salary', 'notice_period', 'current_ctc', 'click_gap'}
+                    # Anything not listed here is written back as a quoted
+                    # string, which then fails the numeric comparisons at
+                    # runtime. Every entry field holding a number belongs here.
+                    numeric_fields = {'switch_number', 'current_experience', 'desired_salary',
+                                      'notice_period', 'current_ctc', 'click_gap',
+                                      'experience_tolerance', 'ai_min_score'}
                     if varname in numeric_fields:
                         try:
                             val = ast.literal_eval(raw)
@@ -1237,10 +1338,13 @@ class BotUIApp:
         self.dot_canvas.pack(side="left", padx=(0, 8))
         self.status_dot = self.dot_canvas.create_oval(1, 1, 9, 9, fill="#2ECC71", width=0)
 
-        self.title_label = tk.Label(self.header, text="CVSNIPER CONTROL",
+        # Packed at the end of this block, after the header's right-hand side.
+        # Pack order is priority order in Tk: whatever is packed last gets the
+        # leftover space, and the title is the one thing here that can afford to
+        # be clipped. Packed first, it squeezed the mode switch into a sliver.
+        self.title_label = tk.Label(self.header, text="CVSNIPER",
                                     fg="#E6E6E8", bg="#0a0a0c",
                                     font=("Segoe UI Bold", 9))
-        self.title_label.pack(side="left")
 
         # Close button
         self.close_btn = tk.Label(self.header, text=ICO_CLOSE, fg="#94A1B2",
@@ -1264,6 +1368,15 @@ class BotUIApp:
         self.drag_lbl = tk.Label(self.header, text=ICO_GRIP, fg="#4c4c52",
                                  bg="#0a0a0c", font=_icon_font(10))
         self.drag_lbl.pack(side="right")
+
+        # Application-mode switch, top-right: left = Easy Apply only,
+        # middle = both, right = external only.
+        self.mode_switch = ModeSwitch(self.header, scaling=self.scaling,
+                                      on_change=self._on_mode_changed)
+        self.mode_switch.pack(side="right", padx=(0, 8))
+
+        # Title last, so it yields space to the switch rather than the reverse.
+        self.title_label.pack(side="left", padx=(0, 6))
 
         # API usage bar
         self.api_row = tk.Frame(self.border_frame, bg="#0a0a0c")
@@ -1297,7 +1410,9 @@ class BotUIApp:
             command=self._open_dashboard,
             cursor="hand2"
         )
-        self.dashboard_btn.pack(side="left", fill="x", expand=True, padx=(0, 4))
+        # The mode control lives in the header now (see self.mode_switch), so
+        # this row is Dashboard on its own and takes the full width.
+        self.dashboard_btn.pack(side="left", fill="x", expand=True)
 
         # Buttons Container — row 2: main action buttons
         self.btn_frame = tk.Frame(self.border_frame, bg="#0a0a0c")
@@ -1456,12 +1571,25 @@ class BotUIApp:
         global is_paused
         is_paused = not is_paused
 
+    # Long names for the log line; the switch itself uses the short sw_mode_*
+    # labels, and both come from the same key set.
+    _MODE_NAME = {
+        "easy_apply": "btn_mode_easy",
+        "external":   "btn_mode_external",
+        "both":       "btn_mode_both",
+    }
+
+    def _on_mode_changed(self, modo):
+        '''Called by the header switch after it has already persisted the mode.'''
+        self.add_log("System", T("msg_mode_changed").format(T(self._MODE_NAME[modo])), "system")
+
     def toggle_career_ops(self):
         global career_ops_mode
         career_ops_mode = not career_ops_mode
         if career_ops_mode:
             self.career_ops_btn.config(bg="#7F5AF0", fg="#FFFFFE", activebackground="#9270F2")
-            self.title_label.config(text="CVSNIPER - CAREER-OPS", fg="#00E8C6")
+            # Just the mode name: the full title plus the switch does not fit.
+            self.title_label.config(text="CAREER-OPS", fg="#00E8C6")
             self.add_log("System", "Modo Career-Ops activado. Se omitirá Easy Apply; todos los matches se abrirán manualmente.", "system")
             alert_msg = (
                 "El Modo Career-Ops está activo:\n\n"
@@ -1473,7 +1601,7 @@ class BotUIApp:
             GlassAlert(self.root, "Modo Career-Ops", alert_msg, queue.Queue())
         else:
             self.career_ops_btn.config(bg=BTN_PURPLE, fg=BTN_PURPLE_FG, activebackground=BTN_PURPLE_HV)
-            self.title_label.config(text="CVSNIPER CONTROL", fg="#E6E6E8")
+            self.title_label.config(text="CVSNIPER", fg="#E6E6E8")
             self.add_log("System", "Modo Career-Ops desactivado. LinkedIn Easy Apply estándar activo.", "system")
 
     def trigger_stop(self):
@@ -1539,6 +1667,7 @@ class BotUIApp:
             self.stop_btn.config(text=T("btn_stop"))
         if not career_ops_mode:
             self.career_ops_btn.config(text=T("btn_career_ops"))
+        self.mode_switch.redraw()
 
     def poll_updates(self):
         global is_paused, is_stopped, current_ui_status, current_ui_details, current_ui_action
@@ -1710,6 +1839,26 @@ def ui_pause_check():
 def is_career_ops_mode():
     global career_ops_mode
     return career_ops_mode
+
+
+def get_application_mode() -> str:
+    '''Current application mode, loading it from config on first use.'''
+    global application_mode
+    if application_mode is None:
+        _BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        valor = _read_py_var(os.path.join(_BASE, "config", "settings.py"), "application_mode")
+        application_mode = valor if valor in APPLICATION_MODES else "easy_apply"
+    return application_mode
+
+
+def set_application_mode(mode: str) -> None:
+    '''Switch mode and persist it, so it survives a restart.'''
+    global application_mode
+    if mode not in APPLICATION_MODES:
+        return
+    application_mode = mode
+    _BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    _write_py_var(os.path.join(_BASE, "config", "settings.py"), "application_mode", mode)
 
 _PLACEHOLDER_KEYS = {"YOUR_GROQ_API_KEY_HERE", "YOUR_API_KEY_HERE", "", "not-needed", "sk-xxx"}
 

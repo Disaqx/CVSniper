@@ -22,8 +22,164 @@ from config.search import (
 from config.settings import click_gap
 from config.personals import disability_status
 
+# Settings added after the first release. Reading them defensively keeps an old
+# config/search.py working instead of crashing the bot on import.
+try:
+    from config.search import title_bad_words
+except ImportError:
+    title_bad_words = []
+try:
+    from config.search import (work_authorized_countries, work_authorized_regions,
+                               enable_residency_filter)
+except ImportError:
+    work_authorized_countries, work_authorized_regions = [], []
+    enable_residency_filter = False
+if not work_authorized_countries:
+    # Left empty by the template. Without this fallback a fresh install would
+    # skip jobs in the user's OWN country for requiring residency there.
+    try:
+        from config.personals import country as _pais_propio
+        work_authorized_countries = [_pais_propio] if _pais_propio else []
+    except ImportError:
+        work_authorized_countries = []
+try:
+    from config.search import experience_tolerance
+    # The settings panel can write this back as a string.
+    experience_tolerance = int(experience_tolerance)
+except (ImportError, TypeError, ValueError):
+    experience_tolerance = 0
+
 
 re_experience = re.compile(r'[(]?\s*(\d+)\s*[)]?\s*[-to]*\s*\d*[+]*\s*year[s]?', re.IGNORECASE)
+
+# 'secret' used to be matched as a bare substring, which fired on the Spanish
+# words "secreto" and "secretaria" — present in a large share of Colombian
+# postings — and silently threw those jobs away. Only real clearance wording
+# should skip a job.
+_CLEARANCE_PHRASES = (
+    'security clearance', 'secret clearance', 'top secret', 'ts/sci',
+    'dod clearance', 'active clearance', 'clearance required',
+    'polygraph', 'poligrafo', 'polígrafo',
+)
+
+_ACCENTS = str.maketrans('áéíóúüñÁÉÍÓÚÜÑ', 'aeiouunAEIOUUN')
+
+
+def _fold(text: str) -> str:
+    '''Lowercase and strip accents, so "Técnico" matches "tecnico".'''
+    return (text or "").translate(_ACCENTS).lower()
+
+
+def _contains_term(haystack_low: str, term: str) -> bool:
+    '''
+    Whole-word match, so "CNC" does not fire inside "CNCF" and "PHP" does not
+    fire inside "phpMyAdmin".
+
+    A plain \\b is not enough for dotted text: "\\bphp\\b" still matches the
+    "php" in "index.php", and "\\.net\\b" still matches the "net" in
+    "careers.example.net" — both of which are URLs, not skill requirements. So a
+    dot counts as part of the word for the purpose of the left edge. The cost is
+    that a term written ".NET" no longer matches "ASP.NET"; erring towards not
+    skipping is the right side to fail on.
+    '''
+    term = (term or "").strip()
+    if not term:
+        return False
+    pattern = re.escape(term.lower())
+    # Left edge: never start mid-word, and never inside a dotted name/URL.
+    pattern = (r'(?<![\w.])' if re.match(r'\w', term[0]) else r'(?<!\w)') + pattern
+    # Right edge: only needed when the term itself ends in a word character.
+    if re.search(r'\w$', term):
+        pattern += r'\b'
+    return re.search(pattern, haystack_low) is not None
+
+
+# LinkedIn's Remote filter means "no office attendance", not "we hire from
+# anywhere" — there is no filter for the latter. A posting that only accepts
+# residents of one country says so in prose, so that prose is what gets read.
+#
+# Each pattern captures the words that FOLLOW the requirement, because that tail
+# is where the place is named.
+_RESIDENCY_PATTERNS = tuple(re.compile(p, re.IGNORECASE) for p in (
+    r'must (?:be )?(?:currently )?(?:reside|live|be located|be based|be situated)\b[^.\n;]{0,90}',
+    r'(?:candidates?|applicants?|you) must be (?:located|based|residing|living)\b[^.\n;]{0,90}',
+    r'must (?:be (?:legally )?(?:authoriz|authoris)ed|have (?:the )?(?:legal )?right) to work\b[^.\n;]{0,90}',
+    r'(?:must be |are )?eligible to work\b[^.\n;]{0,90}',
+    r'open only to\b[^.\n;]{0,90}',
+    r'only (?:candidates|applicants|residents|those)\s+(?:in|from|located|residing|based)\b[^.\n;]{0,90}',
+    r'(?:this role|this position|the role) is (?:only )?(?:available|open) (?:to|for|in)\b[^.\n;]{0,90}',
+    r'residents? of\b[^.\n;]{0,90}',
+    r'(?:debes?|deben|debera[s]?) (?:residir|vivir|estar (?:ubicad|radicad)[oa]s?)\b[^.\n;]{0,90}',
+    r'(?:residir|radicad[oa]s?|ubicad[oa]s?) en\b[^.\n;]{0,90}',
+))
+
+# Only needs to cover places that actually appear in these clauses. A country
+# not listed here simply falls through to the AI rather than being skipped.
+_COUNTRY_NAMES = (
+    'united states', 'the us', 'the u.s.', 'usa', 'u.s.a', 'america',
+    'canada', 'united kingdom', 'the uk', 'u.k.', 'england', 'ireland',
+    'germany', 'alemania', 'france', 'francia', 'spain', 'espana',
+    'portugal', 'italy', 'italia', 'netherlands', 'holanda', 'belgium',
+    'switzerland', 'suiza', 'austria', 'poland', 'polonia', 'romania',
+    'sweden', 'norway', 'denmark', 'finland', 'greece',
+    'australia', 'new zealand', 'japan', 'japon', 'china', 'singapore',
+    'india', 'pakistan', 'philippines', 'filipinas', 'indonesia', 'vietnam',
+    'south africa', 'nigeria', 'kenya', 'egypt', 'israel', 'turkey',
+    'united arab emirates', 'uae', 'saudi arabia', 'qatar',
+    'mexico', 'brazil', 'brasil', 'argentina', 'chile', 'peru', 'ecuador',
+    'uruguay', 'paraguay', 'bolivia', 'venezuela', 'costa rica', 'panama',
+    'guatemala', 'honduras', 'el salvador', 'nicaragua',
+    'dominican republic', 'republica dominicana', 'puerto rico', 'colombia',
+    'european union', 'the eu', 'europe', 'europa', 'emea', 'apac', 'anz',
+)
+
+
+def requires_ineligible_residency(description: str) -> str | None:
+    '''
+    Returns the offending clause if the posting requires living in, or being
+    authorised to work in, somewhere the user is not — else None.
+
+    Deliberately cautious: it only skips when a residency clause names a place
+    that is recognised AND not on the allowed lists. A clause naming nowhere in
+    particular, or naming a country not in `_COUNTRY_NAMES`, is left for the AI
+    pre-screening to judge. Skipping a job the user could have had costs more
+    than one wasted application.
+    '''
+    if not enable_residency_filter:
+        return None
+    try:
+        permitidos = [_fold(p) for p in
+                      list(work_authorized_countries or []) + list(work_authorized_regions or [])
+                      if p and str(p).strip()]
+        texto = _fold(description)
+        for patron in _RESIDENCY_PATTERNS:
+            for clausula in patron.findall(texto):
+                # An allowed place anywhere in the clause makes it fine — this
+                # also covers "must reside in Colombia or Mexico".
+                if any(_contains_term(clausula, p) for p in permitidos):
+                    continue
+                prohibido = next((c for c in _COUNTRY_NAMES if _contains_term(clausula, c)), None)
+                if prohibido:
+                    return clausula.strip()
+        return None
+    except Exception:
+        return None  # Fail open
+
+
+def is_title_blacklisted(title: str) -> str | None:
+    '''
+    Returns the offending word if the title is one the user never wants, else
+    None. Runs whether or not the focus filter is on — it is the cheap guard
+    that makes leaving the focus filter off safe.
+    '''
+    try:
+        title_low = _fold(title)
+        for word in title_bad_words or []:
+            if _contains_term(title_low, _fold(word)):
+                return word
+        return None
+    except Exception:
+        return None  # Fail open
 
 
 def is_job_relevant(title: str, work_style: str) -> bool:
@@ -32,20 +188,21 @@ def is_job_relevant(title: str, work_style: str) -> bool:
     - Primary keywords: always allowed.
     - Secondary keywords: only allowed if work_style is Remote or Hybrid.
     - If enable_job_focus_filter is False, always returns True.
+    Accent-insensitive, so "Soporte Tecnico" and "Soporte Técnico" both match.
     '''
     try:
         if not enable_job_focus_filter:
             return True
-        title_low = title.lower()
+        title_low = _fold(title)
         # Check primary focus (always relevant)
         for kw in primary_focus_keywords:
-            if kw.lower() in title_low:
+            if _fold(kw) in title_low:
                 return True
         # Check secondary focus (only if Remote or Hybrid — EN and ES)
-        style_low = work_style.lower() if work_style else ""
-        if any(s in style_low for s in ["remote", "hybrid", "remoto", "híbrido", "hibrido"]):
+        style_low = _fold(work_style)
+        if any(s in style_low for s in ["remote", "hybrid", "remoto", "hibrido"]):
             for kw in secondary_focus_keywords:
-                if kw.lower() in title_low:
+                if _fold(kw) in title_low:
                     return True
         return False
     except Exception:
@@ -108,9 +265,86 @@ def set_search_location(location_str: str) -> None:
             print_lg(f"Location field adjustment skipped (location set via URL): {e}")
 
 
-def apply_filters(location_str: str, sort_by: str, date_posted: str, pause_after_filters: bool) -> bool:
+def _set_easy_apply_toggle(deseado: bool) -> None:
     '''
-    Function to apply job search filters
+    Drives the Easy Apply switch to `deseado`, reading its current state first.
+
+    Reading before clicking is what makes this safe to call in every mode. A
+    blind click was wrong in both directions: it turned the filter back OFF when
+    the URL had already switched it on (f_LF=f_AL), and it turned it ON from
+    `easy_apply_only` even in external-only mode — which is why "external only"
+    kept showing Easy Apply jobs.
+    '''
+    for lbl in ["Easy Apply", "Solicitud sencilla", "Postulacion simplificada", "Postulación simplificada"]:
+        try:
+            _fc = driver.find_element(By.XPATH, f'.//h3[normalize-space()="{lbl}"]/ancestor::fieldset')
+            _btn = _fc.find_element(By.XPATH, './/input[@role="switch"]')
+            _aria = (_btn.get_attribute("aria-checked") or "").lower()
+            actual = (_aria == "true") if _aria in ("true", "false") else _btn.is_selected()
+            if actual == deseado:
+                print_lg(f"Easy Apply filter already {'on' if deseado else 'off'}")
+                return
+            scroll_to_view(driver, _btn)
+            actions.move_to_element(_btn).click().perform()
+            buffer(click_gap)
+            print_lg(f"Easy Apply filter turned {'on' if deseado else 'off'}")
+            return
+        except Exception:
+            continue
+    print_lg("Easy Apply filter toggle not found (tried EN/ES labels)")
+
+
+def ensure_easy_apply_state(deseado: bool) -> bool:
+    '''
+    Re-asserts the Easy Apply filter by rewriting the results URL.
+
+    The toggle is not a one-off decision: LinkedIn brings `f_LF=f_AL` back on
+    its own after some navigations, and the pill can survive a page turn — which
+    is how an "external only" run drifts back into showing nothing but Easy
+    Apply jobs. Reading the state off the URL is language-independent, unlike
+    hunting for the translated toggle, and cheap enough to run on every page.
+
+    Returns True when the page had to be reloaded, so the caller can wait for
+    the listings again.
+    '''
+    try:
+        url = driver.current_url
+    except Exception:
+        return False
+    if not url or "/jobs/search" not in url:
+        return False
+
+    tiene = "f_LF=f_AL" in url
+    if tiene == deseado:
+        return False
+
+    if deseado:
+        nueva = url + ("&" if "?" in url else "?") + "f_LF=f_AL"
+    else:
+        nueva = re.sub(r'[?&]f_LF=f_AL', '', url)
+        # Removing the first parameter takes the '?' with it.
+        if "?" not in nueva and "&" in nueva:
+            nueva = nueva.replace("&", "?", 1)
+
+    print_lg(f"Easy Apply filter {'restored on' if deseado else 'removed from'} the results URL")
+    try:
+        driver.get(nueva)
+        buffer(3)
+        return True
+    except Exception as e:
+        print_lg(f"Could not rewrite the results URL: {e}")
+        return False
+
+
+def apply_filters(location_str: str, sort_by: str, date_posted: str, pause_after_filters: bool,
+                  remote_only: bool = False, easy_apply_filter: bool | None = None) -> bool:
+    '''
+    Function to apply job search filters.
+    `remote_only` forces the "Remote" workplace filter for this one search,
+    regardless of the `on_site` config — used by the worldwide remote sweep.
+    `easy_apply_filter` is the state the Easy Apply switch should end up in.
+    None falls back to the `easy_apply_only` config; the caller passes it
+    explicitly because the application mode, not the config, decides.
     '''
     ui_pause_check()  # honor pause/stop before starting the slow filter sequence
     set_search_location(location_str)
@@ -150,24 +384,17 @@ def apply_filters(location_str: str, sort_by: str, date_posted: str, pause_after
         if experience_level or companies: buffer(recommended_wait)
 
         multi_sel_noWait(driver, job_type)
-        multi_sel_noWait(driver, on_site)
-        if job_type or on_site: buffer(recommended_wait)
+        # On a remote sweep the URL already carries f_WT=2, so the modal opens
+        # with Remote ticked. Clicking it here would toggle it back OFF — hence
+        # the workplace options are left alone in that case.
+        if not remote_only:
+            multi_sel_noWait(driver, on_site)
+        if job_type or (on_site and not remote_only): buffer(recommended_wait)
 
-        if easy_apply_only and not is_career_ops_mode():
-            _ea_clicked = False
-            for _ea_lbl in ["Easy Apply", "Solicitud sencilla", "Postulacion simplificada", "Postulación simplificada"]:
-                try:
-                    _fc  = driver.find_element(By.XPATH, f'.//h3[normalize-space()="{_ea_lbl}"]/ancestor::fieldset')
-                    _btn = _fc.find_element(By.XPATH, './/input[@role="switch"]')
-                    scroll_to_view(driver, _btn)
-                    actions.move_to_element(_btn).click().perform()
-                    buffer(click_gap)
-                    _ea_clicked = True
-                    break
-                except Exception:
-                    continue
-            if not _ea_clicked:
-                print_lg("Easy Apply filter toggle not found (tried EN/ES labels)")
+        _ea_deseado = easy_apply_only if easy_apply_filter is None else bool(easy_apply_filter)
+        if is_career_ops_mode():
+            _ea_deseado = False
+        _set_easy_apply_toggle(_ea_deseado)
 
         multi_sel_noWait(driver, location)
         multi_sel_noWait(driver, industry)
@@ -367,15 +594,17 @@ def get_job_description(
         skipReason = None
         skipMessage = None
         for word in bad_words:
-            if word.lower() in jobDescriptionLow:
+            if _contains_term(jobDescriptionLow, word):
                 skipMessage = f'\n{jobDescription}\n\nContains bad word "{word}". Skipping this job!\n'
                 skipReason = "Found a Bad Word in About Job"
                 skip = True
                 break
-        if not skip and security_clearance == False and ('polygraph' in jobDescriptionLow or 'clearance' in jobDescriptionLow or 'secret' in jobDescriptionLow):
-            skipMessage = f'\n{jobDescription}\n\nFound "Clearance" or "Polygraph". Skipping this job!\n'
-            skipReason = "Asking for Security clearance"
-            skip = True
+        if not skip and security_clearance == False:
+            _hit = next((p for p in _CLEARANCE_PHRASES if p in jobDescriptionLow), None)
+            if _hit:
+                skipMessage = f'\n{jobDescription}\n\nFound "{_hit}". Skipping this job!\n'
+                skipReason = "Asking for Security clearance"
+                skip = True
         if not skip and disability_status == "No":
             disability_exclusive_phrases = [
                 'vaga exclusiva para pcd', 'vaga exclusiva pcd', 'exclusiva para pessoas com deficiencia',
@@ -396,8 +625,11 @@ def get_job_description(
                 print_lg(f'Found the word "master" in \n{jobDescription}')
                 found_masters = 2
             experience_required = extract_years_of_experience(jobDescription)
-            if current_experience > -1 and experience_required > current_experience + found_masters:
-                skipMessage = f'\n{jobDescription}\n\nExperience required {experience_required} > Current Experience {current_experience + found_masters}. Skipping this job!\n'
+            # Postings ask for the ceiling of a range and settle for less, so
+            # allow `experience_tolerance` years of stretch before skipping.
+            _ceiling = current_experience + found_masters + max(0, experience_tolerance)
+            if current_experience > -1 and experience_required > _ceiling:
+                skipMessage = f'\n{jobDescription}\n\nExperience required {experience_required} > {_ceiling} (your {current_experience} + {found_masters} masters + {max(0, experience_tolerance)} tolerance). Skipping this job!\n'
                 skipReason = "Required experience is high"
                 skip = True
     except Exception as e:

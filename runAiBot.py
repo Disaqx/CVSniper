@@ -43,11 +43,38 @@ from config.search import *
 from config.secrets import use_AI, username, password, ai_provider
 from config.settings import *
 
+# Settings added after the first release. A config/search.py written by an older
+# version simply won't define them, and `import *` would leave a NameError at
+# the point of use rather than at import — so they get defaults here.
+remote_worldwide = globals().get("remote_worldwide", False)
+remote_search_locations = globals().get("remote_search_locations", [])
+remote_job_types = globals().get("remote_job_types", [])
+ai_prescreen_strict = globals().get("ai_prescreen_strict", False)
+
+# LinkedIn resolves most location names from the text alone, but its global
+# scope is a real place with an id and is unreliable without it. Anything not
+# listed here can be pinned by writing the entry as "Name|geoId".
+LINKEDIN_GEO_IDS = {"worldwide": "92000000"}
+try:
+    # The settings panel can write this back as a string; comparing an int to a
+    # string raises, so it is coerced once here rather than at every use.
+    ai_min_score = int(globals().get("ai_min_score", 25))
+except (TypeError, ValueError):
+    ai_min_score = 25
+
 from modules.open_chrome import *
 from modules.helpers import *
 from modules.clickers_and_finders import *
 from modules.validator import validate_config
-from modules.bot_ui import ui_start, ui_update_status, ui_alert, ui_confirm, ui_pause_check, is_career_ops_mode, ui_enforce_configuration
+from modules.bot_ui import ui_start, ui_update_status, ui_alert, ui_confirm, ui_pause_check, is_career_ops_mode, ui_enforce_configuration, get_application_mode
+
+
+def wants_easy_apply() -> bool:
+    return get_application_mode() in ("easy_apply", "both")
+
+
+def wants_external() -> bool:
+    return get_application_mode() in ("external", "both")
 
 if use_AI:
     from modules.ai.providers import get_ai_client
@@ -57,8 +84,9 @@ from modules.ai.qa_database import save_to_qa_database
 
 from modules.linkedin_login import is_logged_in_LN, login_LN
 from modules.job_search import (
-    re_experience, is_job_relevant, set_search_location, apply_filters,
-    get_page_info, get_job_main_details, check_blacklist,
+    re_experience, is_job_relevant, is_title_blacklisted,
+    requires_ineligible_residency, set_search_location,
+    apply_filters, ensure_easy_apply_state, get_page_info, get_job_main_details, check_blacklist,
     extract_years_of_experience, get_job_description
 )
 from modules.easy_apply import (
@@ -67,7 +95,7 @@ from modules.easy_apply import (
     is_sensitive_question, answer_common_questions, answer_questions,
     follow_company, discard_job, randomly_answered_questions
 )
-from modules.external_apply import external_apply
+from modules.external_apply import external_apply, probe_apply_button
 
 
 pyautogui.FAILSAFE = False
@@ -332,14 +360,32 @@ def check_daily_limit() -> bool:
 
 # Function to apply to jobs
 def apply_to_jobs(search_terms: list[str]) -> None:
+    def _split_geo(entrada: str) -> tuple[str, str | None]:
+        '''"Worldwide|92000000" -> ("Worldwide", "92000000"); otherwise look the
+        name up, and fall back to letting LinkedIn resolve the text.'''
+        nombre, _, pinned = str(entrada).partition("|")
+        nombre = nombre.strip()
+        return nombre, (pinned.strip() or LINKEDIN_GEO_IDS.get(nombre.lower()))
+
     locations = search_location if isinstance(search_location, (list, tuple)) else [search_location]
-    for location in locations:
-        _apply_to_jobs_for_location(search_terms, location)
+    # (location, remote_only, geo_id) — the local pass first, then the worldwide
+    # remote sweep, so nearby jobs are taken before the daily limit runs out.
+    plan = [(nombre, False, geo) for nombre, geo in (_split_geo(loc) for loc in locations)]
+    if remote_worldwide:
+        remotos = [_split_geo(loc) for loc in remote_search_locations if loc and str(loc).strip()]
+        plan += [(nombre, True, geo) for nombre, geo in remotos]
+        if remotos:
+            print_lg(f"Remote sweep enabled — {len(remotos)} extra location(s): "
+                     + ', '.join(n for n, _ in remotos))
+
+    for location, remote_only, geo_id in plan:
+        _apply_to_jobs_for_location(search_terms, location, remote_only, geo_id)
         if dailyEasyApplyLimitReached and not is_career_ops_mode(): return
 
 
 # Function to apply to jobs for a specific location
-def _apply_to_jobs_for_location(search_terms: list[str], location: str) -> None:
+def _apply_to_jobs_for_location(search_terms: list[str], location: str, remote_only: bool = False,
+                                geo_id: str | None = None) -> None:
     applied_jobs = get_applied_job_ids()
     rejected_jobs = set()
     blacklisted_companies = set()
@@ -351,11 +397,35 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str) -> None:
     for searchTerm in search_terms:
         ui_pause_check()
         status_prefix = "Career-Ops: Searching" if is_career_ops_mode() else "Searching"
-        status_details = f"'{searchTerm}' in '{location}' ({len(top_manual_jobs)}/5 matches)" if is_career_ops_mode() else f"'{searchTerm}' in '{location}'"
+        _donde = f"{location} (Remote)" if remote_only else location
+        status_details = f"'{searchTerm}' in '{_donde}' ({len(top_manual_jobs)}/5 matches)" if is_career_ops_mode() else f"'{searchTerm}' in '{_donde}'"
         ui_update_status(status_prefix, status_details)
-        search_url = f"https://www.linkedin.com/jobs/search/?keywords={quote(searchTerm)}&location={quote(location.strip())}" if location and location.strip() else f"https://www.linkedin.com/jobs/search/?keywords={quote(searchTerm)}"
+        search_url = "https://www.linkedin.com/jobs/search/?keywords=" + quote(searchTerm)
+        if location and location.strip():
+            search_url += "&location=" + quote(location.strip())
+            if geo_id:
+                search_url += "&geoId=" + quote(geo_id)
+        # Easy Apply, set in the URL. apply_filters() also ticks the toggle, but
+        # it finds it by its translated label and silently gives up when the
+        # label does not match — which is how a run ends up walking external
+        # jobs it was never meant to see.
+        # The MODE decides, not the config: with external jobs wanted, filtering
+        # to Easy Apply would hide the very jobs the mode is for.
+        _ea_filtro = bool(easy_apply_only and wants_easy_apply() and not wants_external()
+                          and not is_career_ops_mode())
+        if _ea_filtro:
+            search_url += "&f_LF=f_AL"
+        # f_WT is LinkedIn's workplace-type filter: 1 on-site, 2 remote, 3 hybrid.
+        # Setting it in the URL is language-independent, unlike clicking the
+        # checkbox by its label.
+        if remote_only:
+            search_url += "&f_WT=2"
+            # f_JT is the job type. LinkedIn has no freelance filter; "C"
+            # (Contract) is the nearest equivalent.
+            if remote_job_types:
+                search_url += "&f_JT=" + quote(",".join(remote_job_types))
         print_lg("\n________________________________________________________________________________________________________________________\n")
-        print_lg(f'\n>>>> Now searching for "{searchTerm}" in "{location}" <<<<\n')
+        print_lg(f'\n>>>> Now searching for "{searchTerm}" in "{_donde}" <<<<\n')
 
         # Navigate directly to the search URL (Portmaster firewall disabled)
         page_loaded = False
@@ -381,7 +451,8 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str) -> None:
             print_lg(f"SKIPPING search term '{searchTerm}' - navigation failed.")
             continue
 
-        pause_after_filters = apply_filters(location, sort_by, date_posted, pause_after_filters)
+        pause_after_filters = apply_filters(location, sort_by, date_posted, pause_after_filters,
+                                            remote_only, easy_apply_filter=_ea_filtro)
         if check_daily_limit():
             return
 
@@ -391,6 +462,13 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str) -> None:
                 ui_pause_check()
                 # Wait until job listings are loaded
                 wait.until(EC.presence_of_all_elements_located((By.XPATH, "//li[@data-occludable-job-id]")))
+
+                # LinkedIn puts the Easy Apply filter back by itself on some
+                # navigations. Checked on every page, not just once after
+                # apply_filters(), because that drift is what made "external
+                # only" quietly turn into "Easy Apply only" halfway through.
+                if ensure_easy_apply_state(_ea_filtro):
+                    wait.until(EC.presence_of_all_elements_located((By.XPATH, "//li[@data-occludable-job-id]")))
 
                 pagination_element, current_page = get_page_info()
 
@@ -410,6 +488,16 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str) -> None:
                     if skip:
                         if is_career_ops_mode():
                             ui_update_status("Career-Ops: Skipping Job", f"{title} at {company} (Already Applied / Blacklisted) ({len(top_manual_jobs)}/5 matches)")
+                        continue
+
+                    # Title blacklist — runs whether or not the focus filter is
+                    # on, so the focus filter can safely be left off.
+                    _mala = is_title_blacklisted(title)
+                    if _mala:
+                        print_lg(f'Skipping "{title}" — title contains "{_mala}"')
+                        if is_career_ops_mode():
+                            ui_update_status("Career-Ops: Skipping Job", f"{title} at {company} (Title blacklisted: {_mala}) ({len(top_manual_jobs)}/5 matches)")
+                        skip_count += 1
                         continue
 
                     # Job focus filter — skip if title doesn't match user's focus areas
@@ -516,7 +604,22 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str) -> None:
                         skip_count += 1
                         continue
 
-                    current_eval_score = 5
+                    # "Remote" on LinkedIn only means no office. This is what
+                    # catches the remote job that still wants you living there.
+                    _residencia = requires_ineligible_residency(description)
+                    if _residencia:
+                        _msg = f'\n{description}\n\nRequires residency/work authorisation you do not have: "{_residencia}". Skipping this job!\n'
+                        print_lg(f'Skipping "{title}" — residency requirement: "{_residencia}"')
+                        if is_career_ops_mode():
+                            ui_update_status("Career-Ops: Skipping Job", f"{title} at {company} (Residency required) ({len(top_manual_jobs)}/5 matches)")
+                        failed_job(job_id, job_link, resume, date_listed, "Residency/work authorisation required", _msg, "Skipped", screenshot_name)
+                        rejected_jobs.add(job_id)
+                        skip_count += 1
+                        continue
+
+                    # Neutral on the 0-100 scale: if the AI call fails, the job
+                    # is neither skipped nor ranked at the bottom.
+                    current_eval_score = 50
                     eval_reason = "No reason provided by AI."
                     
                     if use_AI and description != "Unknown":
@@ -534,10 +637,26 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str) -> None:
                             # this job before it stopped.
                             ui_pause_check()
                             eval_result = aiClient.evaluate_job(description, user_information_all)
-                                
-                            if isinstance(eval_result, dict) and not eval_result.get("meets_requirements", True):
-                                reason = eval_result.get("reason", "AI determined user does not meet core requirements.")
-                                message = f'\n{description}\n\nAI Pre-screening failed: {reason}. Skipping this job!\n'
+
+                            if isinstance(eval_result, dict):
+                                try:
+                                    current_eval_score = int(eval_result.get("score", 50))
+                                except (TypeError, ValueError):
+                                    current_eval_score = 50
+                                eval_reason = eval_result.get("reason", "AI pre-screening passed.")
+
+                            # The score is the knob. The AI's own true/false
+                            # verdict is deliberately harsh — a candidate missing
+                            # any listed skill fails it — so it only decides when
+                            # `ai_prescreen_strict` says so.
+                            _too_low = current_eval_score < ai_min_score
+                            _hard_no = ai_prescreen_strict and isinstance(eval_result, dict) \
+                                       and not eval_result.get("meets_requirements", True)
+
+                            if _too_low or _hard_no:
+                                _porque = f"score {current_eval_score} < {ai_min_score}" if _too_low else "missing a hard requirement"
+                                reason = eval_result.get("reason", "AI determined user does not meet core requirements.") if isinstance(eval_result, dict) else "AI pre-screening failed."
+                                message = f'\n{description}\n\nAI Pre-screening failed ({_porque}): {reason}. Skipping this job!\n'
                                 print_lg(message)
                                 if is_career_ops_mode():
                                     ui_update_status("Career-Ops: Skipping Job", f"{title} at {company} (AI Pre-screening: {reason}) ({len(top_manual_jobs)}/5 matches)")
@@ -546,13 +665,7 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str) -> None:
                                 skip_count += 1
                                 continue
                             else:
-                                print_lg("AI Pre-screening passed. Proceeding with application...")
-                                if isinstance(eval_result, dict):
-                                    try:
-                                        current_eval_score = int(eval_result.get("score", 5))
-                                    except:
-                                        pass
-                                    eval_reason = eval_result.get("reason", "AI pre-screening passed.")
+                                print_lg(f"AI Pre-screening passed (score {current_eval_score}). Proceeding with application...")
                         except Exception as e:
                             print_lg("Failed to evaluate job with AI:", e)
                         ##<
@@ -582,6 +695,9 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str) -> None:
                         continue
 
                     uploaded = False
+                    # Set when the Easy-Apply probe below already opened the
+                    # external page, so it is not opened a second time.
+                    external_link_already_open = None
                     # Case 1: Easy Apply Button
                     # First try the classic button with "Easy" in aria-label
                     is_easy_apply = try_xp(driver, ".//button[contains(@class,'jobs-apply-button') and contains(@class, 'artdeco-button--3') and contains(@aria-label, 'Easy')]")
@@ -595,34 +711,48 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str) -> None:
                                 print_lg("Detected Easy Apply via URL pattern (openSDUIApplyFlow)")
                         except:
                             pass
-                    # Fallback 2: click any Apply button and check if Easy Apply modal appears
+                    # Fallback 2: click Apply once and let probe_apply_button()
+                    # say what happened. This runs even in Easy-Apply-only mode —
+                    # it is the reliable detector, and the two probes above miss
+                    # real Easy Apply jobs often enough to matter.
+                    #
+                    # It is also the ONLY place Apply gets clicked. The previous
+                    # version clicked here to detect and again inside
+                    # external_apply() to apply; the second click found a button
+                    # that had already done its job, which is the
+                    # "Apply did not open a new tab, skipping" that killed every
+                    # external application in the logs.
                     if not is_easy_apply:
                         try:
-                            apply_btn = driver.find_element(By.XPATH, ".//button[contains(@class,'jobs-apply-button')]")
-                            if apply_btn:
-                                tabs_before = len(driver.window_handles)
-                                apply_btn.click()
-                                buffer(click_gap)
-                                tabs_after = len(driver.window_handles)
-                                if tabs_after > tabs_before:
-                                    # New tab opened — external apply, close it and go back
-                                    driver.switch_to.window(driver.window_handles[-1])
-                                    if close_tabs and driver.current_window_handle != linkedIn_tab: driver.close()
-                                    driver.switch_to.window(linkedIn_tab)
-                                    print_lg("External apply detected via new tab, skipping")
-                                else:
-                                    try:
-                                        find_by_class(driver, "jobs-easy-apply-modal")
-                                        is_easy_apply = True
-                                        print_lg("Detected Easy Apply via modal appearance after click")
-                                    except:
-                                        # Modal didn't appear — dismiss
-                                        try: actions.send_keys(Keys.ESCAPE).perform()
-                                        except: pass
-                        except:
-                            pass
+                            kind, ext_url = probe_apply_button(linkedIn_tab)
+                        except Exception as e:
+                            print_lg(f"Apply probe failed: {e}")
+                            kind, ext_url = "none", None
+                        if kind == "easy_apply":
+                            is_easy_apply = True
+                            print_lg("Detected Easy Apply via modal appearance after click")
+                        elif kind == "external":
+                            if wants_external():
+                                external_link_already_open = ext_url
+                                print_lg(f"External apply detected: {ext_url}")
+                            else:
+                                print_lg("External apply detected — ignoring (Easy Apply only mode)")
+                        else:
+                            try: actions.send_keys(Keys.ESCAPE).perform()
+                            except Exception: pass
+                        # Whatever happened, carry on from the LinkedIn tab.
+                        try:
+                            if driver.current_window_handle != linkedIn_tab:
+                                driver.switch_to.window(linkedIn_tab)
+                        except Exception: pass
+                    if is_easy_apply and not wants_easy_apply():
+                        print_lg(f'Skipping "{title}" — Easy Apply job (mode: {get_application_mode()})')
+                        try: actions.send_keys(Keys.ESCAPE).perform()
+                        except Exception: pass
+                        skip_count += 1
+                        continue
                     if is_easy_apply:
-                        try: 
+                        try:
                             if is_career_ops_mode():
                                 raise CareerOpsActivatedException()
                             try:
@@ -637,6 +767,14 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str) -> None:
                                 questions_list = set()
                                 next_counter = 0
                                 while next_button:
+                                    # Each turn of this loop is one page of the
+                                    # Easy Apply modal, with its own questions
+                                    # and AI calls — the longest stretch of a
+                                    # run. Without a check here, Pause did not
+                                    # bite until the whole application had been
+                                    # walked through, which is what "sigue
+                                    # pensando detrás de otra postulación" was.
+                                    ui_pause_check()
                                     if is_career_ops_mode():
                                         raise CareerOpsActivatedException()
                                     next_counter += 1
@@ -724,13 +862,30 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str) -> None:
                             if check_daily_limit():
                                 return
                             continue
+                    elif not wants_external():
+                        # Case 2a: external job, but the user asked for Easy
+                        # Apply only. Nothing was opened, so nothing to clean up.
+                        print_lg(f'Skipping "{title}" — not Easy Apply (mode: {get_application_mode()})')
+                        ui_update_status("Skipping Job", f"{title} at {company} (not Easy Apply)")
+                        skip_count += 1
+                        continue
+                    elif not external_link_already_open:
+                        # Case 2b: the probe above already clicked Apply and it
+                        # led nowhere — no modal, no external page. Handing this
+                        # to external_apply() would just click the same dead
+                        # button again.
+                        print_lg(f'Skipping "{title}" — Apply led nowhere (no application page found)')
+                        ui_update_status("Skipping Job", f"{title} at {company} (Apply led nowhere)")
+                        skip_count += 1
+                        continue
                     else:
-                        # Case 2: Apply externally
+                        # Case 2c: Apply externally
                         add_to_manual_jobs(job_id, title, company, current_eval_score, f"External Apply: {eval_reason}")
-                        skip, application_link, tabs_count = external_apply(job_id, job_link, resume, date_listed, application_link, screenshot_name, tabs_count=tabs_count, ai_client=aiClient, job_description=description)
+                        skip, application_link, tabs_count = external_apply(job_id, job_link, resume, date_listed, application_link, screenshot_name, tabs_count=tabs_count, ai_client=aiClient, job_description=description, already_open_url=external_link_already_open)
                         if not skip:
+                            # The counter is bumped once, below, where every
+                            # successful application passes through.
                             date_applied = datetime.now()
-                            external_jobs_count += 1
                         if dailyEasyApplyLimitReached and not is_career_ops_mode():
                             print_lg("\n###############  Daily application limit for Easy Apply is reached!  ###############\n")
                             return

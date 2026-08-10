@@ -5,8 +5,15 @@ ui_language = "es"
 
 # >>>>>>>>>>> LinkedIn Settings <<<<<<<<<<<
 
-# Keep the External Application tabs open?
-close_tabs = False
+# Que postulaciones atiende el bot / Which applications the bot handles:
+# "easy_apply", "external" o "both". El boton de la ventana principal lo cambia.
+application_mode = "easy_apply"
+
+# Close the external application tabs. / Cerrar las pestañas de solicitudes externas.
+# A SUBMITTED application always closes its tab. This decides what happens to the
+# ones that could not be completed: True closes them anyway (the link is kept in
+# the CSV), False leaves them open to finish by hand.
+close_tabs = True
 
 # >>>>>>>>>>> Universal Applier (External Apply) <<<<<<<<<<<
 
@@ -15,6 +22,8 @@ close_tabs = False
 external_apply_enabled = False
 
 # Pause for confirmation before submitting an external application?
+# True asks every time; False fills, submits, verifies and moves on unattended.
+# Leave it True until you have watched a few external applications go through.
 pause_before_submit_external = True
 
 # Follow easy applied companies

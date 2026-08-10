@@ -620,6 +620,22 @@ def answer_common_questions(label: str, answer: str) -> str:
     ]):
         answer = 'Yes'
     elif any(phrase in norm_label for phrase in [
+        # Screening questions that ask you to accept the role's own terms:
+        # "¿Está de acuerdo con ocupar el rol de X?", "¿Acepta la banda salarial?"
+        #
+        # Left to the AI these came back "No", which is an instant rejection —
+        # the employer is asking whether you accept the job you just applied to.
+        # Answering yes here is a screening answer, not a signed contract;
+        # nothing is agreed until an offer arrives.
+        'esta de acuerdo con', 'estas de acuerdo con', 'esta usted de acuerdo',
+        'de acuerdo con el rol', 'de acuerdo con la banda', 'de acuerdo con el salario',
+        'de acuerdo con las condiciones', 'de acuerdo con el horario',
+        'aceptas el', 'acepta el rol', 'acepta las condiciones', 'aceptaria',
+        'do you agree with', 'do you agree to', 'are you ok with', 'are you okay with',
+        'would you accept', 'do you accept the', 'are you comfortable with the salary',
+    ]):
+        answer = 'Yes'
+    elif any(phrase in norm_label for phrase in [
         # Hybrid / on-site / remote preference questions
         'open to', 'willing to', 'comfortable with', 'comfortable working',
         'abierto a', 'dispuesto a', 'disponible para',

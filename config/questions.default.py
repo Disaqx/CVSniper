@@ -34,19 +34,19 @@ Valid: "U.S. Citizen/Permanent Resident", "Non-citizen allowed to work for any e
 '''
 
 # Salario deseado (solo numeros) / Desired salary (numbers only)
-desired_salary = 0
+desired_salary = "0"
 
 # Salario actual / Current salary (CTC)
-current_ctc = 0
+current_ctc = "0"
 
 # Periodo de aviso en dias / Notice period in days
-notice_period = 30
+notice_period = "30"
 
 # Empleador reciente / Most recent employer
 recent_employer = ""
 
 # Nivel de confianza 1-10 / Confidence level 1-10
-confidence_level = 8
+confidence_level = "8"
 
 # Nivel de inglés / English proficiency level
 # Opciones: "none", "a1", "a2", "b1", "b2", "c1", "c2", "native"

@@ -100,13 +100,17 @@ from modules.external_apply import external_apply, probe_apply_button
 
 pyautogui.FAILSAFE = False
 # Start the Controller UI (driver is ready after open_chrome import)
+print("[CVSniper] Starting control panel...")
 ui_start(driver)
+print("[CVSniper] Checking configuration...")
 ui_enforce_configuration()
 
 # ── Flask dashboard starts in background (opens only when user clicks the button) ──
 from modules.bot_ui import start_flask_dashboard, open_dashboard_in_browser, FLASK_URL
+print("[CVSniper] Starting web dashboard...")
 start_flask_dashboard()
 
+print("[CVSniper] Initialization complete. Starting bot...")
 ui_update_status("Initializing", "Starting CVSniper...")
 # if use_resume_generator:    from resume_generator import is_logged_in_GPT, login_GPT, open_resume_chat, create_custom_resume
 

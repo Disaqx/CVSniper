@@ -1766,11 +1766,23 @@ class BotUIApp:
 
 
 # Thread execution target for Tkinter loop
+_ui_ready = threading.Event()
+_ui_crashed = False
+
 def run_tkinter_ui():
-    root = tk.Tk()
-    app = BotUIApp(root)
-    threading.Thread(target=hotkey_listener_thread, daemon=True).start()
-    root.mainloop()
+    global _ui_crashed
+    try:
+        root = tk.Tk()
+        app = BotUIApp(root)
+        threading.Thread(target=hotkey_listener_thread, daemon=True).start()
+        _ui_ready.set()
+        root.mainloop()
+    except Exception as e:
+        _ui_crashed = True
+        _ui_ready.set()  # unblock ui_start even on crash
+        import traceback
+        print(f"\n[BotUI] FATAL: Tkinter UI crashed: {e}")
+        traceback.print_exc()
 
 
 # Public interface functions
@@ -1778,11 +1790,16 @@ def ui_start(driver_instance=None):
     global active_driver
     active_driver = driver_instance
     threading.Thread(target=run_tkinter_ui, daemon=True).start()
-    # Give the UI time to initialize, then show the LinkedIn reminder
-    time.sleep(1.5)
+    # Wait for UI to be ready (or crash), up to 5 seconds
+    _ui_ready.wait(timeout=5.0)
+    if _ui_crashed:
+        print("[BotUI] WARNING: UI did not start. Continuing without the control window.")
+        return
     ui_alert(T("linkedin_title"), T("linkedin_msg"))
 
 def ui_update_status(status_text, details_text=None, action_text=None):
+    if _ui_crashed:
+        return
     status_queue.put(("status", status_text))
     if details_text is not None:
         status_queue.put(("details", details_text))
@@ -1790,6 +1807,9 @@ def ui_update_status(status_text, details_text=None, action_text=None):
         status_queue.put(("action", action_text))
 
 def ui_alert(title, message):
+    if _ui_crashed:
+        print(f"[Alert] {title}: {message}")
+        return
     resp_q = queue.Queue()
     alert_queue.put((title, message, resp_q))
     resp_q.get()
@@ -1797,6 +1817,9 @@ def ui_alert(title, message):
     status_queue.put(("details", current_ui_details))
 
 def ui_confirm(title, message, buttons):
+    if _ui_crashed:
+        print(f"[Confirm] {title}: {message} -> auto-selecting '{buttons[-1]}'")
+        return buttons[-1] if buttons else True
     resp_q = queue.Queue()
     alert_queue.put((title, message, resp_q, buttons))
     val = resp_q.get()
@@ -1806,6 +1829,9 @@ def ui_confirm(title, message, buttons):
 
 def ui_ask_text(title, question, placeholder=""):
     """Show a text-input dialog and return the entered string (empty string = skipped)."""
+    if _ui_crashed:
+        print(f"[AskText] {title}: {question}")
+        return ""
     resp_q = queue.Queue()
     alert_queue.put(("__ask_text__", title, question, placeholder, resp_q))
     val = resp_q.get()

@@ -80,7 +80,7 @@ use_AI = True
 ai_provider = "groq"          # "openai" | "gemini" | "deepseek" | "groq" | "ollama"
 llm_api_url = "https://api.groq.com/openai/v1"
 llm_api_key = "YOUR_KEY"
-llm_model   = "llama-3.1-8b-instant"
+llm_model   = "openai/gpt-oss-120b"
 llm_spec    = "openai-like"   # "openai-like" or "gemini"
 ```
 

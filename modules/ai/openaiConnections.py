@@ -107,6 +107,9 @@ def ai_completion(
         print_lg("There is no llm_model in config/secrets.py.")
         return None
 
+    from modules.ai.model_fallback import resolve_model
+    modelo = resolve_model(client, modelo)
+
     kwargs: dict = {"model": modelo, "messages": messages, "temperature": temperature}
     if response_format:
         kwargs["response_format"] = response_format

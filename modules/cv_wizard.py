@@ -170,7 +170,7 @@ def run_cv_wizard() -> bool:
     ui_update_status(T("wiz_status"), T("wiz_detail_ai"))
     data = _call_ai(cv_text)
     if not data:
-        ui_alert(T("wiz_err_ai_title"), T("wiz_err_ai_msg"))
+        ui_alert(T("wiz_err_ai_title"), T("wiz_err_ai_msg") + _last_ai_error_note())
         return False
 
     # Write what the AI extracted
@@ -227,7 +227,7 @@ def run_job_terms_wizard() -> bool:
 
     data = _call_ai(cv_text)
     if not data:
-        ui_alert(T("wiz_err_ai_title"), T("wiz_err_ai_msg"))
+        ui_alert(T("wiz_err_ai_title"), T("wiz_err_ai_msg") + _last_ai_error_note())
         return False
 
     terms     = data.get("search_terms", [])
@@ -443,7 +443,10 @@ def _ask_missing_fields(data: dict) -> dict:
 
 def _extract_pdf_text(file_path: str) -> str:
     try:
-        import fitz
+        try:
+            import pymupdf as fitz
+        except ImportError:
+            import fitz
         doc = fitz.open(file_path)
         text = ""
         for page in doc:
@@ -457,6 +460,14 @@ def _extract_pdf_text(file_path: str) -> str:
 
 
 # ─── AI Extraction ───────────────────────────────────────────────────────────
+
+_last_ai_error = ""
+
+
+def _last_ai_error_note() -> str:
+    """The real reason the AI call failed, so the alert is not just 'check your key'."""
+    return f"\n\nDetalle / Detail: {_last_ai_error[:300]}" if _last_ai_error else ""
+
 
 def _call_ai(cv_text: str) -> dict | None:
     from modules.bot_ui import _read_py_var
@@ -477,6 +488,8 @@ def _call_ai(cv_text: str) -> dict | None:
             print(f"[CV Wizard] Unknown provider: {provider}")
             return None
     except Exception as e:
+        global _last_ai_error
+        _last_ai_error = str(e)
         print(f"[CV Wizard] AI call error: {e}")
         return None
 
@@ -501,15 +514,30 @@ def _call_gemini(prompt: str) -> dict | None:
 def _call_openai_compat(api_key: str, base_url: str, model: str, prompt: str) -> dict | None:
     try:
         from openai import OpenAI
-        client = OpenAI(api_key=api_key, base_url=base_url)
-        response = client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"},
-        )
-        raw = response.choices[0].message.content
-        return json.loads(raw)
+        from modules.ai.model_fallback import resolve_model
+        client = OpenAI(api_key=api_key, base_url=base_url or None)
+        model = resolve_model(client, model)
+        messages = [{"role": "user", "content": prompt}]
+        try:
+            response = client.chat.completions.create(
+                model=model, messages=messages, temperature=0,
+                response_format={"type": "json_object"},
+            )
+        except Exception as fmt_err:
+            # Some endpoints/models reject response_format; retry without it
+            if "response_format" not in str(fmt_err) and "json" not in str(fmt_err).lower():
+                raise
+            response = client.chat.completions.create(
+                model=model, messages=messages, temperature=0)
+        raw = (response.choices[0].message.content or "").strip()
+        if raw.startswith("```"):
+            raw = raw.strip("`")
+            raw = raw[4:] if raw.lower().startswith("json") else raw
+        start, end = raw.find("{"), raw.rfind("}")
+        return json.loads(raw[start:end + 1])
     except Exception as e:
+        global _last_ai_error
+        _last_ai_error = str(e)
         print(f"[CV Wizard] OpenAI-compat error: {e}")
         return None
 

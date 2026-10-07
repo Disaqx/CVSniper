@@ -31,6 +31,8 @@ IGNORE = {
     "build_release.py", "release.ps1", "release_notes.md",
     ".claude", "CVSniper", "REVISED_CV.md", "qa_database.json",
     ".setup_done",
+    # personal data — never ship
+    "David_Pineros_CV.md", "friend_cv_data.json", "profiles",
     # dev environment folders — never include in release
     "venv", ".venv", "env", "chrome_driver", "node_modules",
     ".mypy_cache", ".pytest_cache", "dist", "build",
@@ -38,7 +40,7 @@ IGNORE = {
 
 CONFIG_IGNORE = {
     "secrets.py", "personals.py", "questions.py",
-    "search.py", "settings.py", "resume.py", "user_config.json",
+    "search.py", "settings.py", "resume.py", "user_config.json", "friend_cv_data.json",
 }
 
 # ── Scripts generados en el release ───────────────────────────────────────────

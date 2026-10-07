@@ -402,7 +402,11 @@ def get_ai_client() -> AIProvider | None:
                 models = client.models.list()
                 ids = [m.id for m in models.data]
                 if ids and llm_model not in ids:
-                    raise ValueError(f"Model '{llm_model}' not found. Available: {ids}")
+                    from modules.ai.model_fallback import resolve_model
+                    nuevo = resolve_model(client, llm_model)
+                    print_lg(f"Model '{llm_model}' is not available on this endpoint; using '{nuevo}' instead. "
+                             f"Update llm_model in config/secrets.py to silence this.")
+                    llm_model = nuevo
             except Exception as model_err:
                 print_lg(f"Model validation skipped or failed ({model_err}). Continuing.")
 

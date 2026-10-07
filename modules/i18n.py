@@ -168,7 +168,7 @@ TRANSLATIONS = {
         "lbl_use_ai":           "Usar IA para evaluar vacantes y responder preguntas",
         "lbl_ai_provider":      "Proveedor de IA",
         "lbl_api_key":          "API Key (en groq.com → API Keys → Create key)",
-        "lbl_model":            "Modelo (ej. llama-3.1-8b-instant para Groq)",
+        "lbl_model":            "Modelo (ej. openai/gpt-oss-120b para Groq)",
         "lbl_api_url":          "URL de API (solo para OpenAI-compatibles / Ollama)",
         # ── Settings option displays ──
         "opt_past24":           "Últimas 24 h",
@@ -452,7 +452,7 @@ TRANSLATIONS = {
         "lbl_use_ai":           "Use AI to evaluate jobs and answer questions",
         "lbl_ai_provider":      "AI provider",
         "lbl_api_key":          "API Key (groq.com → API Keys → Create key)",
-        "lbl_model":            "Model (e.g. llama-3.1-8b-instant for Groq)",
+        "lbl_model":            "Model (e.g. openai/gpt-oss-120b for Groq)",
         "lbl_api_url":          "API URL (OpenAI-compatible / Ollama only)",
         # ── Settings option displays ──
         "opt_past24":           "Past 24 hours",

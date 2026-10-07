@@ -101,6 +101,130 @@ def _build_options(options: ChromeOptions) -> ChromeOptions:
 # Driver
 # ---------------------------------------------------------------------------
 
+def _get_chrome_major_version() -> int | None:
+    """Attempt to detect the installed Google Chrome major version."""
+    import os
+    import platform
+    import re
+    import subprocess
+
+    system = platform.system()
+    if system == "Windows":
+        try:
+            import winreg
+
+            for root in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+                for subkey in (
+                    r"Software\Google\Chrome\BLBeacon",
+                    r"SOFTWARE\Google\Chrome\BLBeacon",
+                    r"SOFTWARE\Wow6432Node\Google\Update\ClientState\{8A69D345-D564-463c-AFF1-A69D9E530F96}",
+                ):
+                    try:
+                        with winreg.OpenKey(root, subkey) as key:
+                            val, _ = winreg.QueryValueEx(key, "version")
+                            m = re.match(r"^(\d+)\.", str(val))
+                            if m:
+                                return int(m.group(1))
+                    except OSError:
+                        continue
+        except Exception:
+            pass
+
+        for base in [
+            os.environ.get("ProgramFiles", ""),
+            os.environ.get("ProgramFiles(x86)", ""),
+            os.environ.get("LocalAppData", ""),
+        ]:
+            if not base:
+                continue
+            app_dir = os.path.join(base, "Google", "Chrome", "Application")
+            if os.path.isdir(app_dir):
+                try:
+                    for item in os.listdir(app_dir):
+                        m = re.match(r"^(\d+)\.\d+\.\d+\.\d+$", item)
+                        if m:
+                            return int(m.group(1))
+                except Exception:
+                    pass
+    elif system == "Darwin":
+        try:
+            cmd = ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "--version"]
+            out = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL)
+            m = re.search(r"(\d+)\.", out)
+            if m:
+                return int(m.group(1))
+        except Exception:
+            pass
+    else:
+        for binary in ("google-chrome", "google-chrome-stable", "chromium"):
+            try:
+                out = subprocess.check_output([binary, "--version"], text=True, stderr=subprocess.DEVNULL)
+                m = re.search(r"(\d+)\.", out)
+                if m:
+                    return int(m.group(1))
+            except Exception:
+                continue
+    return None
+
+
+def _find_chrome_binary() -> str | None:
+    """Locate chrome.exe / google-chrome.
+
+    undetected_chromedriver only looks in a few fixed folders and, when Chrome
+    lives anywhere else (another drive, per-user install), hands Selenium None
+    -> "Binary Location Must be a String". Selenium's own manager finds it via
+    the registry, so do the same here and pass the path explicitly.
+    """
+    import os
+    import platform
+    import shutil
+
+    if platform.system() == "Windows":
+        try:
+            import winreg
+
+            for root in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+                try:
+                    with winreg.OpenKey(
+                        root, r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe"
+                    ) as key:
+                        path, _ = winreg.QueryValueEx(key, None)
+                        if path and os.path.isfile(path):
+                            return str(path)
+                except OSError:
+                    continue
+        except Exception:
+            pass
+        for base in ("ProgramFiles", "ProgramFiles(x86)", "LocalAppData"):
+            root = os.environ.get(base, "")
+            path = os.path.join(root, "Google", "Chrome", "Application", "chrome.exe")
+            if root and os.path.isfile(path):
+                return path
+    elif platform.system() == "Darwin":
+        path = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+        if os.path.isfile(path):
+            return path
+    for name in ("google-chrome", "google-chrome-stable", "chromium", "chrome"):
+        found = shutil.which(name)
+        if found:
+            return found
+    return None
+
+
+def _cleanup_residual_chromedriver():
+    """Kill any orphaned chromedriver if launch fails."""
+    import platform
+    import subprocess
+    import time
+
+    if platform.system() == "Windows":
+        try:
+            subprocess.run(["taskkill", "/F", "/IM", "chromedriver.exe"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            time.sleep(1)
+        except Exception:
+            pass
+
+
 def _start_driver():
     """Open Chrome, preferring the patched driver when stealth mode is on.
 
@@ -114,7 +238,14 @@ def _start_driver():
             import undetected_chromedriver as uc
 
             print_lg("Starting Chrome in stealth mode...")
-            return uc.Chrome(options=_build_options(uc.ChromeOptions()))
+            version_main = _get_chrome_major_version()
+            uc_kwargs = {"options": _build_options(uc.ChromeOptions())}
+            chrome_bin = _find_chrome_binary()
+            if chrome_bin:
+                uc_kwargs["browser_executable_path"] = chrome_bin
+            if version_main:
+                uc_kwargs["version_main"] = version_main
+            return uc.Chrome(**uc_kwargs)
         except Exception as e:
             critical_error_log(
                 "Stealth mode could not start (undetected_chromedriver). "
@@ -122,6 +253,7 @@ def _start_driver():
                 "to flag the session.",
                 e,
             )
+            _cleanup_residual_chromedriver()
 
     print_lg("Starting Chrome...")
     return webdriver.Chrome(options=_build_options(ChromeOptions()))

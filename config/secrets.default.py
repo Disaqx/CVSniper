@@ -53,12 +53,12 @@ Ollama local: poner "not-needed"
 '''
 
 # Nombre del modelo / Model name
-llm_model = "llama-3.1-8b-instant"
+llm_model = "openai/gpt-oss-120b"
 '''
 Groq (gratis / free):
-  "llama-3.1-8b-instant"    → rapido, respuestas en <1s (recomendado / recommended)
-  "llama-3.3-70b-versatile" → mejor calidad, mas lento
-  "gemma2-9b-it"            → alternativa
+  "openai/gpt-oss-120b"     → mejor calidad (recomendado / recommended)
+  "llama-3.3-70b-versatile" → alternativa estable / stable alternative
+  (llama-3.1-8b-instant fue retirado por Groq en agosto 2026 / retired by Groq)
 Gemini (gratis con limites):
   "gemini-2.5-flash", "gemini-2.0-flash"
 OpenAI (de pago):

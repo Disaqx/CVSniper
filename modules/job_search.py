@@ -48,6 +48,11 @@ try:
     experience_tolerance = int(experience_tolerance)
 except (ImportError, TypeError, ValueError):
     experience_tolerance = 0
+try:
+    from modules.helpers import as_number as _as_number
+    current_experience = int(_as_number(current_experience, -1))
+except NameError:
+    pass
 
 
 re_experience = re.compile(r'[(]?\s*(\d+)\s*[)]?\s*[-to]*\s*\d*[+]*\s*year[s]?', re.IGNORECASE)

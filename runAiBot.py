@@ -136,6 +136,12 @@ failed_count = 0
 skip_count = 0
 dailyEasyApplyLimitReached = False
 
+# The settings panel / CV wizard can leave these as strings ("", "1.200.000").
+desired_salary = int(as_number(desired_salary))
+current_ctc = int(as_number(current_ctc))
+notice_period = int(as_number(notice_period))
+switch_number = max(1, int(as_number(switch_number, 10)))
+
 desired_salary_lakhs = str(round(desired_salary / 100000, 2))
 desired_salary_monthly = str(round(desired_salary/12, 2))
 desired_salary = str(desired_salary)

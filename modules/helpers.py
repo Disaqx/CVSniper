@@ -24,6 +24,30 @@ except Exception:  # settings.py may not exist yet on a fresh checkout
     logs_folder_path = "logs/"
 
 
+def as_number(value: Any, default: int | float = 0) -> int | float:
+    """Read a number the user typed: 1200000, "1.200.000", "1,200,000", "", None.
+
+    The settings panel and the CV wizard can leave these as strings; doing
+    arithmetic on them crashed the bot at startup ("str / int").
+    """
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, (int, float)):
+        return value
+    texto = re.sub(r"[^\d.,-]", "", str(value or ""))
+    if not texto or texto in "-.,":
+        return default
+    # Thousands separators: 1.200.000 / 1,200,000 / 1.200
+    if re.fullmatch(r"-?\d{1,3}([.,]\d{3})+", texto):
+        texto = re.sub(r"[.,]", "", texto)
+    texto = texto.replace(",", ".")
+    try:
+        n = float(texto)
+    except ValueError:
+        return default
+    return int(n) if n.is_integer() else n
+
+
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------

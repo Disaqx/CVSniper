@@ -34,13 +34,13 @@ Valid: "U.S. Citizen/Permanent Resident", "Non-citizen allowed to work for any e
 '''
 
 # Salario deseado (solo numeros) / Desired salary (numbers only)
-desired_salary = "0"
+desired_salary = 0
 
 # Salario actual / Current salary (CTC)
-current_ctc = "0"
+current_ctc = 0
 
 # Periodo de aviso en dias / Notice period in days
-notice_period = "30"
+notice_period = 30
 
 # Empleador reciente / Most recent employer
 recent_employer = ""

@@ -28,7 +28,8 @@ first_name = first_name.strip()
 middle_name = middle_name.strip()
 last_name = last_name.strip()
 full_name = first_name + " " + middle_name + " " + last_name if middle_name else first_name + " " + last_name
-notice_period_int = int(notice_period) if isinstance(notice_period, str) else notice_period
+from modules.helpers import as_number
+notice_period_int = int(as_number(notice_period))
 notice_period_months = str(notice_period_int // 30)
 notice_period_weeks = str(notice_period_int // 7)
 notice_period = str(notice_period_int)
@@ -47,8 +48,8 @@ NOTICE_WORDS = (
     'empezar', 'comenzar', 'iniciar', 'inicio', 'ingreso',
     'join', 'joining', 'onboard',
 )
-desired_salary = str(desired_salary)
-current_ctc = str(current_ctc)
+desired_salary = str(int(as_number(desired_salary)))
+current_ctc = str(int(as_number(current_ctc)))
 
 # Module-level mutable state shared with runAiBot.py
 randomly_answered_questions = set()

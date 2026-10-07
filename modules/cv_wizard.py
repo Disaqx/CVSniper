@@ -428,10 +428,8 @@ def _ask_missing_fields(data: dict) -> dict:
         v = ui_ask_text(title,
             "Salario deseado en números (puedes dejar 0 para saltar):", "0")
         if v and v.strip() != "0":
-            try:
-                data["desired_salary"] = int(v)
-            except Exception:
-                data["desired_salary"] = v
+            from modules.helpers import as_number
+            data["desired_salary"] = int(as_number(v))
 
     # LinkedIn credentials are not asked here — the bot requires the user
     # to already be logged in to LinkedIn in Chrome before starting.
@@ -589,7 +587,8 @@ def _write_data_to_configs(data: dict, cv_path: str = ""):
     sal = data.get("desired_salary")
     if sal and sal != 0:
         try:
-            _write_py_var(_QUEST, "desired_salary", int(sal))
+            from modules.helpers import as_number
+            _write_py_var(_QUEST, "desired_salary", int(as_number(sal)))
         except Exception:
             pass
 

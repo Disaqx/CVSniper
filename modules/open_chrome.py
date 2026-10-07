@@ -211,6 +211,20 @@ def _find_chrome_binary() -> str | None:
     return None
 
 
+def _selenium_manager_chrome() -> str | None:
+    """Chrome path as resolved (or downloaded) by Selenium Manager."""
+    import os
+
+    try:
+        from selenium.webdriver.common.selenium_manager import SeleniumManager
+
+        paths = SeleniumManager().binary_paths(["--browser", "chrome"])
+        path = paths.get("browser_path")
+        return path if path and os.path.isfile(path) else None
+    except Exception:
+        return None
+
+
 def _cleanup_residual_chromedriver():
     """Kill any orphaned chromedriver if launch fails."""
     import platform
@@ -219,10 +233,42 @@ def _cleanup_residual_chromedriver():
 
     if platform.system() == "Windows":
         try:
-            subprocess.run(["taskkill", "/F", "/IM", "chromedriver.exe"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            for exe in ("chromedriver.exe", "undetected_chromedriver.exe"):
+                subprocess.run(["taskkill", "/F", "/IM", exe], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             time.sleep(1)
         except Exception:
             pass
+    _close_bot_profile_chrome()
+
+
+def _close_bot_profile_chrome():
+    """Close Chrome windows left running on the bot's throwaway profile.
+
+    A crashed run (or a failed stealth start, which launches Chrome before
+    giving up) leaves Chrome holding that profile, and the next start then dies
+    with "Chrome failed to start: crashed". Only the temporary profile is
+    touched — never the user's real browser.
+    """
+    import platform
+    import subprocess
+    import time
+
+    if not safe_mode or platform.system() != "Windows":
+        return
+    script = (
+        "Get-CimInstance Win32_Process -Filter \"name='chrome.exe'\" | "
+        "Where-Object { $_.CommandLine -like '*cvsniper-chrome-profile*' } | "
+        "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
+    )
+    try:
+        subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        time.sleep(1)
+    except Exception:
+        pass
 
 
 def _start_driver():
@@ -233,6 +279,7 @@ def _start_driver():
     plain Selenium driver still works, so the failure is downgraded to a
     warning rather than killing the run.
     """
+    _close_bot_profile_chrome()
     if stealth_mode:
         try:
             import undetected_chromedriver as uc
@@ -240,9 +287,14 @@ def _start_driver():
             print_lg("Starting Chrome in stealth mode...")
             version_main = _get_chrome_major_version()
             uc_kwargs = {"options": _build_options(uc.ChromeOptions())}
-            chrome_bin = _find_chrome_binary()
-            if chrome_bin:
-                uc_kwargs["browser_executable_path"] = chrome_bin
+            chrome_bin = _find_chrome_binary() or _selenium_manager_chrome()
+            if not chrome_bin:
+                # uc would crash with "Binary Location Must be a String"
+                raise RuntimeError(
+                    "Google Chrome was not found. Install it from "
+                    "https://www.google.com/chrome/ for stealth mode."
+                )
+            uc_kwargs["browser_executable_path"] = chrome_bin
             if version_main:
                 uc_kwargs["version_main"] = version_main
             return uc.Chrome(**uc_kwargs)

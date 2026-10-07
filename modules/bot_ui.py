@@ -155,11 +155,11 @@ def hotkey_listener_thread():
     MOD_CTRL = 0x0002
     MOD_SHIFT = 0x0004
     if not user32.RegisterHotKey(None, STOP_ID_Q, MOD_CTRL | MOD_SHIFT, 0x51):
-        print("[BotUI] Failed to register Stop (Q) hotkey")
+        print("[BotUI] Ctrl+Shift+Q is taken by another app (harmless) - use Ctrl+Shift+C or the STOP button to stop.")
     if not user32.RegisterHotKey(None, STOP_ID_C, MOD_CTRL | MOD_SHIFT, 0x43):
-        print("[BotUI] Failed to register Stop (C) hotkey")
+        print("[BotUI] Ctrl+Shift+C is taken by another app (harmless) - use Ctrl+Shift+Q or the STOP button to stop.")
     if not user32.RegisterHotKey(None, PAUSE_ID, MOD_CTRL | MOD_SHIFT, 0x50):
-        print("[BotUI] Failed to register Pause hotkey")
+        print("[BotUI] Ctrl+Shift+P is taken by another app (harmless) - use the PAUSE button.")
     try:
         while user32.GetMessageW(byref(msg), None, 0, 0) != 0:
             if msg.message == 0x0312:
@@ -242,6 +242,22 @@ class ResizeManager:
         self.root.geometry(f"{new_w}x{new_h}")
 
 
+def _fit_dialog_height(win, frame, w, h):
+    """Grow a fixed-size dialog until its content fits.
+
+    The height estimate counts newlines only, so a long wrapped message (e.g.
+    an API error detail) used to push the buttons into a few-pixel strip.
+    """
+    win.update_idletasks()
+    need = frame.winfo_reqheight() + 2
+    if need > h:
+        h = min(need, int(win.winfo_screenheight() * 0.9))
+        x = (win.winfo_screenwidth() - w) // 2
+        y = (win.winfo_screenheight() - h) // 2
+        win.geometry(f"{w}x{h}+{x}+{y}")
+        frame.place_configure(height=h - 2)
+
+
 # Custom glassmorphism alert window
 class GlassAlert(tk.Toplevel):
     def __init__(self, parent, title, message, response_queue, btn_label=None):
@@ -273,13 +289,14 @@ class GlassAlert(tk.Toplevel):
         frame.place(x=1, y=1, width=w-2, height=h-2)
         title_label = tk.Label(frame, text=title.upper(), fg="#7F5AF0", bg="#0a0a0c", font=("Segoe UI Semibold", 10), anchor="w")
         title_label.pack(fill="x", padx=15, pady=(15, 5))
-        msg_label = tk.Label(frame, text=message, fg="#E6E6E8", bg="#0a0a0c", font=("Segoe UI", 9), justify="left", wraplength=int(390 * scaling), anchor="nw")
-        msg_label.pack(fill="both", expand=True, padx=15, pady=(5, 10))
         btn_frame = tk.Frame(frame, bg="#0a0a0c")
         btn_frame.pack(fill="x", side="bottom", pady=(8, 14))
         label = btn_label or T("btn_resume")
         btn = tk.Button(btn_frame, text=label.upper(), fg="#FFFFFE", bg="#7F5AF0", activeforeground="#FFFFFE", activebackground="#9270F2", bd=0, padx=24, pady=8, font=("Segoe UI Bold", 9), command=self.on_continue, cursor="hand2")
         btn.pack(anchor="center")
+        msg_label = tk.Label(frame, text=message, fg="#E6E6E8", bg="#0a0a0c", font=("Segoe UI", 9), justify="left", wraplength=int(390 * scaling), anchor="nw")
+        msg_label.pack(fill="both", expand=True, padx=15, pady=(5, 10))
+        _fit_dialog_height(self, frame, w, h)
         self.bell()
 
     def on_continue(self):
@@ -317,8 +334,6 @@ class GlassConfirm(tk.Toplevel):
         frame.place(x=1, y=1, width=w-2, height=h-2)
         title_label = tk.Label(frame, text=title.upper(), fg="#7F5AF0", bg="#0a0a0c", font=("Segoe UI Semibold", 10), anchor="w")
         title_label.pack(fill="x", padx=15, pady=(15, 5))
-        msg_label = tk.Label(frame, text=message, fg="#E6E6E8", bg="#0a0a0c", font=("Segoe UI", 9), justify="left", wraplength=int(460 * scaling), anchor="nw")
-        msg_label.pack(fill="both", expand=True, padx=15, pady=(5, 10))
         btn_frame = tk.Frame(frame, bg="#0a0a0c")
         btn_frame.pack(fill="x", side="bottom", padx=10, pady=(8, 14))
         for idx, btn_text in enumerate(buttons):
@@ -327,6 +342,9 @@ class GlassConfirm(tk.Toplevel):
             active_bg = "#9270F2" if is_accent else "#3A3A3F"
             btn = tk.Button(btn_frame, text=btn_text.upper(), fg="#FFFFFE", bg=bg_color, activeforeground="#FFFFFE", activebackground=active_bg, bd=0, padx=14, pady=7, font=("Segoe UI Bold", 8), command=lambda val=btn_text: self.on_click(val), cursor="hand2")
             btn.pack(side="right", padx=6)
+        msg_label = tk.Label(frame, text=message, fg="#E6E6E8", bg="#0a0a0c", font=("Segoe UI", 9), justify="left", wraplength=int(460 * scaling), anchor="nw")
+        msg_label.pack(fill="both", expand=True, padx=15, pady=(5, 10))
+        _fit_dialog_height(self, frame, w, h)
         self.bell()
 
     def on_click(self, value):
@@ -353,7 +371,8 @@ class GlassAskText(tk.Toplevel):
         tk.Label(frame, text=title.upper(), fg="#7F5AF0", bg="#0a0a0c",
                  font=("Segoe UI Semibold", 10), anchor="w").pack(fill="x", padx=15, pady=(14, 2))
         tk.Label(frame, text=question, fg="#E6E6E8", bg="#0a0a0c",
-                 font=("Segoe UI", 9), anchor="w").pack(fill="x", padx=15, pady=(2, 6))
+                 font=("Segoe UI", 9), anchor="w", justify="left",
+                 wraplength=int(410 * scaling)).pack(fill="x", padx=15, pady=(2, 6))
         self._var = tk.StringVar(value=placeholder)
         entry = tk.Entry(frame, textvariable=self._var, fg="#E6E6E8", bg="#1a1a1f",
                          insertbackground="#E6E6E8", bd=0, font=("Segoe UI", 10),
@@ -369,6 +388,7 @@ class GlassAskText(tk.Toplevel):
                   bd=0, padx=20, pady=6, font=("Segoe UI Bold", 9),
                   command=self._save, cursor="hand2").pack(side="right", padx=20)
         self.bind("<Return>", lambda e: self._save())
+        _fit_dialog_height(self, frame, w, h)
         self.bell()
 
     def _save(self):
@@ -1238,10 +1258,9 @@ class GlassSettings(tk.Toplevel):
                                       'notice_period', 'current_ctc', 'click_gap',
                                       'experience_tolerance', 'ai_min_score'}
                     if varname in numeric_fields:
-                        try:
-                            val = ast.literal_eval(raw)
-                        except Exception:
-                            val = raw
+                        from modules.helpers import as_number
+                        default = -1 if varname == 'current_experience' else 0
+                        val = as_number(raw, default)
                     else:
                         val = raw
                 elif ftype == "text":
@@ -1308,7 +1327,7 @@ class BotUIApp:
         print("[BotUI] DPI Scaling Factor:", self.scaling)
 
         self.w = int(360 * self.scaling)
-        self.h = int(220 * self.scaling)
+        self.h = int(250 * self.scaling)
 
         root.withdraw()
         root.overrideredirect(True)
@@ -1326,7 +1345,8 @@ class BotUIApp:
                                      highlightbackground="#2d2d30",
                                      highlightcolor="#2d2d30",
                                      highlightthickness=1)
-        self.border_frame.place(x=1, y=1, width=self.w - 2, height=self.h - 2)
+        # relwidth/relheight so the content follows the resize grip
+        self.border_frame.place(x=1, y=1, relwidth=1, relheight=1, width=-2, height=-2)
 
         # Header / Drag zone
         self.header = tk.Frame(self.border_frame, bg="#0a0a0c")
@@ -1417,6 +1437,9 @@ class BotUIApp:
         # Buttons Container — row 2: main action buttons
         self.btn_frame = tk.Frame(self.border_frame, bg="#0a0a0c")
         self.btn_frame.pack(side="bottom", fill="x", padx=12, pady=(4, 8))
+        # 2x2 grid, equal columns: one row of four did not fit at 360px and
+        # Tk crushed whichever button was packed last (STOP / RESUME).
+        self.btn_frame.grid_columnconfigure((0, 1), weight=1, uniform="ctl")
 
         # Mini Console Log Panel
         self.console_frame = tk.Frame(self.border_frame, bg="#050507", bd=1,
@@ -1456,7 +1479,7 @@ class BotUIApp:
                                    font=("Segoe UI Bold", 8),
                                    command=self.toggle_pause,
                                    cursor="hand2")
-        self.pause_btn.pack(side="left", fill="x", expand=True, padx=(0, 4))
+        self.pause_btn.grid(row=0, column=0, sticky="ew", padx=(0, 3), pady=(0, 3))
 
         # Career-Ops Button
         self.career_ops_btn = tk.Button(self.btn_frame, text="CAREER-OPS",
@@ -1467,7 +1490,7 @@ class BotUIApp:
                                         font=("Segoe UI Bold", 8),
                                         command=self.toggle_career_ops,
                                         cursor="hand2")
-        self.career_ops_btn.pack(side="left", fill="x", expand=True, padx=(4, 4))
+        self.career_ops_btn.grid(row=1, column=0, sticky="ew", padx=(0, 3))
 
         # Optimize CV Button
         self.optimize_btn = tk.Button(self.btn_frame, text=T("btn_optimize_cv"),
@@ -1478,7 +1501,7 @@ class BotUIApp:
                                       font=("Segoe UI Bold", 8),
                                       command=self._trigger_optimize_cv,
                                       cursor="hand2")
-        self.optimize_btn.pack(side="left", fill="x", expand=True, padx=(0, 4))
+        self.optimize_btn.grid(row=1, column=1, sticky="ew", padx=(3, 0))
 
         # Stop Button
         self.stop_btn = tk.Button(self.btn_frame, text=T("btn_stop"),
@@ -1489,7 +1512,7 @@ class BotUIApp:
                                   font=("Segoe UI Bold", 8),
                                   command=self.trigger_stop,
                                   cursor="hand2")
-        self.stop_btn.pack(side="left", fill="x", expand=True, padx=(4, 0))
+        self.stop_btn.grid(row=0, column=1, sticky="ew", padx=(3, 0), pady=(0, 3))
 
         root.geometry(f"{self.w}x{self.h}+{self.x}+{self.y}")
         root.deiconify()

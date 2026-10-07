@@ -271,6 +271,59 @@ def _close_bot_profile_chrome():
         pass
 
 
+# undetected_chromedriver has no timeout of its own: when Chrome never answers
+# on the debugging port it waits forever and the UI sits on "Starting Chrome
+# in stealth mode...". Past this, give up and use the standard driver.
+STEALTH_TIMEOUT = 90
+
+
+def _with_timeout(fn, seconds: int):
+    """Run `fn` in a worker thread; raise TimeoutError if it does not return."""
+    import threading
+
+    result: dict = {}
+
+    def run():
+        try:
+            result["value"] = fn()
+        except BaseException as e:  # noqa: BLE001 - re-raised in the caller
+            result["error"] = e
+
+    worker = threading.Thread(target=run, daemon=True)
+    worker.start()
+    worker.join(seconds)
+    if worker.is_alive():
+        # Kill what it launched so the late thread fails instead of leaving a
+        # second Chrome holding the profile the fallback needs.
+        _cleanup_residual_chromedriver()
+        raise TimeoutError(f"stealth start did not finish in {seconds}s")
+    if "error" in result:
+        raise result["error"]
+    return result["value"]
+
+
+def _binary_major_version(path: str) -> int | None:
+    """Major version of a given chrome.exe, read from its install layout.
+
+    Stable installs keep a `<version>` folder next to chrome.exe; Chrome for
+    Testing (what Selenium Manager downloads) has the version in its path.
+    """
+    import os
+    import re
+
+    m = re.search(r"[\\/](\d{2,4})\.\d+\.\d+\.\d+[\\/]", path)
+    if m:
+        return int(m.group(1))
+    try:
+        for item in os.listdir(os.path.dirname(path)):
+            m = re.match(r"^(\d{2,4})\.\d+\.\d+\.\d+$", item)
+            if m:
+                return int(m.group(1))
+    except OSError:
+        pass
+    return None
+
+
 def _start_driver():
     """Open Chrome, preferring the patched driver when stealth mode is on.
 
@@ -285,8 +338,6 @@ def _start_driver():
             import undetected_chromedriver as uc
 
             print_lg("Starting Chrome in stealth mode...")
-            version_main = _get_chrome_major_version()
-            uc_kwargs = {"options": _build_options(uc.ChromeOptions())}
             chrome_bin = _find_chrome_binary() or _selenium_manager_chrome()
             if not chrome_bin:
                 # uc would crash with "Binary Location Must be a String"
@@ -294,10 +345,18 @@ def _start_driver():
                     "Google Chrome was not found. Install it from "
                     "https://www.google.com/chrome/ for stealth mode."
                 )
-            uc_kwargs["browser_executable_path"] = chrome_bin
+            # The version of the binary actually launched, not whatever the
+            # registry remembers: a mismatch makes uc fetch the wrong driver.
+            version_main = _binary_major_version(chrome_bin) or _get_chrome_major_version()
+            print_lg(f"  Chrome {version_main or '?'}: {chrome_bin}")
+            print_lg(f"  Launching (the first run downloads a driver; giving up after {STEALTH_TIMEOUT}s)...")
+            uc_kwargs = {
+                "options": _build_options(uc.ChromeOptions()),
+                "browser_executable_path": chrome_bin,
+            }
             if version_main:
                 uc_kwargs["version_main"] = version_main
-            return uc.Chrome(**uc_kwargs)
+            return _with_timeout(lambda: uc.Chrome(**uc_kwargs), STEALTH_TIMEOUT)
         except Exception as e:
             critical_error_log(
                 "Stealth mode could not start (undetected_chromedriver). "

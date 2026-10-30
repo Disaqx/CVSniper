@@ -40,7 +40,42 @@ A free Groq key is enough to run the whole thing.
 
 ## Install
 
-### Never used a terminal? (Windows)
+### Windows: install it like any other app (recommended)
+
+1. Install **Google Chrome** if you don't have it: <https://www.google.com/chrome/>
+2. Download **`CVSniper-Setup-<version>.exe`** from the
+   [Releases page](https://github.com/Disaqx/CVSniper/releases) and run it.
+3. Click through the installer. CVSniper appears in the **Start menu** (and on
+   the desktop if you ticked that box).
+
+Nothing else to install: the installer carries its own Python with every
+library the bot needs, and it does not ask for administrator rights.
+
+**Uninstall:** Settings → Apps → Installed apps → CVSniper → Uninstall. It asks
+whether to also delete your data (configuration, API keys, application
+history, generated resumes, logs); answer No to keep them for a reinstall.
+Installing a newer version on top keeps your data as well.
+
+> Windows SmartScreen may say "Windows protected your PC", because the
+> installer is not code-signed: click **More info → Run anyway**.
+
+<details>
+<summary>Building the installer yourself</summary>
+
+GitHub Actions builds it on every push that touches `installer/` (download it
+from the run's artifacts), and attaches it to the Release when a `v*` tag is
+pushed — the workflow also installs it, checks it and uninstalls it on a clean
+Windows machine. To build it locally you need Inno Setup 6, Python 3.12 x64
+and git:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File installer\build_installer.ps1 -Version 1.2.0
+```
+
+Output: `dist\CVSniper-Setup-1.2.0.exe`. Only committed files go in.
+</details>
+
+### Windows without the installer (from the source code)
 
 1. Install **Google Chrome**: <https://www.google.com/chrome/>
 2. Install **Python** from <https://www.python.org/downloads/>. On the first

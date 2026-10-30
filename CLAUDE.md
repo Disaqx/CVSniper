@@ -100,6 +100,10 @@ Groq (free tier) is the recommended default. Any OpenAI-compatible endpoint work
 
 `python tests/test_filtros.py` and `python tests/test_modo.py` (no pytest needed). They extract the pure predicates from the source with `ast` — importing `job_search.py` would launch Chrome — and run them against a fixed test profile, so they pass on a fresh clone without `config/*.py`. See `tests/README.md`. Runtime validation is still `modules/validator.py` at startup plus `logs/log.txt`.
 
+## Windows installer (`installer/`)
+
+`installer/CVSniper.iss` (Inno Setup 6) builds `CVSniper-Setup-<ver>.exe`: per-user install to `%LOCALAPPDATA%\Programs\CVSniper` (no admin), Start-menu/desktop shortcuts, an entry in Settings → Apps for uninstalling. It bundles a private Python (`{app}\python`, copied from a real CPython install so Tkinter is included — the embeddable zip lacks it) with `requirements.txt` preinstalled. `installer/build_installer.ps1` stages it (`git archive HEAD` → `build/app`, so gitignored personal config can never leak in) and calls ISCC. `.github/workflows/windows-installer.yml` builds it, silently installs + verifies + uninstalls on a clean runner, and attaches it to the Release on `v*` tags. Never change the `AppId` GUID (it identifies upgrades). The uninstaller only deletes `config/`, `all excels/`, `all resumes/`, `logs/` when the user says yes — never a blanket DelTree of `{app}`, which is also why the install dir page is disabled.
+
 ## Launchers
 
 `INICIAR.bat` (Windows, double-click) and `start.sh` (Linux/macOS) are the beginner entry points: they check Python/Chrome, install dependencies on first run and start the bot. They are excluded from the release build, which ships its own `SETUP.bat` flow.
@@ -132,6 +136,8 @@ Esta sección documenta el estado actual del proyecto y las mejoras futuras soli
    - `get_job_description` lanzaba `UnboundLocalError` cuando no encontraba la descripción.
    - `extract_years_of_experience` tomaba el máximo de cualquier "N years" (edad de la empresa, "nice to have", "preferred"); ahora solo cuenta años junto a "experience" que no estén marcados como deseables.
    - Filtro de residencia: "empresa ubicada en México" o "residents of the US" (descripción, no requisito) ya no descartan la oferta.
+
+7. ✅ **Instalador de Windows** (`installer/`): setup.exe con Inno Setup, Python propio incluido, accesos en el menú Inicio y desinstalación desde Configuración → Aplicaciones. Lo construye y prueba (instalar/verificar/desinstalar) GitHub Actions.
 
 **Pasos Faltantes (To-Do):**
 1. **Aplicador Universal v2:** soporte multi-página (Workday) — hoy va a revisión manual. La creación automática de cuentas queda descartada por diseño: exige verificación de email y CAPTCHA, es frágil y arriesgado para la cuenta del usuario.

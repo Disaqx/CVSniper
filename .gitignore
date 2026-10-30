@@ -41,3 +41,7 @@ nul
 qa_database.json
 qa_database.json.migrated
 all excels/
+
+# Installer build output (installer/build_installer.ps1)
+build/
+dist/

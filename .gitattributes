@@ -25,3 +25,6 @@
 *.pdf   binary
 *.exe   binary
 *.dll   binary
+
+# Inno Setup script (UTF-8 with BOM, so ISCC reads the accents correctly)
+*.iss   text eol=crlf

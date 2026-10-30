@@ -93,3 +93,30 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*.exe
+
+      # The release description comes from installer/release-notes/<tag>.md, so
+      # publishing a version is just pushing its tag. Only the installer belongs
+      # on a release: any other asset (such as the zip of the old SETUP.bat
+      # flow) is removed so nobody downloads the wrong thing.
+      - name: Release notes and old assets
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $repo = $env:GITHUB_REPOSITORY
+          $notes = "installer/release-notes/$tag.md"
+          if (Test-Path $notes) {
+            gh release edit $tag --repo $repo --title "CVSniper $tag" --notes-file $notes
+            if ($LASTEXITCODE -ne 0) { throw "Could not update the release notes" }
+          } else {
+            Write-Host "No $notes, release description left as it is."
+          }
+          $assets = gh release view $tag --repo $repo --json assets --jq '.assets[].name'
+          foreach ($a in $assets) {
+            if ($a -notlike 'CVSniper-Setup-*.exe') {
+              Write-Host "Removing old asset $a"
+              gh release delete-asset $tag $a --repo $repo -y
+            }
+          }

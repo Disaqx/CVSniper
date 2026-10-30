@@ -106,7 +106,7 @@ Groq (free tier) is the recommended default. Any OpenAI-compatible endpoint work
 
 ## Versioning and releases
 
-`modules/version.py` holds `__version__`; bump it, then push a matching `vX.Y.Z` tag — the installer workflow refuses a tag that does not match, and attaches `CVSniper-Setup-X.Y.Z.exe` to that Release. `modules/updates.py` compares it against GitHub's latest release at startup.
+`modules/version.py` holds `__version__`; bump it, then push a matching `vX.Y.Z` tag — the installer workflow refuses a tag that does not match, and attaches `CVSniper-Setup-X.Y.Z.exe` to that Release. It also sets the Release description from `installer/release-notes/vX.Y.Z.md` (write it before tagging) and deletes any asset that is not the installer. `modules/updates.py` compares it against GitHub's latest release at startup.
 
 ## Credentials
 

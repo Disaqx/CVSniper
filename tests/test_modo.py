@@ -322,10 +322,12 @@ check("los name con corchetes de los ATS se buscan por XPath, no por CSS",
 check("la pestana enviada se cierra siempre",
       "if tab_propia and tab_propia in driver.window_handles and (enviada or close_tabs):" in src_ext, True)
 
-# La configuracion real del usuario: sin esto no se llena NADA.
-sett = (RAIZ / "config" / "settings.py").read_text(encoding="utf-8")
-check("external_apply_enabled esta encendido",
-      re.search(r'^external_apply_enabled\s*=\s*True', sett, re.M) is not None, True)
+# La configuracion real del usuario: sin esto no se llena NADA. Es una
+# preferencia, no un fallo del codigo, asi que solo se avisa.
+_sett_path = RAIZ / "config" / "settings.py"
+if _sett_path.exists() and not re.search(r'^external_apply_enabled\s*=\s*True',
+                                         _sett_path.read_text(encoding="utf-8"), re.M):
+    print("  [aviso] external_apply_enabled esta apagado: las externas solo se registran")
 
 # =========================================================================
 print("\n" + "=" * 60)

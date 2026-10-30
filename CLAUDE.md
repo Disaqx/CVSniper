@@ -96,9 +96,13 @@ Groq (free tier) is the recommended default. Any OpenAI-compatible endpoint work
 | `logs/log.txt` | Full execution log |
 | `all resumes/` | Generated/uploaded CV PDFs |
 
-## No test suite
+## Tests
 
-There are no automated tests. Validation is done via `modules/validator.py` at startup and logging in `logs/log.txt`.
+`python tests/test_filtros.py` and `python tests/test_modo.py` (no pytest needed). They extract the pure predicates from the source with `ast` — importing `job_search.py` would launch Chrome — and run them against a fixed test profile, so they pass on a fresh clone without `config/*.py`. See `tests/README.md`. Runtime validation is still `modules/validator.py` at startup plus `logs/log.txt`.
+
+## Launchers
+
+`INICIAR.bat` (Windows, double-click) and `start.sh` (Linux/macOS) are the beginner entry points: they check Python/Chrome, install dependencies on first run and start the bot. They are excluded from the release build, which ships its own `SETUP.bat` flow.
 
 ## Repo layout notes
 
@@ -120,6 +124,14 @@ Esta sección documenta el estado actual del proyecto y las mejoras futuras soli
    - Polaridad de visa: `"Do you have the legal right to work ... WITHOUT the need for sponsorship?"` se respondía con `require_visa` (=No), o sea "no puedo trabajar aquí" → autorrechazo. Nuevo `resolve_work_authorization_answer()` detecta el fraseo invertido y voltea la respuesta.
    - El branch de ubicación secuestraba preguntas Sí/No que solo mencionaban "location"/"country" y respondía con un nombre de ciudad, que no matchea nada → caía en elección **aleatoria**. Nuevo guard `is_yes_no_options()`.
    - De paso: la lista de placeholders (duplicada en 3 sitios) es ahora `_PLACEHOLDER_WORDS` + `is_placeholder_option()`, y el matching de keywords cortos usa límites de palabra (`option_mentions()`).
+
+6. ✅ **Ofertas que se saltaban sin motivo (octubre 2026):**
+   - Cualquier error de Selenium en UNA oferta (tarjeta reciclada, elemento stale, búsqueda sin resultados → `TimeoutException`) caía en el `except WebDriverException` de "navegador cerrado" y **terminaba toda la ejecución**. Ahora cada oferta va en su propio try/except y solo un navegador muerto (`_browser_alive()`) corta el run; una búsqueda sin resultados pasa al siguiente término.
+   - Las tarjetas debajo del scroll (LinkedIn las renderiza perezosamente) se saltaban por "no `<a>` tag": ahora se hace scroll a la tarjeta y se reintenta.
+   - `title[:title.find("\n")]` cortaba la última letra de todo título de una línea.
+   - `get_job_description` lanzaba `UnboundLocalError` cuando no encontraba la descripción.
+   - `extract_years_of_experience` tomaba el máximo de cualquier "N years" (edad de la empresa, "nice to have", "preferred"); ahora solo cuenta años junto a "experience" que no estén marcados como deseables.
+   - Filtro de residencia: "empresa ubicada en México" o "residents of the US" (descripción, no requisito) ya no descartan la oferta.
 
 **Pasos Faltantes (To-Do):**
 1. **Aplicador Universal v2:** soporte multi-página (Workday) — hoy va a revisión manual. La creación automática de cuentas queda descartada por diseño: exige verificación de email y CAPTCHA, es frágil y arriesgado para la cuenta del usuario.

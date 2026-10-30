@@ -38,6 +38,7 @@ def deepseek_create_client() -> OpenAI | None:
         ##<
         return client
     except Exception as e:
+        global showAiErrorAlerts  # assigned below; without this, reading it raised UnboundLocalError
         error_message = f"Error occurred while creating DeepSeek client. Make sure your API connection details are correct."
         critical_error_log(error_message, e)
         if showAiErrorAlerts:

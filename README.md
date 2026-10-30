@@ -40,12 +40,38 @@ A free Groq key is enough to run the whole thing.
 
 ## Install
 
+### Never used a terminal? (Windows)
+
+1. Install **Google Chrome**: <https://www.google.com/chrome/>
+2. Install **Python** from <https://www.python.org/downloads/>. On the first
+   screen of the installer, tick **"Add Python to PATH"** before clicking
+   Install. This is the step people miss.
+3. On this repository's GitHub page click the green **Code** button →
+   **Download ZIP**, and extract it somewhere (Documents is fine).
+4. Open the extracted folder and double-click **`INICIAR.bat`**.
+
+The first time it installs everything it needs (a couple of minutes), then the
+bot opens. From then on, double-clicking `INICIAR.bat` is all you do. If
+something goes wrong the window stays open with the reason instead of
+vanishing.
+
+> Windows may show "Windows protected your PC" the first time: click
+> **More info → Run anyway**. It is a plain text script — open it in Notepad if
+> you want to see what it does.
+
+### Linux / macOS
+
 ```bash
 git clone https://github.com/Disaqx/CVSniper.git
 cd CVSniper
+bash start.sh
 ```
 
-Then run the setup script for your platform:
+`start.sh` runs `setup/setup.sh` the first time (it checks Python, Tkinter and
+Chrome, creates a `.venv` and installs the dependencies) and then starts the
+bot. Use `bash start.sh` every time after that too.
+
+### Setup scripts, if you prefer them
 
 ```bash
 # Windows
@@ -55,7 +81,7 @@ setup\windows-setup.bat
 bash setup/setup.sh
 ```
 
-It checks your Python version, installs the dependencies and creates your
+They check your Python version, install the dependencies and create your
 config files from the templates. Or do it by hand:
 
 ```bash
@@ -89,7 +115,7 @@ Five files under `config/`, all managed from the settings window. They are
 **gitignored** — they hold your personal data and your API keys, and never
 leave your machine.
 
-> Screening logic is covered by `tests/` — run `py -3 tests/test_filtros.py`
+> Screening logic is covered by `tests/` — run `python tests/test_filtros.py`
 > after changing a filter. See `tests/README.md` for why they are written the
 > way they are.
 

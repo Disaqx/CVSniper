@@ -8,6 +8,27 @@ _PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
+# A missing package used to surface as a bare ModuleNotFoundError traceback,
+# which tells someone who has never used pip nothing about what to do next.
+if sys.version_info < (3, 10):
+    print("\n[CVSniper] Python 3.10 or newer is required (found %d.%d)."
+          "\n           Get it from https://www.python.org/downloads/\n" % sys.version_info[:2])
+    sys.exit(1)
+try:
+    import tkinter  # noqa: F401  (the control panel)
+except ImportError:
+    print("\n[CVSniper] Tkinter is missing. Debian/Ubuntu: sudo apt install python3-tk"
+          "\n           Fedora: sudo dnf install python3-tkinter · macOS: brew install python-tk\n")
+    sys.exit(1)
+try:
+    import selenium, flask, pyautogui, undetected_chromedriver, openai  # noqa: F401
+except ImportError as _falta:
+    print(f"\n[CVSniper] A required package is not installed: {_falta.name}"
+          "\n           Windows:       double-click INICIAR.bat (it installs everything)"
+          "\n           Linux / macOS: bash start.sh"
+          "\n           Or by hand:    pip install -r requirements.txt\n")
+    sys.exit(1)
+
 import csv
 import re
 import time
@@ -368,6 +389,27 @@ def check_daily_limit() -> bool:
     return False
 
 
+def _browser_alive() -> bool:
+    """True while Chrome is still there to talk to."""
+    try:
+        driver.window_handles
+        return True
+    except Exception:
+        return False
+
+
+def _back_to_results() -> None:
+    """After a job failed half-way: close whatever it left open, return to the results."""
+    try: discard_job()
+    except Exception: pass
+    try:
+        if linkedIn_tab and driver.current_window_handle != linkedIn_tab:
+            driver.switch_to.window(linkedIn_tab)
+    except Exception: pass
+    try: actions.send_keys(Keys.ESCAPE).perform()
+    except Exception: pass
+
+
 # Function to apply to jobs
 def apply_to_jobs(search_terms: list[str]) -> None:
     def _split_geo(entrada: str) -> tuple[str, str | None]:
@@ -491,424 +533,441 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str, remote_o
                     ui_pause_check()
                     if keep_screen_awake: pyautogui.press('shiftright')
                     if current_count >= switch_number: break
-                    print_lg("\n-@-\n")
-
-                    job_id,title,company,work_location,work_style,skip = get_job_main_details(job, blacklisted_companies, rejected_jobs)
-
-                    if skip:
-                        if is_career_ops_mode():
-                            ui_update_status("Career-Ops: Skipping Job", f"{title} at {company} (Already Applied / Blacklisted) ({len(top_manual_jobs)}/5 matches)")
-                        continue
-
-                    # Title blacklist — runs whether or not the focus filter is
-                    # on, so the focus filter can safely be left off.
-                    _mala = is_title_blacklisted(title)
-                    if _mala:
-                        print_lg(f'Skipping "{title}" — title contains "{_mala}"')
-                        if is_career_ops_mode():
-                            ui_update_status("Career-Ops: Skipping Job", f"{title} at {company} (Title blacklisted: {_mala}) ({len(top_manual_jobs)}/5 matches)")
-                        skip_count += 1
-                        continue
-
-                    # Job focus filter — skip if title doesn't match user's focus areas
-                    if not is_job_relevant(title, work_style):
-                        _kw_preview = " / ".join((primary_focus_keywords[:3] if primary_focus_keywords else []) + (secondary_focus_keywords[:2] if secondary_focus_keywords else []))
-                        print_lg(f'Skipping "{title}" — not in focus areas ({_kw_preview or "none configured"})')
-                        if is_career_ops_mode():
-                            ui_update_status("Career-Ops: Skipping Job", f"{title} at {company} (Not in focus areas) ({len(top_manual_jobs)}/5 matches)")
-                        skip_count += 1
-                        continue
-
-                    status_prefix = "Career-Ops: Processing" if is_career_ops_mode() else "Processing Job"
-                    status_details = f"{title} at {company} ({len(top_manual_jobs)}/5 matches)" if is_career_ops_mode() else f"{title} at {company}"
-                    ui_update_status(status_prefix, status_details)
-                    if check_daily_limit():
-                        return
-
-                    # Redundant fail safe check for applied jobs!
+                    title, company = "Unknown", "Unknown"
                     try:
-                        if job_id in applied_jobs or find_by_class(driver, "jobs-s-apply__application-link", 2):
-                            print_lg(f'Already applied to "{title} | {company}" job. Job ID: {job_id}!')
+                        print_lg("\n-@-\n")
+
+                        job_id,title,company,work_location,work_style,skip = get_job_main_details(job, blacklisted_companies, rejected_jobs)
+
+                        if skip:
                             if is_career_ops_mode():
-                                ui_update_status("Career-Ops: Skipping Job", f"{title} at {company} (Already Applied) ({len(top_manual_jobs)}/5 matches)")
+                                ui_update_status("Career-Ops: Skipping Job", f"{title} at {company} (Already Applied / Blacklisted) ({len(top_manual_jobs)}/5 matches)")
                             continue
-                    except Exception as e:
-                        print_lg(f'Trying to Apply to "{title} | {company}" job. Job ID: {job_id}')
 
-                    job_link = "https://www.linkedin.com/jobs/view/"+job_id
-                    application_link = "Easy Applied"
-                    date_applied = "Pending"
-                    hr_link = "Unknown"
-                    hr_name = "Unknown"
-                    connect_request = "In Development" # Still in development
-                    date_listed = "Unknown"
-                    skills = "Needs an AI" # Still in development
-                    resume = "Pending"
-                    reposted = False
-                    questions_list = None
-                    screenshot_name = "Not Available"
-
-                    try:
-                        rejected_jobs, blacklisted_companies, jobs_top_card = check_blacklist(rejected_jobs,job_id,company,blacklisted_companies)
-                    except ValueError as e:
-                        print_lg(e, 'Skipping this job!\n')
-                        if is_career_ops_mode():
-                            ui_update_status("Career-Ops: Skipping Job", f"{title} at {company} (Blacklist Match: {str(e)}) ({len(top_manual_jobs)}/5 matches)")
-                        failed_job(job_id, job_link, resume, date_listed, "Found Blacklisted words in About Company", e, "Skipped", screenshot_name)
-                        skip_count += 1
-                        continue
-                    except Exception as e:
-                        print_lg("Failed to scroll to About Company!")
-                        # print_lg(e)
-
-
-
-                    # Hiring Manager info
-                    try:
-                        hr_info_card = WebDriverWait(driver,2).until(EC.presence_of_element_located((By.CLASS_NAME, "hirer-card__hirer-information")))
-                        hr_link = hr_info_card.find_element(By.TAG_NAME, "a").get_attribute("href")
-                        hr_name = hr_info_card.find_element(By.TAG_NAME, "span").text
-                        # if connect_hr:
-                        #     driver.switch_to.new_window('tab')
-                        #     driver.get(hr_link)
-                        #     wait_span_click("More")
-                        #     wait_span_click("Connect")
-                        #     wait_span_click("Add a note")
-                        #     message_box = driver.find_element(By.XPATH, "//textarea")
-                        #     message_box.send_keys(connect_request_message)
-                        #     if close_tabs: driver.close()
-                        #     driver.switch_to.window(linkedIn_tab) 
-                        # def message_hr(hr_info_card):
-                        #     if not hr_info_card: return False
-                        #     hr_info_card.find_element(By.XPATH, ".//span[normalize-space()='Message']").click()
-                        #     message_box = driver.find_element(By.XPATH, "//div[@aria-label='Write a message…']")
-                        #     message_box.send_keys()
-                        #     try_xp(driver, "//button[normalize-space()='Send']")        
-                    except Exception as e:
-                        print_lg(f'HR info was not given for "{title}" with Job ID: {job_id}!')
-                        # print_lg(e)
-
-
-                    # Calculation of date posted
-                    try:
-                        # try: time_posted_text = find_by_class(driver, "jobs-unified-top-card__posted-date", 2).text
-                        # except: 
-                        time_posted_text = jobs_top_card.find_element(By.XPATH, './/span[contains(normalize-space(), " ago") or contains(normalize-space(), "hace ")]').text
-                        print("Time Posted: " + time_posted_text)
-                        if "Reposted" in time_posted_text or "Republicado" in time_posted_text:
-                            reposted = True
-                            time_posted_text = time_posted_text.replace("Reposted", "").replace("Republicado", "")
-                        date_listed = calculate_date_posted(time_posted_text.strip())
-                    except Exception as e:
-                        print_lg("Failed to calculate the date posted!",e)
-
-
-                    description, experience_required, skip, reason, message = get_job_description()
-                    ui_pause_check()
-                    if skip:
-                        print_lg(message)
-                        if is_career_ops_mode():
-                            ui_update_status("Career-Ops: Skipping Job", f"{title} at {company} ({reason}) ({len(top_manual_jobs)}/5 matches)")
-                        failed_job(job_id, job_link, resume, date_listed, reason, message, "Skipped", screenshot_name)
-                        rejected_jobs.add(job_id)
-                        skip_count += 1
-                        continue
-
-                    # "Remote" on LinkedIn only means no office. This is what
-                    # catches the remote job that still wants you living there.
-                    _residencia = requires_ineligible_residency(description)
-                    if _residencia:
-                        _msg = f'\n{description}\n\nRequires residency/work authorisation you do not have: "{_residencia}". Skipping this job!\n'
-                        print_lg(f'Skipping "{title}" — residency requirement: "{_residencia}"')
-                        if is_career_ops_mode():
-                            ui_update_status("Career-Ops: Skipping Job", f"{title} at {company} (Residency required) ({len(top_manual_jobs)}/5 matches)")
-                        failed_job(job_id, job_link, resume, date_listed, "Residency/work authorisation required", _msg, "Skipped", screenshot_name)
-                        rejected_jobs.add(job_id)
-                        skip_count += 1
-                        continue
-
-                    # Neutral on the 0-100 scale: if the AI call fails, the job
-                    # is neither skipped nor ranked at the bottom.
-                    current_eval_score = 50
-                    eval_reason = "No reason provided by AI."
-                    
-                    if use_AI and description != "Unknown":
-                        ##> ------ AI Pre-screening Feature ------
-                        try:
+                        # Title blacklist — runs whether or not the focus filter is
+                        # on, so the focus filter can safely be left off.
+                        _mala = is_title_blacklisted(title)
+                        if _mala:
+                            print_lg(f'Skipping "{title}" — title contains "{_mala}"')
                             if is_career_ops_mode():
-                                ui_update_status("Career-Ops: AI Pre-screening", f"{title} at {company} ({len(top_manual_jobs)}/5 matches)")
-                            print_lg("Pre-screening job requirements with AI...")
-                            eval_result = {"meets_requirements": True, "reason": "Default"}
+                                ui_update_status("Career-Ops: Skipping Job", f"{title} at {company} (Title blacklisted: {_mala}) ({len(top_manual_jobs)}/5 matches)")
+                            skip_count += 1
+                            continue
 
-                            # Pause is only honoured where it is checked, and each
-                            # AI call below blocks for seconds. Without a check
-                            # right before them, hitting Pause during the analysis
-                            # left the bot visibly "thinking" through the rest of
-                            # this job before it stopped.
-                            ui_pause_check()
-                            eval_result = aiClient.evaluate_job(description, user_information_all)
+                        # Job focus filter — skip if title doesn't match user's focus areas
+                        if not is_job_relevant(title, work_style):
+                            _kw_preview = " / ".join((primary_focus_keywords[:3] if primary_focus_keywords else []) + (secondary_focus_keywords[:2] if secondary_focus_keywords else []))
+                            print_lg(f'Skipping "{title}" — not in focus areas ({_kw_preview or "none configured"})')
+                            if is_career_ops_mode():
+                                ui_update_status("Career-Ops: Skipping Job", f"{title} at {company} (Not in focus areas) ({len(top_manual_jobs)}/5 matches)")
+                            skip_count += 1
+                            continue
 
-                            if isinstance(eval_result, dict):
-                                try:
-                                    current_eval_score = int(eval_result.get("score", 50))
-                                except (TypeError, ValueError):
-                                    current_eval_score = 50
-                                eval_reason = eval_result.get("reason", "AI pre-screening passed.")
-
-                            # The score is the knob. The AI's own true/false
-                            # verdict is deliberately harsh — a candidate missing
-                            # any listed skill fails it — so it only decides when
-                            # `ai_prescreen_strict` says so.
-                            _too_low = current_eval_score < ai_min_score
-                            _hard_no = ai_prescreen_strict and isinstance(eval_result, dict) \
-                                       and not eval_result.get("meets_requirements", True)
-
-                            if _too_low or _hard_no:
-                                _porque = f"score {current_eval_score} < {ai_min_score}" if _too_low else "missing a hard requirement"
-                                reason = eval_result.get("reason", "AI determined user does not meet core requirements.") if isinstance(eval_result, dict) else "AI pre-screening failed."
-                                message = f'\n{description}\n\nAI Pre-screening failed ({_porque}): {reason}. Skipping this job!\n'
-                                print_lg(message)
-                                if is_career_ops_mode():
-                                    ui_update_status("Career-Ops: Skipping Job", f"{title} at {company} (AI Pre-screening: {reason}) ({len(top_manual_jobs)}/5 matches)")
-                                failed_job(job_id, job_link, resume, date_listed, "AI Pre-screening Rejected", message, "Skipped", screenshot_name)
-                                rejected_jobs.add(job_id)
-                                skip_count += 1
-                                continue
-                            else:
-                                print_lg(f"AI Pre-screening passed (score {current_eval_score}). Proceeding with application...")
-                        except Exception as e:
-                            print_lg("Failed to evaluate job with AI:", e)
-                        ##<
-
-                        ##> ------ Yang Li : MARKYangL - Feature ------
-                        try:
-                            ui_pause_check()
-                            skills = aiClient.extract_skills(description)
-                            print_lg(f"Extracted skills using {ai_provider} AI")
-                        except Exception as e:
-                            print_lg("Failed to extract skills:", e)
-                            skills = "Error extracting skills"
-                        ##<
-
-                    ui_pause_check()
-
-                    if is_career_ops_mode():
-                        print_lg(f"[Career-Ops Mode] Skipping auto-apply for '{title} | {company}' and collecting for manual review.")
-                        add_to_manual_jobs(job_id, title, company, current_eval_score, f"Career-Ops Match: {eval_reason}")
-                        current_count += 1
-                        external_jobs_count += 1
-                        applied_jobs.add(job_id)
-                        ui_update_status("Collected Career-Ops Job", f"{title} at {company} (Score: {current_eval_score}) ({len(top_manual_jobs)}/5 matches)")
-                        
-                        if not check_and_prompt_career_ops():
+                        status_prefix = "Career-Ops: Processing" if is_career_ops_mode() else "Processing Job"
+                        status_details = f"{title} at {company} ({len(top_manual_jobs)}/5 matches)" if is_career_ops_mode() else f"{title} at {company}"
+                        ui_update_status(status_prefix, status_details)
+                        if check_daily_limit():
                             return
-                        continue
 
-                    uploaded = False
-                    # Set when the Easy-Apply probe below already opened the
-                    # external page, so it is not opened a second time.
-                    external_link_already_open = None
-                    # Case 1: Easy Apply Button
-                    # First try the classic button with "Easy" in aria-label
-                    is_easy_apply = try_xp(driver, ".//button[contains(@class,'jobs-apply-button') and contains(@class, 'artdeco-button--3') and contains(@aria-label, 'Easy')]")
-                    # Fallback 1: check if apply link contains Easy Apply URL pattern
-                    if not is_easy_apply:
+                        # Redundant fail safe check for applied jobs!
                         try:
-                            apply_link_el = driver.find_element(By.XPATH, ".//a[contains(@href, 'openSDUIApplyFlow=true')]")
-                            if apply_link_el:
-                                apply_link_el.click()
-                                is_easy_apply = True
-                                print_lg("Detected Easy Apply via URL pattern (openSDUIApplyFlow)")
-                        except:
-                            pass
-                    # Fallback 2: click Apply once and let probe_apply_button()
-                    # say what happened. This runs even in Easy-Apply-only mode —
-                    # it is the reliable detector, and the two probes above miss
-                    # real Easy Apply jobs often enough to matter.
-                    #
-                    # It is also the ONLY place Apply gets clicked. The previous
-                    # version clicked here to detect and again inside
-                    # external_apply() to apply; the second click found a button
-                    # that had already done its job, which is the
-                    # "Apply did not open a new tab, skipping" that killed every
-                    # external application in the logs.
-                    if not is_easy_apply:
-                        try:
-                            kind, ext_url = probe_apply_button(linkedIn_tab)
-                        except Exception as e:
-                            print_lg(f"Apply probe failed: {e}")
-                            kind, ext_url = "none", None
-                        if kind == "easy_apply":
-                            is_easy_apply = True
-                            print_lg("Detected Easy Apply via modal appearance after click")
-                        elif kind == "external":
-                            if wants_external():
-                                external_link_already_open = ext_url
-                                print_lg(f"External apply detected: {ext_url}")
-                            else:
-                                print_lg("External apply detected — ignoring (Easy Apply only mode)")
-                        else:
-                            try: actions.send_keys(Keys.ESCAPE).perform()
-                            except Exception: pass
-                        # Whatever happened, carry on from the LinkedIn tab.
-                        try:
-                            if driver.current_window_handle != linkedIn_tab:
-                                driver.switch_to.window(linkedIn_tab)
-                        except Exception: pass
-                    if is_easy_apply and not wants_easy_apply():
-                        print_lg(f'Skipping "{title}" — Easy Apply job (mode: {get_application_mode()})')
-                        try: actions.send_keys(Keys.ESCAPE).perform()
-                        except Exception: pass
-                        skip_count += 1
-                        continue
-                    if is_easy_apply:
-                        try:
-                            if is_career_ops_mode():
-                                raise CareerOpsActivatedException()
-                            try:
-                                errored = ""
-                                modal = find_by_class(driver, "jobs-easy-apply-modal")
-                                if not wait_span_click(modal, "Next", 1):
-                                    wait_span_click(modal, "Siguiente", 1)
-                                # if description != "Unknown":
-                                #     resume = create_custom_resume(description)
-                                resume = "Previous resume"
-                                next_button = True
-                                questions_list = set()
-                                next_counter = 0
-                                while next_button:
-                                    # Each turn of this loop is one page of the
-                                    # Easy Apply modal, with its own questions
-                                    # and AI calls — the longest stretch of a
-                                    # run. Without a check here, Pause did not
-                                    # bite until the whole application had been
-                                    # walked through, which is what "sigue
-                                    # pensando detrás de otra postulación" was.
-                                    ui_pause_check()
-                                    if is_career_ops_mode():
-                                        raise CareerOpsActivatedException()
-                                    next_counter += 1
-                                    if next_counter >= 15: 
-                                        if pause_at_failed_question:
-                                            screenshot(driver, job_id, "Needed manual intervention for failed question")
-                                            ui_alert("Help Needed", "Couldn't answer one or more questions.\nPlease click \"Continue\" once done.\nDO NOT CLICK Back, Next or Review button in LinkedIn.\n\n\n\n\nYou can turn off \"Pause at failed question\" setting in config.py")
-                                            next_counter = 1
-                                            continue
-                                        if questions_list: print_lg("Stuck for one or some of the following questions...", questions_list)
-                                        screenshot_name = screenshot(driver, job_id, "Failed at questions")
-                                        errored = "stuck"
-                                        raise Exception("Seems like stuck in a continuous loop of next, probably because of new questions.")
-                                    questions_list = answer_questions(modal, questions_list, work_location, job_description=description, ai_client=aiClient)
-                                    if useNewResume and not uploaded: uploaded, resume = upload_resume(modal, default_resume_path)
-                                    try: next_button = modal.find_element(By.XPATH, './/button[contains(normalize-space(.), "Review") or contains(@aria-label, "Review") or contains(normalize-space(.), "Revisar") or contains(@aria-label, "Revisar")]')
-                                    except NoSuchElementException:  next_button = modal.find_element(By.XPATH, './/button[contains(normalize-space(.), "Next") or contains(@aria-label, "next") or contains(@aria-label, "Next") or contains(normalize-space(.), "Siguiente") or contains(@aria-label, "Siguiente")]')
-                                    try: 
-                                        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", next_button)
-                                        time.sleep(0.5)
-                                        try: next_button.click()
-                                        except Exception: driver.execute_script("arguments[0].click();", next_button)
-                                    except Exception:
-                                        try:
-                                            time.sleep(1)
-                                            try: next_button = modal.find_element(By.XPATH, './/button[contains(normalize-space(.), "Review") or contains(@aria-label, "Review")]') 
-                                            except: next_button = modal.find_element(By.XPATH, './/button[contains(normalize-space(.), "Next") or contains(@aria-label, "next") or contains(@aria-label, "Next")]')
-                                            driver.execute_script("arguments[0].click();", next_button)
-                                        except Exception as e:
-                                            print_lg(f"Failed to click Next/Review: {e}")
-                                            break
-                                    buffer(click_gap)
-
-                            except NoSuchElementException: errored = "nose"
-                            finally:
+                            if job_id in applied_jobs or find_by_class(driver, "jobs-s-apply__application-link", 2):
+                                print_lg(f'Already applied to "{title} | {company}" job. Job ID: {job_id}!')
                                 if is_career_ops_mode():
-                                    pass
+                                    ui_update_status("Career-Ops: Skipping Job", f"{title} at {company} (Already Applied) ({len(top_manual_jobs)}/5 matches)")
+                                continue
+                        except Exception as e:
+                            print_lg(f'Trying to Apply to "{title} | {company}" job. Job ID: {job_id}')
+
+                        job_link = "https://www.linkedin.com/jobs/view/"+job_id
+                        application_link = "Easy Applied"
+                        date_applied = "Pending"
+                        hr_link = "Unknown"
+                        hr_name = "Unknown"
+                        connect_request = "In Development" # Still in development
+                        date_listed = "Unknown"
+                        skills = "Needs an AI" # Still in development
+                        resume = "Pending"
+                        reposted = False
+                        questions_list = None
+                        screenshot_name = "Not Available"
+
+                        jobs_top_card = None
+                        try:
+                                rejected_jobs, blacklisted_companies, jobs_top_card = check_blacklist(rejected_jobs,job_id,company,blacklisted_companies)
+                        except ValueError as e:
+                            print_lg(e, 'Skipping this job!\n')
+                            if is_career_ops_mode():
+                                ui_update_status("Career-Ops: Skipping Job", f"{title} at {company} (Blacklist Match: {str(e)}) ({len(top_manual_jobs)}/5 matches)")
+                            failed_job(job_id, job_link, resume, date_listed, "Found Blacklisted words in About Company", e, "Skipped", screenshot_name)
+                            skip_count += 1
+                            continue
+                        except Exception as e:
+                            print_lg("Failed to scroll to About Company!")
+                            # print_lg(e)
+
+
+
+                        # Hiring Manager info
+                        try:
+                            hr_info_card = WebDriverWait(driver,2).until(EC.presence_of_element_located((By.CLASS_NAME, "hirer-card__hirer-information")))
+                            hr_link = hr_info_card.find_element(By.TAG_NAME, "a").get_attribute("href")
+                            hr_name = hr_info_card.find_element(By.TAG_NAME, "span").text
+                            # if connect_hr:
+                            #     driver.switch_to.new_window('tab')
+                            #     driver.get(hr_link)
+                            #     wait_span_click("More")
+                            #     wait_span_click("Connect")
+                            #     wait_span_click("Add a note")
+                            #     message_box = driver.find_element(By.XPATH, "//textarea")
+                            #     message_box.send_keys(connect_request_message)
+                            #     if close_tabs: driver.close()
+                            #     driver.switch_to.window(linkedIn_tab) 
+                            # def message_hr(hr_info_card):
+                            #     if not hr_info_card: return False
+                            #     hr_info_card.find_element(By.XPATH, ".//span[normalize-space()='Message']").click()
+                            #     message_box = driver.find_element(By.XPATH, "//div[@aria-label='Write a message…']")
+                            #     message_box.send_keys()
+                            #     try_xp(driver, "//button[normalize-space()='Send']")        
+                        except Exception as e:
+                            print_lg(f'HR info was not given for "{title}" with Job ID: {job_id}!')
+                            # print_lg(e)
+
+
+                        # Calculation of date posted
+                        try:
+                            # try: time_posted_text = find_by_class(driver, "jobs-unified-top-card__posted-date", 2).text
+                            # except: 
+                            time_posted_text = jobs_top_card.find_element(By.XPATH, './/span[contains(normalize-space(), " ago") or contains(normalize-space(), "hace ")]').text
+                            print("Time Posted: " + time_posted_text)
+                            if "Reposted" in time_posted_text or "Republicado" in time_posted_text:
+                                reposted = True
+                                time_posted_text = time_posted_text.replace("Reposted", "").replace("Republicado", "")
+                            date_listed = calculate_date_posted(time_posted_text.strip())
+                        except Exception as e:
+                            print_lg("Failed to calculate the date posted!",e)
+
+
+                        description, experience_required, skip, reason, message = get_job_description()
+                        ui_pause_check()
+                        if skip:
+                            print_lg(message)
+                            if is_career_ops_mode():
+                                ui_update_status("Career-Ops: Skipping Job", f"{title} at {company} ({reason}) ({len(top_manual_jobs)}/5 matches)")
+                            failed_job(job_id, job_link, resume, date_listed, reason, message, "Skipped", screenshot_name)
+                            rejected_jobs.add(job_id)
+                            skip_count += 1
+                            continue
+
+                        # "Remote" on LinkedIn only means no office. This is what
+                        # catches the remote job that still wants you living there.
+                        _residencia = requires_ineligible_residency(description)
+                        if _residencia:
+                            _msg = f'\n{description}\n\nRequires residency/work authorisation you do not have: "{_residencia}". Skipping this job!\n'
+                            print_lg(f'Skipping "{title}" — residency requirement: "{_residencia}"')
+                            if is_career_ops_mode():
+                                ui_update_status("Career-Ops: Skipping Job", f"{title} at {company} (Residency required) ({len(top_manual_jobs)}/5 matches)")
+                            failed_job(job_id, job_link, resume, date_listed, "Residency/work authorisation required", _msg, "Skipped", screenshot_name)
+                            rejected_jobs.add(job_id)
+                            skip_count += 1
+                            continue
+
+                        # Neutral on the 0-100 scale: if the AI call fails, the job
+                        # is neither skipped nor ranked at the bottom.
+                        current_eval_score = 50
+                        eval_reason = "No reason provided by AI."
+                    
+                        if use_AI and description != "Unknown":
+                            ##> ------ AI Pre-screening Feature ------
+                            try:
+                                if is_career_ops_mode():
+                                    ui_update_status("Career-Ops: AI Pre-screening", f"{title} at {company} ({len(top_manual_jobs)}/5 matches)")
+                                print_lg("Pre-screening job requirements with AI...")
+                                eval_result = {"meets_requirements": True, "reason": "Default"}
+
+                                # Pause is only honoured where it is checked, and each
+                                # AI call below blocks for seconds. Without a check
+                                # right before them, hitting Pause during the analysis
+                                # left the bot visibly "thinking" through the rest of
+                                # this job before it stopped.
+                                ui_pause_check()
+                                eval_result = aiClient.evaluate_job(description, user_information_all)
+
+                                if isinstance(eval_result, dict):
+                                    try:
+                                        current_eval_score = int(eval_result.get("score", 50))
+                                    except (TypeError, ValueError):
+                                        current_eval_score = 50
+                                    eval_reason = eval_result.get("reason", "AI pre-screening passed.")
+
+                                # The score is the knob. The AI's own true/false
+                                # verdict is deliberately harsh — a candidate missing
+                                # any listed skill fails it — so it only decides when
+                                # `ai_prescreen_strict` says so.
+                                _too_low = current_eval_score < ai_min_score
+                                _hard_no = ai_prescreen_strict and isinstance(eval_result, dict) \
+                                           and not eval_result.get("meets_requirements", True)
+
+                                if _too_low or _hard_no:
+                                    _porque = f"score {current_eval_score} < {ai_min_score}" if _too_low else "missing a hard requirement"
+                                    reason = eval_result.get("reason", "AI determined user does not meet core requirements.") if isinstance(eval_result, dict) else "AI pre-screening failed."
+                                    message = f'\n{description}\n\nAI Pre-screening failed ({_porque}): {reason}. Skipping this job!\n'
+                                    print_lg(message)
+                                    if is_career_ops_mode():
+                                        ui_update_status("Career-Ops: Skipping Job", f"{title} at {company} (AI Pre-screening: {reason}) ({len(top_manual_jobs)}/5 matches)")
+                                    failed_job(job_id, job_link, resume, date_listed, "AI Pre-screening Rejected", message, "Skipped", screenshot_name)
+                                    rejected_jobs.add(job_id)
+                                    skip_count += 1
+                                    continue
                                 else:
-                                    if questions_list and errored != "stuck": 
-                                        print_lg("Answered the following questions...", questions_list)
-                                        print("\n\n" + "\n".join(str(question) for question in questions_list) + "\n\n")
-                                    wait_button_click(driver, ["Review", "Revisar solicitud", "Revisar"], 3, scrollTop=True)
-                                    cur_pause_before_submit = pause_before_submit
-                                    if errored != "stuck" and cur_pause_before_submit:
-                                        decision = ui_confirm("Confirm your information", '1. Please verify your information.\n2. If you edited something, please return to this final screen.\n3. DO NOT CLICK "Submit Application".\n\n\n\n\nYou can turn off "Pause before submit" setting in config.py\nTo TEMPORARILY disable pausing, click "Disable Pause"', ["Disable Pause", "Discard Application", "Submit Application"])
-                                        if decision == "Discard Application": raise Exception("Job application discarded by user!")
-                                        pause_before_submit = False if "Disable Pause" == decision else True
-                                        # try_xp(modal, ".//span[normalize-space(.)='Review']")
-                                    follow_company(modal)
-                                    if wait_button_click(driver, ["Submit application", "Submit", "Enviar solicitud", "Enviar"], 8, scrollTop=True):
-                                        date_applied = datetime.now()
-                                        if not wait_button_click(driver, ["Done", "Listo", "Hecho"], 4):
-                                            actions.send_keys(Keys.ESCAPE).perform()
-                                    elif errored != "stuck" and cur_pause_before_submit and "Yes" in ui_confirm("Failed to find Submit Application!", "You submitted the application, didn't you?", ["Yes", "No"]):
-                                        date_applied = datetime.now()
-                                        wait_button_click(driver, ["Done", "Listo", "Hecho"], 4)
-                                    else:
-                                        print_lg("Since, Submit Application failed, discarding the job application...")
-                                        # if screenshot_name == "Not Available":  screenshot_name = screenshot(driver, job_id, "Failed to click Submit application")
-                                        # else:   screenshot_name = [screenshot_name, screenshot(driver, job_id, "Failed to click Submit application")]
-                                        if errored == "nose": raise Exception("Failed to click Submit application 😑")
+                                    print_lg(f"AI Pre-screening passed (score {current_eval_score}). Proceeding with application...")
+                            except Exception as e:
+                                print_lg("Failed to evaluate job with AI:", e)
+                            ##<
 
+                            ##> ------ Yang Li : MARKYangL - Feature ------
+                            try:
+                                ui_pause_check()
+                                skills = aiClient.extract_skills(description)
+                                print_lg(f"Extracted skills using {ai_provider} AI")
+                            except Exception as e:
+                                print_lg("Failed to extract skills:", e)
+                                skills = "Error extracting skills"
+                            ##<
 
-                        except CareerOpsActivatedException:
-                            print_lg("[Career-Ops Mode] Activated during Easy Apply. Aborting auto-apply and collecting job.")
-                            discard_job()
+                        ui_pause_check()
+
+                        if is_career_ops_mode():
+                            print_lg(f"[Career-Ops Mode] Skipping auto-apply for '{title} | {company}' and collecting for manual review.")
                             add_to_manual_jobs(job_id, title, company, current_eval_score, f"Career-Ops Match: {eval_reason}")
-                            applied_jobs.add(job_id)
                             current_count += 1
                             external_jobs_count += 1
+                            applied_jobs.add(job_id)
                             ui_update_status("Collected Career-Ops Job", f"{title} at {company} (Score: {current_eval_score}) ({len(top_manual_jobs)}/5 matches)")
-                            
+                        
                             if not check_and_prompt_career_ops():
                                 return
                             continue
 
-                        except Exception as e:
-                            print_lg("Failed to Easy apply!")
-                            add_to_manual_jobs(job_id, title, company, current_eval_score, f"Easy Apply failed: {eval_reason}")
-                            # print_lg(e)
-                            critical_error_log("Somewhere in Easy Apply process",e)
-                            failed_job(job_id, job_link, resume, date_listed, "Problem in Easy Applying", e, application_link, screenshot_name)
-                            failed_count += 1
-                            discard_job()
-                            if check_daily_limit():
-                                return
+                        uploaded = False
+                        # Set when the Easy-Apply probe below already opened the
+                        # external page, so it is not opened a second time.
+                        external_link_already_open = None
+                        # Case 1: Easy Apply Button
+                        # First try the classic button with "Easy" in aria-label
+                        is_easy_apply = try_xp(driver, ".//button[contains(@class,'jobs-apply-button') and contains(@class, 'artdeco-button--3') and contains(@aria-label, 'Easy')]")
+                        # Fallback 1: check if apply link contains Easy Apply URL pattern
+                        if not is_easy_apply:
+                            try:
+                                apply_link_el = driver.find_element(By.XPATH, ".//a[contains(@href, 'openSDUIApplyFlow=true')]")
+                                if apply_link_el:
+                                    apply_link_el.click()
+                                    is_easy_apply = True
+                                    print_lg("Detected Easy Apply via URL pattern (openSDUIApplyFlow)")
+                            except:
+                                pass
+                        # Fallback 2: click Apply once and let probe_apply_button()
+                        # say what happened. This runs even in Easy-Apply-only mode —
+                        # it is the reliable detector, and the two probes above miss
+                        # real Easy Apply jobs often enough to matter.
+                        #
+                        # It is also the ONLY place Apply gets clicked. The previous
+                        # version clicked here to detect and again inside
+                        # external_apply() to apply; the second click found a button
+                        # that had already done its job, which is the
+                        # "Apply did not open a new tab, skipping" that killed every
+                        # external application in the logs.
+                        if not is_easy_apply:
+                            try:
+                                kind, ext_url = probe_apply_button(linkedIn_tab)
+                            except Exception as e:
+                                print_lg(f"Apply probe failed: {e}")
+                                kind, ext_url = "none", None
+                            if kind == "easy_apply":
+                                is_easy_apply = True
+                                print_lg("Detected Easy Apply via modal appearance after click")
+                            elif kind == "external":
+                                if wants_external():
+                                    external_link_already_open = ext_url
+                                    print_lg(f"External apply detected: {ext_url}")
+                                else:
+                                    print_lg("External apply detected — ignoring (Easy Apply only mode)")
+                            else:
+                                try: actions.send_keys(Keys.ESCAPE).perform()
+                                except Exception: pass
+                            # Whatever happened, carry on from the LinkedIn tab.
+                            try:
+                                if driver.current_window_handle != linkedIn_tab:
+                                    driver.switch_to.window(linkedIn_tab)
+                            except Exception: pass
+                        if is_easy_apply and not wants_easy_apply():
+                            print_lg(f'Skipping "{title}" — Easy Apply job (mode: {get_application_mode()})')
+                            try: actions.send_keys(Keys.ESCAPE).perform()
+                            except Exception: pass
+                            skip_count += 1
                             continue
-                    elif not wants_external():
-                        # Case 2a: external job, but the user asked for Easy
-                        # Apply only. Nothing was opened, so nothing to clean up.
-                        print_lg(f'Skipping "{title}" — not Easy Apply (mode: {get_application_mode()})')
-                        ui_update_status("Skipping Job", f"{title} at {company} (not Easy Apply)")
+                        if is_easy_apply:
+                            try:
+                                if is_career_ops_mode():
+                                    raise CareerOpsActivatedException()
+                                try:
+                                    errored = ""
+                                    modal = find_by_class(driver, "jobs-easy-apply-modal")
+                                    if not wait_span_click(modal, "Next", 1):
+                                        wait_span_click(modal, "Siguiente", 1)
+                                    # if description != "Unknown":
+                                    #     resume = create_custom_resume(description)
+                                    resume = "Previous resume"
+                                    next_button = True
+                                    questions_list = set()
+                                    next_counter = 0
+                                    while next_button:
+                                        # Each turn of this loop is one page of the
+                                        # Easy Apply modal, with its own questions
+                                        # and AI calls — the longest stretch of a
+                                        # run. Without a check here, Pause did not
+                                        # bite until the whole application had been
+                                        # walked through, which is what "sigue
+                                        # pensando detrás de otra postulación" was.
+                                        ui_pause_check()
+                                        if is_career_ops_mode():
+                                            raise CareerOpsActivatedException()
+                                        next_counter += 1
+                                        if next_counter >= 15: 
+                                            if pause_at_failed_question:
+                                                screenshot(driver, job_id, "Needed manual intervention for failed question")
+                                                ui_alert("Help Needed", "Couldn't answer one or more questions.\nPlease click \"Continue\" once done.\nDO NOT CLICK Back, Next or Review button in LinkedIn.\n\n\n\n\nYou can turn off \"Pause at failed question\" setting in config.py")
+                                                next_counter = 1
+                                                continue
+                                            if questions_list: print_lg("Stuck for one or some of the following questions...", questions_list)
+                                            screenshot_name = screenshot(driver, job_id, "Failed at questions")
+                                            errored = "stuck"
+                                            raise Exception("Seems like stuck in a continuous loop of next, probably because of new questions.")
+                                        questions_list = answer_questions(modal, questions_list, work_location, job_description=description, ai_client=aiClient)
+                                        if useNewResume and not uploaded: uploaded, resume = upload_resume(modal, default_resume_path)
+                                        try: next_button = modal.find_element(By.XPATH, './/button[contains(normalize-space(.), "Review") or contains(@aria-label, "Review") or contains(normalize-space(.), "Revisar") or contains(@aria-label, "Revisar")]')
+                                        except NoSuchElementException:  next_button = modal.find_element(By.XPATH, './/button[contains(normalize-space(.), "Next") or contains(@aria-label, "next") or contains(@aria-label, "Next") or contains(normalize-space(.), "Siguiente") or contains(@aria-label, "Siguiente")]')
+                                        try: 
+                                            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", next_button)
+                                            time.sleep(0.5)
+                                            try: next_button.click()
+                                            except Exception: driver.execute_script("arguments[0].click();", next_button)
+                                        except Exception:
+                                            try:
+                                                time.sleep(1)
+                                                try: next_button = modal.find_element(By.XPATH, './/button[contains(normalize-space(.), "Review") or contains(@aria-label, "Review")]') 
+                                                except: next_button = modal.find_element(By.XPATH, './/button[contains(normalize-space(.), "Next") or contains(@aria-label, "next") or contains(@aria-label, "Next")]')
+                                                driver.execute_script("arguments[0].click();", next_button)
+                                            except Exception as e:
+                                                print_lg(f"Failed to click Next/Review: {e}")
+                                                break
+                                        buffer(click_gap)
+
+                                except NoSuchElementException: errored = "nose"
+                                finally:
+                                    if is_career_ops_mode():
+                                        pass
+                                    else:
+                                        if questions_list and errored != "stuck": 
+                                            print_lg("Answered the following questions...", questions_list)
+                                            print("\n\n" + "\n".join(str(question) for question in questions_list) + "\n\n")
+                                        wait_button_click(driver, ["Review", "Revisar solicitud", "Revisar"], 3, scrollTop=True)
+                                        cur_pause_before_submit = pause_before_submit
+                                        if errored != "stuck" and cur_pause_before_submit:
+                                            decision = ui_confirm("Confirm your information", '1. Please verify your information.\n2. If you edited something, please return to this final screen.\n3. DO NOT CLICK "Submit Application".\n\n\n\n\nYou can turn off "Pause before submit" setting in config.py\nTo TEMPORARILY disable pausing, click "Disable Pause"', ["Disable Pause", "Discard Application", "Submit Application"])
+                                            if decision == "Discard Application": raise Exception("Job application discarded by user!")
+                                            pause_before_submit = False if "Disable Pause" == decision else True
+                                            # try_xp(modal, ".//span[normalize-space(.)='Review']")
+                                        follow_company(modal)
+                                        if wait_button_click(driver, ["Submit application", "Submit", "Enviar solicitud", "Enviar"], 8, scrollTop=True):
+                                            date_applied = datetime.now()
+                                            if not wait_button_click(driver, ["Done", "Listo", "Hecho"], 4):
+                                                actions.send_keys(Keys.ESCAPE).perform()
+                                        elif errored != "stuck" and cur_pause_before_submit and "Yes" in ui_confirm("Failed to find Submit Application!", "You submitted the application, didn't you?", ["Yes", "No"]):
+                                            date_applied = datetime.now()
+                                            wait_button_click(driver, ["Done", "Listo", "Hecho"], 4)
+                                        else:
+                                            print_lg("Since, Submit Application failed, discarding the job application...")
+                                            # if screenshot_name == "Not Available":  screenshot_name = screenshot(driver, job_id, "Failed to click Submit application")
+                                            # else:   screenshot_name = [screenshot_name, screenshot(driver, job_id, "Failed to click Submit application")]
+                                            if errored == "nose": raise Exception("Failed to click Submit application 😑")
+
+
+                            except CareerOpsActivatedException:
+                                print_lg("[Career-Ops Mode] Activated during Easy Apply. Aborting auto-apply and collecting job.")
+                                discard_job()
+                                add_to_manual_jobs(job_id, title, company, current_eval_score, f"Career-Ops Match: {eval_reason}")
+                                applied_jobs.add(job_id)
+                                current_count += 1
+                                external_jobs_count += 1
+                                ui_update_status("Collected Career-Ops Job", f"{title} at {company} (Score: {current_eval_score}) ({len(top_manual_jobs)}/5 matches)")
+                            
+                                if not check_and_prompt_career_ops():
+                                    return
+                                continue
+
+                            except Exception as e:
+                                print_lg("Failed to Easy apply!")
+                                add_to_manual_jobs(job_id, title, company, current_eval_score, f"Easy Apply failed: {eval_reason}")
+                                # print_lg(e)
+                                critical_error_log("Somewhere in Easy Apply process",e)
+                                failed_job(job_id, job_link, resume, date_listed, "Problem in Easy Applying", e, application_link, screenshot_name)
+                                failed_count += 1
+                                discard_job()
+                                if check_daily_limit():
+                                    return
+                                continue
+                        elif not wants_external():
+                            # Case 2a: external job, but the user asked for Easy
+                            # Apply only. Nothing was opened, so nothing to clean up.
+                            print_lg(f'Skipping "{title}" — not Easy Apply (mode: {get_application_mode()})')
+                            ui_update_status("Skipping Job", f"{title} at {company} (not Easy Apply)")
+                            skip_count += 1
+                            continue
+                        elif not external_link_already_open:
+                            # Case 2b: the probe above already clicked Apply and it
+                            # led nowhere — no modal, no external page. Handing this
+                            # to external_apply() would just click the same dead
+                            # button again.
+                            print_lg(f'Skipping "{title}" — Apply led nowhere (no application page found)')
+                            ui_update_status("Skipping Job", f"{title} at {company} (Apply led nowhere)")
+                            skip_count += 1
+                            continue
+                        else:
+                            # Case 2c: Apply externally
+                            add_to_manual_jobs(job_id, title, company, current_eval_score, f"External Apply: {eval_reason}")
+                            skip, application_link, tabs_count = external_apply(job_id, job_link, resume, date_listed, application_link, screenshot_name, tabs_count=tabs_count, ai_client=aiClient, job_description=description, already_open_url=external_link_already_open)
+                            if not skip:
+                                # The counter is bumped once, below, where every
+                                # successful application passes through.
+                                date_applied = datetime.now()
+                            if dailyEasyApplyLimitReached and not is_career_ops_mode():
+                                print_lg("\n###############  Daily application limit for Easy Apply is reached!  ###############\n")
+                                return
+                            if skip: continue
+
+                        submitted_jobs(job_id, title, company, work_location, work_style, description, experience_required, skills, hr_name, hr_link, resume, reposted, date_listed, date_applied, job_link, application_link, questions_list, connect_request)
+                        if uploaded:   useNewResume = False
+
+                        print_lg(f'Successfully saved "{title} | {company}" job. Job ID: {job_id} info')
+                        current_count += 1
+                        if application_link == "Easy Applied": easy_applied_count += 1
+                        else:   external_jobs_count += 1
+                        applied_jobs.add(job_id)
+                    except Exception as e:
+                        # One job going wrong (a card LinkedIn recycled while it
+                        # was being read, a button that vanished, a stale
+                        # element) used to abandon the rest of the search term.
+                        # Worse, every Selenium error is a WebDriverException, so
+                        # the "browser closed" handler below ended the WHOLE run
+                        # over one bad listing. Only a dead browser should do that.
+                        if not _browser_alive():
+                            raise
+                        print_lg(f'Problem with "{title} | {company}", moving on to the next job: {e!r}')
+                        critical_error_log("Processing a single job", e)
+                        _back_to_results()
                         skip_count += 1
                         continue
-                    elif not external_link_already_open:
-                        # Case 2b: the probe above already clicked Apply and it
-                        # led nowhere — no modal, no external page. Handing this
-                        # to external_apply() would just click the same dead
-                        # button again.
-                        print_lg(f'Skipping "{title}" — Apply led nowhere (no application page found)')
-                        ui_update_status("Skipping Job", f"{title} at {company} (Apply led nowhere)")
-                        skip_count += 1
-                        continue
-                    else:
-                        # Case 2c: Apply externally
-                        add_to_manual_jobs(job_id, title, company, current_eval_score, f"External Apply: {eval_reason}")
-                        skip, application_link, tabs_count = external_apply(job_id, job_link, resume, date_listed, application_link, screenshot_name, tabs_count=tabs_count, ai_client=aiClient, job_description=description, already_open_url=external_link_already_open)
-                        if not skip:
-                            # The counter is bumped once, below, where every
-                            # successful application passes through.
-                            date_applied = datetime.now()
-                        if dailyEasyApplyLimitReached and not is_career_ops_mode():
-                            print_lg("\n###############  Daily application limit for Easy Apply is reached!  ###############\n")
-                            return
-                        if skip: continue
-
-                    submitted_jobs(job_id, title, company, work_location, work_style, description, experience_required, skills, hr_name, hr_link, resume, reposted, date_listed, date_applied, job_link, application_link, questions_list, connect_request)
-                    if uploaded:   useNewResume = False
-
-                    print_lg(f'Successfully saved "{title} | {company}" job. Job ID: {job_id} info')
-                    current_count += 1
-                    if application_link == "Easy Applied": easy_applied_count += 1
-                    else:   external_jobs_count += 1
-                    applied_jobs.add(job_id)
 
 
 
@@ -924,8 +983,13 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str, remote_o
                     break
 
         except (NoSuchWindowException, WebDriverException) as e:
-            print_lg("Browser window closed or session is invalid. Ending application process.", e)
-            raise e # Re-raise to be caught by main
+            # A TimeoutException here usually just means this search returned no
+            # results. It is a WebDriverException too, so it used to end the
+            # whole run instead of moving on to the next search term.
+            if not _browser_alive():
+                print_lg("Browser window closed or session is invalid. Ending application process.", e)
+                raise e # Re-raise to be caught by main
+            print_lg(f'No (more) job listings for "{searchTerm}", moving on to the next search term. ({e.__class__.__name__})')
         except Exception as e:
             print_lg("Failed to find Job listings!")
             critical_error_log("In Applier", e)

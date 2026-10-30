@@ -17,8 +17,10 @@ start a browser.
 
 So these read the source with `ast`, pull out the individual functions and the
 module-level constants they depend on, and run those in a namespace built from
-the real `config/`. What gets tested is the actual shipped code, not a copy of
-it — edit `job_search.py` and the test follows.
+a fixed test profile (`PERFIL` in `test_filtros.py`) rather than your own
+`config/`, so they pass on a fresh clone and do not break when you change your
+word lists. What gets tested is the actual shipped code, not a copy of it —
+edit `job_search.py` and the test follows.
 
 The trade-off: only pure predicates are covered. Anything that touches the
 driver is not, and never will be by these.
@@ -32,9 +34,11 @@ driver is not, and never will be by these.
 - whole-word matching for `bad_words` and `title_bad_words`, so `PHP` does not
   fire inside `index.php` and `.NET` does not fire inside `careers.example.net`
 - the focus filter, accent-insensitive
-- the experience ceiling and its tolerance
+- the experience ceiling and its tolerance, and that a "N years" which is not a
+  requirement (the company's age, "nice to have", "preferred") is not counted
 - the residency detector: a remote job in Mexico that requires living in Mexico
-  is dropped, one open to Latin America or to the user's own country is kept
+  is dropped, one open to Latin America or to the user's own country is kept,
+  and a company describing where IT is ("empresa ubicada en México") is kept
 - the remote sweep URL: `geoId`, `f_WT=2`, `f_JT`
 
 `test_modo.py` — the application mode, the external applier and the form

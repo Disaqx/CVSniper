@@ -472,8 +472,15 @@ account.
 
 - `config/*.py` hold your data and keys and are **gitignored** — only the
   `*.default.py` templates are versioned
+- Your LinkedIn password and your LLM API key are kept in the operating
+  system's credential store (Windows Credential Manager, macOS Keychain, the
+  Linux Secret Service), not in `config/secrets.py`, which only points to them.
+  An older `secrets.py` with them in plain text is moved there automatically.
+  Where no credential store exists they stay in the file, as before
 - Your resume, your CSV history and your logs never leave the folder
-- The only outbound traffic is LinkedIn itself and the LLM provider you chose
+- The only outbound traffic is LinkedIn itself, the LLM provider you chose,
+  and one request to GitHub at startup to see whether a newer version is out
+  (`check_for_updates = False` in `config/settings.py` turns it off)
 
 > Automating LinkedIn is against their terms of service. Your account is yours
 > to risk. `stealth_mode` and `click_gap` exist to reduce the odds, not to

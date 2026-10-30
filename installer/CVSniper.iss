@@ -141,6 +141,13 @@ begin
   end;
 end;
 
+procedure DeleteStoredCredential(Target: String);
+var
+  ResultCode: Integer;
+begin
+  Exec(ExpandConstant('{sys}\cmdkey.exe'), '/delete:' + Target, '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   App: String;
@@ -162,6 +169,11 @@ begin
       DelTree(App + '\all resumes', True, True, True);
       DelTree(App + '\logs', True, True, True);
       DeleteFile(App + '\qa_database.json');
+      // The LinkedIn password and API key, kept in Windows Credential Manager
+      // by modules\credentials.py (keyring names them service / user@service).
+      DeleteStoredCredential('CVSniper');
+      DeleteStoredCredential('password@CVSniper');
+      DeleteStoredCredential('llm_api_key@CVSniper');
     end;
     RemoveDir(App);
   end;

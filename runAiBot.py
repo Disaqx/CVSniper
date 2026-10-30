@@ -45,6 +45,16 @@ for _cfg_name in ["personals", "secrets", "questions", "resume", "search", "sett
         shutil.copy(_tmpl, _real)
         print(f"[Setup] Created {_cfg_name}.py from template. Please fill in your data.")
 
+# Move a plain-text LinkedIn password / API key into the OS credential store
+# (Windows Credential Manager). Does nothing where there is no store.
+try:
+    from modules.credentials import migrate_secrets_file
+    _movidos = migrate_secrets_file(os.path.join(_CONFIG_DIR, "secrets.py"))
+    if _movidos:
+        print(f"[Setup] Moved {', '.join(_movidos)} from config/secrets.py to the system credential store.")
+except Exception as _e:
+    print(f"[Setup] Could not move secrets to the credential store: {_e}")
+
 # Set CSV field size limit to prevent field size errors
 csv.field_size_limit(1000000)  # Set to 1MB instead of default 131KB
 
@@ -125,6 +135,12 @@ print("[CVSniper] Starting control panel...")
 ui_start(driver)
 print("[CVSniper] Checking configuration...")
 ui_enforce_configuration()
+
+# Tell the user when a newer release is out (one quiet request, in the background).
+if globals().get("check_for_updates", True):
+    from modules.updates import check_in_background
+    from modules.bot_ui import ui_notify_update
+    check_in_background(ui_notify_update)
 
 # ── Flask dashboard starts in background (opens only when user clicks the button) ──
 from modules.bot_ui import start_flask_dashboard, open_dashboard_in_browser, FLASK_URL
@@ -1010,6 +1026,12 @@ def interruptible_sleep(seconds: float):
             break
 
 
+def career_ops_project_dir() -> str | None:
+    """The external career-ops project (a sibling folder with scan.mjs), if it is there."""
+    carpeta = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "career-ops"))
+    return carpeta if os.path.isfile(os.path.join(carpeta, "scan.mjs")) else None
+
+
 def run_career_ops_cycle():
     import subprocess
     import re
@@ -1017,8 +1039,7 @@ def run_career_ops_cycle():
 
     global top_manual_jobs
 
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    career_ops_dir = os.path.abspath(os.path.join(base_dir, "../career-ops"))
+    career_ops_dir = career_ops_project_dir()
 
     print_lg(f"[Career-Ops] Path to career-ops project: {career_ops_dir}")
 
@@ -1272,9 +1293,16 @@ def run(total_runs: int) -> int:
     print_lg(f"Date and Time: {datetime.now()}")
     print_lg(f"Cycle number: {total_runs}")
 
-    if is_career_ops_mode():
+    if is_career_ops_mode() and career_ops_project_dir():
         run_career_ops_cycle()
     else:
+        # Without the external career-ops project (any normal install, and
+        # always with the Windows installer) Career-Ops mode used to loop on
+        # "Error executing scan.mjs" forever. The LinkedIn search already knows
+        # how to collect matches for manual review in this mode, so use it.
+        if is_career_ops_mode():
+            print_lg("[Career-Ops] career-ops project not found next to CVSniper: "
+                     "collecting LinkedIn matches for manual review instead.")
         print_lg(f"Looking for jobs posted within '{date_posted}', sorted by '{sort_by}'")
         apply_to_jobs(search_terms)
 

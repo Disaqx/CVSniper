@@ -55,7 +55,12 @@ except NameError:
     pass
 
 
-re_experience = re.compile(r'[(]?\s*(\d+)\s*[)]?\s*[-to]*\s*\d*[+]*\s*year[s]?', re.IGNORECASE)
+# "3 years", "5+ yrs", "3-5 years", "2 to 4 years", and in Spanish "3 años",
+# "3 a 5 años". A range yields its lower end. Spanish postings used to be
+# invisible to the experience filter, because only "year" was recognised.
+re_experience = re.compile(
+    r'[(]?\s*(\d+)\s*[)]?\s*(?:(?:-|–|to|a)\s*\d+\s*)?[+]*\s*(?:years?|yrs?|a[ñn]os?)\b',
+    re.IGNORECASE)
 
 # 'secret' used to be matched as a bare substring, which fired on the Spanish
 # words "secreto" and "secretaria" — present in a large share of Colombian
@@ -473,6 +478,20 @@ def get_page_info() -> tuple[WebElement | None, int | None]:
 
 
 
+# The card footer LinkedIn shows once you have applied, in the interface
+# languages people actually run it in. Comparing against the English word
+# alone meant a Spanish LinkedIn never recognised a job as already applied to.
+_APPLIED_STATES = ('applied', 'solicitado', 'solicitada', 'postulado', 'postulada',
+                   'aplicado', 'aplicada', 'candidatura enviada', 'candidatado',
+                   'candidatura', 'beworben', 'postule', 'candidature envoyee')
+
+
+def is_applied_state(footer_text: str) -> bool:
+    '''True if a job card's footer says you already applied ("Applied", "Solicitado", ...).'''
+    texto = _fold(footer_text).strip()
+    return any(texto == e or texto.startswith(e + ' ') for e in _APPLIED_STATES)
+
+
 def get_job_main_details(job: WebElement, blacklisted_companies: set, rejected_jobs: set) -> tuple[str, str, str, str, str, bool]:
     '''
     # Function to get job main details.
@@ -537,7 +556,7 @@ def get_job_main_details(job: WebElement, blacklisted_companies: set, rejected_j
         print_lg(f'Skipping previously rejected "{title} | {company}" job. Job ID: {job_id}!')
         skip = True
     try:
-        if job.find_element(By.CLASS_NAME, "job-card-container__footer-job-state").text == "Applied":
+        if is_applied_state(job.find_element(By.CLASS_NAME, "job-card-container__footer-job-state").text):
             skip = True
             print_lg(f'Already applied to "{title} | {company}" job. Job ID: {job_id}!')
     except: pass
@@ -592,7 +611,8 @@ _EXPERIENCE_WORDS = re.compile(r'experien|\bexp\b|background|track record|hands[
 _NOT_REQUIRED_WORDS = re.compile(
     r'prefer|nice[- ]to[- ]have|a plus|bonus|ideally|desirable|desired|advantage|'
     r'\bwe have\b|\bwe\'ve\b|for over|founded|in business|history|\bago\b|'
-    r'contract|deseable|valorable', re.IGNORECASE)
+    r'contract|deseable|valorable|preferible|preferentemente|se valora|un plus|'
+    r'fundad|trayectoria de|\bhace\b|contrato', re.IGNORECASE)
 
 
 def extract_years_of_experience(text: str) -> int:

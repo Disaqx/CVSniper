@@ -12,6 +12,9 @@ on:
     paths:
       - 'installer/**'
       - 'requirements.txt'
+      - 'requirements.lock'
+      - 'modules/credentials.py'
+      - 'modules/version.py'
       - '.github/workflows/windows-installer.yml'
 
 permissions:
@@ -38,7 +41,13 @@ jobs:
       - name: Build installer
         shell: pwsh
         run: |
-          $v = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME -replace '^v', '' } else { "1.0.$env:GITHUB_RUN_NUMBER" }
+          # A tag must match modules/version.py, or the update check would keep
+          # telling people on that release that it is newer than what they have.
+          $local = (Select-String -Path modules\version.py -Pattern '__version__\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
+          if ($env:GITHUB_REF_TYPE -eq 'tag') {
+            $v = $env:GITHUB_REF_NAME -replace '^v', ''
+            if ($v -ne $local) { throw "Tag $env:GITHUB_REF_NAME does not match modules/version.py ($local)" }
+          } else { $v = "$local-dev.$env:GITHUB_RUN_NUMBER" }
           ./installer/build_installer.ps1 -Version $v -PythonExe (Get-Command python).Source
 
       - name: Install, check and uninstall
@@ -60,6 +69,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Installed Python is broken" }
           & "$app\python\python.exe" -E -s -m compileall -q "$app\runAiBot.py" "$app\modules" "$app\app.py"
           if ($LASTEXITCODE -ne 0) { throw "App does not compile" }
+
+          # The API key must reach Windows Credential Manager and come back out.
+          & "$app\python\python.exe" -E -s -c "import sys; sys.path.insert(0, r'$app'); from modules import credentials as c; assert c.available(), 'no store'; assert c.store('ci_probe', 'ok'); assert c.from_keyring('ci_probe') == 'ok'; c.store('ci_probe', ''); print('credential store OK')"
+          if ($LASTEXITCODE -ne 0) { throw "Credential store does not work" }
 
           # The uninstaller re-launches itself from %TEMP% and returns at once, so poll.
           Start-Process "$app\unins000.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait

@@ -38,9 +38,10 @@ fuente = (RAIZ / "modules" / "job_search.py").read_text(encoding="utf-8")
 arbol = ast.parse(fuente)
 
 QUIERO_FUNCS = {"_fold", "_contains_term", "is_title_blacklisted", "is_job_relevant",
-                "extract_years_of_experience", "requires_ineligible_residency"}
+                "extract_years_of_experience", "requires_ineligible_residency",
+                "is_applied_state"}
 QUIERO_VARS = {"_ACCENTS", "_CLEARANCE_PHRASES", "re_experience",
-               "_EXPERIENCE_WORDS", "_NOT_REQUIRED_WORDS",
+               "_EXPERIENCE_WORDS", "_NOT_REQUIRED_WORDS", "_APPLIED_STATES",
                "_RESIDENCY_PATTERNS", "_COUNTRY_NAMES"}
 
 ns = {"re": re, "print_lg": lambda *a, **k: None, **PERFIL}
@@ -161,6 +162,27 @@ check("'preferred' no cuenta",
 check("'Experience: 5+ years' si cuenta", years("Experience: 5+ years"), 5)
 check("rango '3-5 years' toma el minimo", years("3-5 years of experience"), 3)
 check("sin requisito -> 0", years("Great team, remote, flexible hours."), 0)
+check("'10+ years' sigue funcionando", years("10+ years of experience."), 10)
+check("'2 to 4 years' toma el minimo", years("2 to 4 years of experience."), 2)
+
+print("   -- en español --")
+check("'3 años de experiencia'", years("Requisitos: 3 años de experiencia en soporte."), 3)
+check("'5+ años de experiencia'", years("Experiencia: 5+ años"), 5)
+check("rango '2 a 4 años' toma el minimo", years("Mínimo 2 a 4 años de experiencia."), 2)
+check("'deseable' no cuenta", years("1 año de experiencia. Deseable 6 años de experiencia en AWS."), 1)
+check("'empresa con 20 años' no cuenta",
+      years("Empresa fundada hace 8 años. Buscamos 2 años de experiencia."), 2)
+check("'8 años de experiencia' se salta", se_salta("8 años de experiencia comprobable."), True)
+
+print("   -- ya postulado (pie de la tarjeta) --")
+aplicado = ns["is_applied_state"]
+check("'Applied'", aplicado("Applied"), True)
+check("'Applied 3 days ago'", aplicado("Applied 3 days ago"), True)
+check("'Solicitado' (LinkedIn en español)", aplicado("Solicitado"), True)
+check("'Postulado'", aplicado("Postulado"), True)
+check("'Promoted' no es postulado", aplicado("Promoted"), False)
+check("'Be an early applicant' no es postulado", aplicado("Be an early applicant"), False)
+check("vacio", aplicado(""), False)
 
 # =========================================================================
 print("\n6. El caso que motivo esto: 'remoto en Mexico pero debes vivir en Mexico'")

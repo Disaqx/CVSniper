@@ -10,3 +10,4 @@ google-generativeai>=0.8.0
 undetected-chromedriver>=3.5.0
 fpdf2>=2.7.0
 pymupdf>=1.24.0
+keyring>=25.0

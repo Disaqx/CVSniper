@@ -10,13 +10,15 @@
 
     Steps: export the committed app with `git archive` (so personal config
     files, CSVs and logs can never end up inside the installer), copy the
-    Python install into build\python, install requirements.txt into that copy,
+    Python install into build\python, install requirements.lock (exact, tested
+    versions) into that copy,
     check it can import everything, then compile installer\CVSniper.iss.
 
     Uncommitted changes are NOT included - commit first.
 #>
 param(
-    [string]$Version = "1.0.0",
+    # Default: __version__ in modules\version.py
+    [string]$Version = "",
     # python.exe to bundle. Default: Python 3.12 from the py launcher.
     [string]$PythonExe = ""
 )
@@ -26,6 +28,11 @@ $Root  = Split-Path $PSScriptRoot -Parent
 $Build = Join-Path $Root 'build'
 $Dist  = Join-Path $Root 'dist'
 Set-Location $Root
+
+if (-not $Version) {
+    $m = Select-String -Path (Join-Path $Root 'modules\version.py') -Pattern '__version__\s*=\s*"([^"]+)"'
+    $Version = $m.Matches[0].Groups[1].Value
+}
 
 function Step($msg) { Write-Host ""; Write-Host "==> $msg" -ForegroundColor Cyan }
 
@@ -79,10 +86,14 @@ foreach ($junk in @('Lib\test', 'Lib\idlelib\idle_test', 'Lib\tkinter\test')) {
 }
 $pyExeBuilt = Join-Path $py 'python.exe'
 
-Step "Installing requirements.txt into the bundled Python"
+# requirements.lock, not requirements.txt: with ">=" ranges a new release of
+# Selenium or undetected-chromedriver could break the next installer silently.
+$reqs = Join-Path $Root 'requirements.lock'
+if (-not (Test-Path $reqs)) { $reqs = Join-Path $Root 'requirements.txt' }
+Step "Installing $(Split-Path $reqs -Leaf) into the bundled Python"
 & $pyExeBuilt -E -s -m ensurepip --upgrade
 if ($LASTEXITCODE -ne 0) { throw "ensurepip failed" }
-& $pyExeBuilt -E -s -m pip install --no-warn-script-location --disable-pip-version-check -r (Join-Path $Root 'requirements.txt')
+& $pyExeBuilt -E -s -m pip install --no-warn-script-location --disable-pip-version-check -r $reqs
 if ($LASTEXITCODE -ne 0) { throw "pip install failed" }
 $scripts = Join-Path $py 'Scripts'
 if (Test-Path $scripts) { Remove-Item $scripts -Recurse -Force }
@@ -92,6 +103,9 @@ Step "Checking the bundled Python can run the bot"
 import tkinter; tkinter.Tcl().eval('info patchlevel')
 import selenium, flask, flask_cors, pyautogui, undetected_chromedriver, openai, fitz, fpdf, PIL
 import google.generativeai
+import keyring
+from keyring.backends import fail
+assert not isinstance(keyring.get_keyring(), fail.Keyring), 'no credential store backend'
 print('bundled Python OK')
 "@
 if ($LASTEXITCODE -ne 0) { throw "The bundled Python is missing something (see above)." }

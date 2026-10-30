@@ -2,38 +2,49 @@
 
 job_search.py importa modules.open_chrome, que ABRE Chrome al importarse. Asi que
 en vez de importar el modulo, se extraen del fuente las funciones puras y se
-ejecutan contra la config real del usuario.
+ejecutan contra un PERFIL DE PRUEBA fijo (abajo). Antes se usaba la config real
+del usuario, y entonces los tests fallaban en una instalacion nueva o con otra
+lista de palabras: probaban la config de alguien, no el codigo.
 """
 import ast, re, sys, io, importlib.util
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent   # la carpeta del proyecto
 
-# --- config real del usuario ---------------------------------------------
-spec = importlib.util.spec_from_file_location("cfg_search", RAIZ / "config" / "search.py")
+# --- config del usuario (o la plantilla, en una instalacion nueva) ---------
+# Solo la usa la seccion 8, que muestra el plan de busqueda real.
+_cfg_path = RAIZ / "config" / "search.py"
+if not _cfg_path.exists():
+    _cfg_path = RAIZ / "config" / "search.default.py"
+spec = importlib.util.spec_from_file_location("cfg_search", _cfg_path)
 cfg = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cfg)
+
+# --- perfil de prueba fijo: lo que los casos de abajo dan por supuesto ------
+PERFIL = {
+    "enable_job_focus_filter": False,
+    "primary_focus_keywords": ["help desk", "soporte tecnico", "noc", "system administrator"],
+    "secondary_focus_keywords": ["analyst"],
+    "title_bad_words": ["senior", "gerente", "medico", "enfermera", "jefe", "lead"],
+    "work_authorized_countries": ["Colombia"],
+    "work_authorized_regions": ["latin america", "latam", "anywhere", "worldwide"],
+    "enable_residency_filter": True,
+    "current_experience": 3,
+    "experience_tolerance": 3,
+}
 
 # --- extraer las funciones puras del modulo ------------------------------
 fuente = (RAIZ / "modules" / "job_search.py").read_text(encoding="utf-8")
 arbol = ast.parse(fuente)
 
 QUIERO_FUNCS = {"_fold", "_contains_term", "is_title_blacklisted", "is_job_relevant",
-                "extract_years_of_experience", "requires_ineligible_residency"}
+                "extract_years_of_experience", "requires_ineligible_residency",
+                "is_applied_state"}
 QUIERO_VARS = {"_ACCENTS", "_CLEARANCE_PHRASES", "re_experience",
+               "_EXPERIENCE_WORDS", "_NOT_REQUIRED_WORDS", "_APPLIED_STATES",
                "_RESIDENCY_PATTERNS", "_COUNTRY_NAMES"}
 
-ns = {
-    "re": re,
-    "enable_job_focus_filter": cfg.enable_job_focus_filter,
-    "primary_focus_keywords": cfg.primary_focus_keywords,
-    "secondary_focus_keywords": cfg.secondary_focus_keywords,
-    "title_bad_words": cfg.title_bad_words,
-    "work_authorized_countries": cfg.work_authorized_countries,
-    "work_authorized_regions": cfg.work_authorized_regions,
-    "enable_residency_filter": cfg.enable_residency_filter,
-    "print_lg": lambda *a, **k: None,
-}
+ns = {"re": re, "print_lg": lambda *a, **k: None, **PERFIL}
 
 for nodo in arbol.body:
     if isinstance(nodo, ast.FunctionDef) and nodo.name in QUIERO_FUNCS:
@@ -122,22 +133,56 @@ check("encendido: 'Soporte Técnico' con acento relevante", relevant("Soporte T�
 check("encendido: 'NOC Analyst' relevante",      relevant("NOC Analyst", "On-site"), True)
 check("encendido: 'POS System Administrator' relevante", relevant("POS System Administrator", "Remote"), True)
 check("encendido: 'Chef de Cuisine' NO relevante", relevant("Chef de Cuisine", "On-site"), False)
-ns["enable_job_focus_filter"] = cfg.enable_job_focus_filter
+ns["enable_job_focus_filter"] = PERFIL["enable_job_focus_filter"]
 
 # =========================================================================
 print("\n5. Tolerancia de experiencia (current=%s, tolerancia=%s)"
-      % (cfg.current_experience, cfg.experience_tolerance))
+      % (PERFIL["current_experience"], PERFIL["experience_tolerance"]))
 # =========================================================================
-techo = cfg.current_experience + cfg.experience_tolerance
+techo = PERFIL["current_experience"] + PERFIL["experience_tolerance"]
 def se_salta(desc):
     req = years(desc)
-    return cfg.current_experience > -1 and req > techo
+    return PERFIL["current_experience"] > -1 and req > techo
 
 check("'2 years' pasa",                 se_salta("At least 2 years of experience."), False)
 check("'5 years' ahora pasa (antes se saltaba)",
                                         se_salta("5 years of experience required."), False)
 check("'6 years' pasa (justo en el techo)", se_salta("6 years of experience."), False)
 check("'8 years' se salta",             se_salta("8 years of experience required."), True)
+
+print("   -- años que NO son experiencia requerida --")
+check("la edad de la empresa no cuenta",
+      years("1+ years of experience. We have been in business for 10 years."), 1)
+check("'over the past 8 years we grew' no cuenta",
+      years("Over the past 8 years we grew to 500 people. Requirements: 2 years experience."), 2)
+check("un 'nice to have' no cuenta",
+      years("2 years of experience. Nice to have: 7 years with Go."), 2)
+check("'preferred' no cuenta",
+      years("Minimum 2 years experience. 4 years of experience preferred."), 2)
+check("'Experience: 5+ years' si cuenta", years("Experience: 5+ years"), 5)
+check("rango '3-5 years' toma el minimo", years("3-5 years of experience"), 3)
+check("sin requisito -> 0", years("Great team, remote, flexible hours."), 0)
+check("'10+ years' sigue funcionando", years("10+ years of experience."), 10)
+check("'2 to 4 years' toma el minimo", years("2 to 4 years of experience."), 2)
+
+print("   -- en español --")
+check("'3 años de experiencia'", years("Requisitos: 3 años de experiencia en soporte."), 3)
+check("'5+ años de experiencia'", years("Experiencia: 5+ años"), 5)
+check("rango '2 a 4 años' toma el minimo", years("Mínimo 2 a 4 años de experiencia."), 2)
+check("'deseable' no cuenta", years("1 año de experiencia. Deseable 6 años de experiencia en AWS."), 1)
+check("'empresa con 20 años' no cuenta",
+      years("Empresa fundada hace 8 años. Buscamos 2 años de experiencia."), 2)
+check("'8 años de experiencia' se salta", se_salta("8 años de experiencia comprobable."), True)
+
+print("   -- ya postulado (pie de la tarjeta) --")
+aplicado = ns["is_applied_state"]
+check("'Applied'", aplicado("Applied"), True)
+check("'Applied 3 days ago'", aplicado("Applied 3 days ago"), True)
+check("'Solicitado' (LinkedIn en español)", aplicado("Solicitado"), True)
+check("'Postulado'", aplicado("Postulado"), True)
+check("'Promoted' no es postulado", aplicado("Promoted"), False)
+check("'Be an early applicant' no es postulado", aplicado("Be an early applicant"), False)
+check("vacio", aplicado(""), False)
 
 # =========================================================================
 print("\n6. El caso que motivo esto: 'remoto en Mexico pero debes vivir en Mexico'")
@@ -174,6 +219,15 @@ check("menciona un pais pero sin clausula de residencia",
       bloquea("Our largest customers are in Germany and Japan."), False)
 check("'must reside in Colombia or Mexico'",
       bloquea("Remote. Must reside in Colombia or Mexico."), False)
+print("   -- descripciones de la empresa, no requisitos --")
+check("'empresa ubicada en Mexico'",
+      bloquea("Somos una empresa ubicada en Mexico con clientes en todo el mundo."), False)
+check("'helping residents of the US'",
+      bloquea("We help residents of the United States save money. Remote."), False)
+check("'residencia en Mexico excluyente' SI se descarta",
+      bloquea("Residencia en Mexico excluyente."), True)
+check("'residents of Canada only' SI se descarta",
+      bloquea("Remote. Residents of Canada only."), True)
 check("devuelve la clausula, no solo True",
       isinstance(residencia("Remote. Must reside in Mexico."), str), True)
 

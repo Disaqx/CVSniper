@@ -1,0 +1,22 @@
+# The screening tests on every push and pull request. They need no browser and
+# no config: they extract the pure predicates from the source (see tests/README.md).
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Syntax of every Python file
+        run: python -m compileall -q runAiBot.py app.py modules scripts tests
+      - name: Screening filters
+        run: python tests/test_filtros.py
+      - name: Application mode, external applier, form answers, updates
+        run: python tests/test_modo.py

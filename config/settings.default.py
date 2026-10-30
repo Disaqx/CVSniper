@@ -3,6 +3,9 @@
 # Idioma de la interfaz / UI Language  ("es" = Español, "en" = English)
 ui_language = "es"
 
+# Avisar al arrancar si hay una version nueva de CVSniper / Tell me at startup when a new version is out
+check_for_updates = True
+
 # >>>>>>>>>>> LinkedIn Settings <<<<<<<<<<<
 
 # Que postulaciones atiende el bot / Which applications the bot handles:

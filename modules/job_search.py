@@ -5,7 +5,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.common.keys import Keys
-from selenium.common.exceptions import ElementClickInterceptedException
+from selenium.common.exceptions import ElementClickInterceptedException, StaleElementReferenceException
 from modules.open_chrome import driver, wait, actions
 from modules.helpers import print_lg, buffer, sleep, critical_error_log
 from modules.bot_ui import is_career_ops_mode, ui_confirm, ui_pause_check
@@ -55,7 +55,12 @@ except NameError:
     pass
 
 
-re_experience = re.compile(r'[(]?\s*(\d+)\s*[)]?\s*[-to]*\s*\d*[+]*\s*year[s]?', re.IGNORECASE)
+# "3 years", "5+ yrs", "3-5 years", "2 to 4 years", and in Spanish "3 años",
+# "3 a 5 años". A range yields its lower end. Spanish postings used to be
+# invisible to the experience filter, because only "year" was recognised.
+re_experience = re.compile(
+    r'[(]?\s*(\d+)\s*[)]?\s*(?:(?:-|–|to|a)\s*\d+\s*)?[+]*\s*(?:years?|yrs?|a[ñn]os?)\b',
+    re.IGNORECASE)
 
 # 'secret' used to be matched as a bare substring, which fired on the Spanish
 # words "secreto" and "secretaria" — present in a large share of Colombian
@@ -113,9 +118,18 @@ _RESIDENCY_PATTERNS = tuple(re.compile(p, re.IGNORECASE) for p in (
     r'open only to\b[^.\n;]{0,90}',
     r'only (?:candidates|applicants|residents|those)\s+(?:in|from|located|residing|based)\b[^.\n;]{0,90}',
     r'(?:this role|this position|the role) is (?:only )?(?:available|open) (?:to|for|in)\b[^.\n;]{0,90}',
-    r'residents? of\b[^.\n;]{0,90}',
+    # "residents of X" and "ubicada en X" on their own describe the company or
+    # its customers far more often than they restrict the candidate ("we help
+    # residents of the US save", "somos una empresa ubicada en Mexico"). Both
+    # used to skip the job outright, so they now need a word that makes them a
+    # requirement.
+    r'(?:only|exclusively|limited to|restricted to)\s+(?:\w+\s+){0,2}residents? of\b[^.\n;]{0,90}',
+    r'residents? of\b[^.\n;]{0,60}\bonly\b',
     r'(?:debes?|deben|debera[s]?) (?:residir|vivir|estar (?:ubicad|radicad)[oa]s?)\b[^.\n;]{0,90}',
-    r'(?:residir|radicad[oa]s?|ubicad[oa]s?) en\b[^.\n;]{0,90}',
+    r'(?:indispensable|excluyente|imprescindible|requisito|obligatori[oa]|unicamente|solamente|solo)\b[^.\n;]{0,40}?'
+    r'(?:residir|vivir|radicad[oa]s?|ubicad[oa]s?|residencia) en\b[^.\n;]{0,90}',
+    r'(?:residir|vivir|radicad[oa]s?|ubicad[oa]s?|residencia) en\b[^.\n;]{0,60}?'
+    r'(?:indispensable|excluyente|imprescindible|obligatori[oa])',
 ))
 
 # Only needs to cover places that actually appear in these clauses. A country
@@ -464,6 +478,20 @@ def get_page_info() -> tuple[WebElement | None, int | None]:
 
 
 
+# The card footer LinkedIn shows once you have applied, in the interface
+# languages people actually run it in. Comparing against the English word
+# alone meant a Spanish LinkedIn never recognised a job as already applied to.
+_APPLIED_STATES = ('applied', 'solicitado', 'solicitada', 'postulado', 'postulada',
+                   'aplicado', 'aplicada', 'candidatura enviada', 'candidatado',
+                   'candidatura', 'beworben', 'postule', 'candidature envoyee')
+
+
+def is_applied_state(footer_text: str) -> bool:
+    '''True if a job card's footer says you already applied ("Applied", "Solicitado", ...).'''
+    texto = _fold(footer_text).strip()
+    return any(texto == e or texto.startswith(e + ' ') for e in _APPLIED_STATES)
+
+
 def get_job_main_details(job: WebElement, blacklisted_companies: set, rejected_jobs: set) -> tuple[str, str, str, str, str, bool]:
     '''
     # Function to get job main details.
@@ -476,21 +504,38 @@ def get_job_main_details(job: WebElement, blacklisted_companies: set, rejected_j
     * skip: A boolean flag to skip this job
     '''
     skip = False
-    try:
-        job_details_button = job.find_element(By.TAG_NAME, 'a')
-    except Exception:
-        # LinkedIn sometimes occludes/recycles DOM elements; the <a> tag may
-        # disappear from a listing that is still in the list. Skip safely.
+    job_details_button = None
+    # The results list is "occludable": LinkedIn leaves a card empty until it
+    # has been scrolled into view, and only then renders its <a>. Looking for
+    # the link straight away skipped every card below the fold — usually most
+    # of the page. So the card is scrolled to first and given a moment.
+    for _intento in range(4):
+        try:
+            job_details_button = job.find_element(By.TAG_NAME, 'a')
+            break
+        except StaleElementReferenceException:
+            raise  # the card is gone for good; waiting will not bring it back
+        except Exception:
+            scroll_to_view(driver, job)
+            sleep(0.75)
+    if job_details_button is None:
         job_id = job.get_dom_attribute('data-occludable-job-id') or 'unknown'
-        print_lg(f'Skipping job ID {job_id}: listing element has no <a> tag (DOM recycled by LinkedIn).')
+        print_lg(f'Skipping job ID {job_id}: listing never rendered its link (DOM recycled by LinkedIn).')
         return (job_id, 'Unknown', 'Unknown', 'Unknown', 'Unknown', True)
     scroll_to_view(driver, job_details_button, True)
     job_id = job.get_dom_attribute('data-occludable-job-id')
     title = job_details_button.text
-    title = title[:title.find("\n")]
+    # find() returns -1 when there is no newline, which used to chop the last
+    # character off every single-line title.
+    title = title.split("\n", 1)[0].strip()
     # company = job.find_element(By.CLASS_NAME, "job-card-container__primary-description").text
     # work_location = job.find_element(By.CLASS_NAME, "job-card-container__metadata-item").text
-    other_details = job.find_element(By.CLASS_NAME, 'artdeco-entity-lockup__subtitle').text
+    try:
+        other_details = job.find_element(By.CLASS_NAME, 'artdeco-entity-lockup__subtitle').text
+    except Exception:
+        # A card without the subtitle is still a job. Before, this raised
+        # NoSuchElementException, which the loop read as "browser closed".
+        other_details = "Unknown"
     details_split = other_details.split(' · ')
     company = details_split[0]
     work_location = details_split[1] if len(details_split) > 1 else "Unknown"
@@ -511,7 +556,7 @@ def get_job_main_details(job: WebElement, blacklisted_companies: set, rejected_j
         print_lg(f'Skipping previously rejected "{title} | {company}" job. Job ID: {job_id}!')
         skip = True
     try:
-        if job.find_element(By.CLASS_NAME, "job-card-container__footer-job-state").text == "Applied":
+        if is_applied_state(job.find_element(By.CLASS_NAME, "job-card-container__footer-job-state").text):
             skip = True
             print_lg(f'Already applied to "{title} | {company}" job. Job ID: {job_id}!')
     except: pass
@@ -558,14 +603,46 @@ def check_blacklist(rejected_jobs: set, job_id: str, company: str, blacklisted_c
 
 
 
-# Function to extract years of experience required from About Job
+# A "N years" that is not about the candidate's experience: the company's age,
+# a contract length, or a wish-list item. Taking the largest number in the
+# whole description used to turn "we have been in business for 10 years" into
+# "10 years of experience required" and silently drop the job.
+_EXPERIENCE_WORDS = re.compile(r'experien|\bexp\b|background|track record|hands[- ]on|working (?:with|in|as|on)', re.IGNORECASE)
+_NOT_REQUIRED_WORDS = re.compile(
+    r'prefer|nice[- ]to[- ]have|a plus|bonus|ideally|desirable|desired|advantage|'
+    r'\bwe have\b|\bwe\'ve\b|for over|founded|in business|history|\bago\b|'
+    r'contract|deseable|valorable|preferible|preferentemente|se valora|un plus|'
+    r'fundad|trayectoria de|\bhace\b|contrato', re.IGNORECASE)
+
+
 def extract_years_of_experience(text: str) -> int:
-    # Extract all patterns like '10+ years', '5 years', '3-5 years', etc.
-    matches = re.findall(re_experience, text)
-    if len(matches) == 0:
-        print_lg(f'\n{text}\n\nCouldn\'t find experience requirement in About the Job!')
+    '''
+    Years of experience the posting REQUIRES, or 0 if it does not say.
+
+    Only a "N years" that sits next to the word experience (or similar) counts,
+    and not when the same sentence marks it as preferred or is talking about the
+    company. Of what is left, the largest figure wins, as before.
+    '''
+    requeridos = []
+    for oracion in re.split(r'(?<=[.;!?\n])\s*|\s+[•·]\s+', text or ""):
+        if not oracion.strip():
+            continue
+        for match in re.finditer(re_experience, oracion):
+            years = int(match.group(1))
+            if years > 12:
+                continue
+            # The words right after "N years" ("of experience in ...") or right
+            # before it ("Experience: 3+ years") are what make it a requirement.
+            cerca = oracion[max(0, match.start() - 40): match.end() + 60]
+            if not _EXPERIENCE_WORDS.search(cerca):
+                continue
+            if _NOT_REQUIRED_WORDS.search(oracion):
+                continue
+            requeridos.append(years)
+    if not requeridos:
+        print_lg("Couldn't find a required years-of-experience in About the Job.")
         return 0
-    return max([int(match) for match in matches if int(match) <= 12])
+    return max(requeridos)
 
 
 
@@ -593,11 +670,14 @@ def get_job_description(
         ##<
         experience_required = "Unknown"
         found_masters = 0
-        jobDescription = find_by_class(driver, "jobs-box__html-content").text
-        jobDescriptionLow = jobDescription.lower()
+        # Set before anything can fail: the except below returns them, and when
+        # the description itself could not be found they were never assigned,
+        # so the "fallback" raised UnboundLocalError instead.
         skip = False
         skipReason = None
         skipMessage = None
+        jobDescription = find_by_class(driver, "jobs-box__html-content").text
+        jobDescriptionLow = jobDescription.lower()
         for word in bad_words:
             if _contains_term(jobDescriptionLow, word):
                 skipMessage = f'\n{jobDescription}\n\nContains bad word "{word}". Skipping this job!\n'

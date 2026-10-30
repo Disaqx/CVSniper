@@ -96,9 +96,25 @@ Groq (free tier) is the recommended default. Any OpenAI-compatible endpoint work
 | `logs/log.txt` | Full execution log |
 | `all resumes/` | Generated/uploaded CV PDFs |
 
-## No test suite
+## Tests
 
-There are no automated tests. Validation is done via `modules/validator.py` at startup and logging in `logs/log.txt`.
+`python tests/test_filtros.py` and `python tests/test_modo.py` (no pytest needed). They extract the pure predicates from the source with `ast` — importing `job_search.py` would launch Chrome — and run them against a fixed test profile, so they pass on a fresh clone without `config/*.py`. See `tests/README.md`. Runtime validation is still `modules/validator.py` at startup plus `logs/log.txt`.
+
+## Windows installer (`installer/`)
+
+`installer/CVSniper.iss` (Inno Setup 6) builds `CVSniper-Setup-<ver>.exe`: per-user install to `%LOCALAPPDATA%\Programs\CVSniper` (no admin), Start-menu/desktop shortcuts, an entry in Settings → Apps for uninstalling. It bundles a private Python (`{app}\python`, copied from a real CPython install so Tkinter is included — the embeddable zip lacks it) with `requirements.txt` preinstalled. `installer/build_installer.ps1` stages it (`git archive HEAD` → `build/app`, so gitignored personal config can never leak in) and calls ISCC. `.github/workflows/windows-installer.yml` builds it, silently installs + verifies + uninstalls on a clean runner, and attaches it to the Release on `v*` tags. Never change the `AppId` GUID (it identifies upgrades). The uninstaller only deletes `config/`, `all excels/`, `all resumes/`, `logs/` when the user says yes — never a blanket DelTree of `{app}`, which is also why the install dir page is disabled.
+
+## Versioning and releases
+
+`modules/version.py` holds `__version__`; bump it, then push a matching `vX.Y.Z` tag — the installer workflow refuses a tag that does not match, and attaches `CVSniper-Setup-X.Y.Z.exe` to that Release. `modules/updates.py` compares it against GitHub's latest release at startup.
+
+## Credentials
+
+`password` and `llm_api_key` live in the OS credential store via `modules/credentials.py` (`keyring`, service `CVSniper`). `config/secrets.py` holds `from_keyring("name")` for them, so `from config.secrets import llm_api_key` still yields the real value; `_read_py_var`/`_write_py_var` in `bot_ui.py` resolve/store them. Without a usable backend everything stays plain text, as before.
+
+## Launchers
+
+`INICIAR.bat` (Windows, double-click) and `start.sh` (Linux/macOS) are the beginner entry points: they check Python/Chrome, install dependencies on first run and start the bot. They are excluded from the release build, which ships its own `SETUP.bat` flow.
 
 ## Repo layout notes
 
@@ -120,6 +136,25 @@ Esta sección documenta el estado actual del proyecto y las mejoras futuras soli
    - Polaridad de visa: `"Do you have the legal right to work ... WITHOUT the need for sponsorship?"` se respondía con `require_visa` (=No), o sea "no puedo trabajar aquí" → autorrechazo. Nuevo `resolve_work_authorization_answer()` detecta el fraseo invertido y voltea la respuesta.
    - El branch de ubicación secuestraba preguntas Sí/No que solo mencionaban "location"/"country" y respondía con un nombre de ciudad, que no matchea nada → caía en elección **aleatoria**. Nuevo guard `is_yes_no_options()`.
    - De paso: la lista de placeholders (duplicada en 3 sitios) es ahora `_PLACEHOLDER_WORDS` + `is_placeholder_option()`, y el matching de keywords cortos usa límites de palabra (`option_mentions()`).
+
+6. ✅ **Ofertas que se saltaban sin motivo (octubre 2026):**
+   - Cualquier error de Selenium en UNA oferta (tarjeta reciclada, elemento stale, búsqueda sin resultados → `TimeoutException`) caía en el `except WebDriverException` de "navegador cerrado" y **terminaba toda la ejecución**. Ahora cada oferta va en su propio try/except y solo un navegador muerto (`_browser_alive()`) corta el run; una búsqueda sin resultados pasa al siguiente término.
+   - Las tarjetas debajo del scroll (LinkedIn las renderiza perezosamente) se saltaban por "no `<a>` tag": ahora se hace scroll a la tarjeta y se reintenta.
+   - `title[:title.find("\n")]` cortaba la última letra de todo título de una línea.
+   - `get_job_description` lanzaba `UnboundLocalError` cuando no encontraba la descripción.
+   - `extract_years_of_experience` tomaba el máximo de cualquier "N years" (edad de la empresa, "nice to have", "preferred"); ahora solo cuenta años junto a "experience" que no estén marcados como deseables.
+   - Filtro de residencia: "empresa ubicada en México" o "residents of the US" (descripción, no requisito) ya no descartan la oferta.
+
+7. ✅ **Instalador de Windows** (`installer/`): setup.exe con Inno Setup, Python propio incluido, accesos en el menú Inicio y desinstalación desde Configuración → Aplicaciones. Lo construye y prueba (instalar/verificar/desinstalar) GitHub Actions.
+
+8. ✅ **Ronda de mejoras (octubre 2026):**
+   - "Ya postulado" se reconoce con LinkedIn en español (`is_applied_state()`: Applied/Solicitado/Postulado…).
+   - El filtro de experiencia entiende "N años"/"3 a 5 años"; "deseable", "se valora", "fundada hace" no cuentan.
+   - Career-Ops sin el proyecto externo `../career-ops` ya no entra en bucle de errores: recoge matches de LinkedIn (`career_ops_project_dir()`).
+   - Contraseña de LinkedIn y API key en el almacén de credenciales del SO (`modules/credentials.py`, `keyring`): `secrets.py` guarda `from_keyring("...")`; los secrets.py en texto plano se migran solos al arrancar; sin almacén, todo sigue como antes.
+   - Instalador construido desde `requirements.lock` (versiones exactas).
+   - Tests en cada push (`.github/workflows/tests.yml`).
+   - Aviso de versión nueva al arrancar (`modules/updates.py`, versión en `modules/version.py`; `check_for_updates` en settings).
 
 **Pasos Faltantes (To-Do):**
 1. **Aplicador Universal v2:** soporte multi-página (Workday) — hoy va a revisión manual. La creación automática de cuentas queda descartada por diseño: exige verificación de email y CAPTCHA, es frágil y arriesgado para la cuenta del usuario.

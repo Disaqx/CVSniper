@@ -322,10 +322,30 @@ check("los name con corchetes de los ATS se buscan por XPath, no por CSS",
 check("la pestana enviada se cierra siempre",
       "if tab_propia and tab_propia in driver.window_handles and (enviada or close_tabs):" in src_ext, True)
 
-# La configuracion real del usuario: sin esto no se llena NADA.
-sett = (RAIZ / "config" / "settings.py").read_text(encoding="utf-8")
-check("external_apply_enabled esta encendido",
-      re.search(r'^external_apply_enabled\s*=\s*True', sett, re.M) is not None, True)
+# =========================================================================
+print("\n6. Aviso de version nueva")
+# =========================================================================
+# modules/updates.py no abre Chrome ni Tk, asi que se importa tal cual.
+sys.path.insert(0, str(RAIZ))
+from modules.updates import is_newer
+from modules.version import __version__
+check("v1.0.1 es mas nueva que 1.0.0", is_newer("v1.0.1", "1.0.0"), True)
+check("1.10.0 es mas nueva que 1.9.9 (numerica, no alfabetica)", is_newer("1.10.0", "1.9.9"), True)
+check("la misma version no es mas nueva", is_newer("v1.0.0", "1.0.0"), False)
+check("una mas vieja no es mas nueva", is_newer("0.9.0", "1.0.0"), False)
+check("'1.1' contra '1.0.5'", is_newer("1.1", "1.0.5"), True)
+check("basura no rompe", is_newer("latest", "1.0.0"), False)
+check("la version local tiene forma X.Y.Z", bool(re.fullmatch(r"\d+\.\d+\.\d+", __version__)), True)
+src_i18n = (RAIZ / "modules" / "i18n.py").read_text(encoding="utf-8")
+for clave in ("upd_title", "upd_msg", "upd_download", "upd_later"):
+    check(f"'{clave}' existe en es y en", src_i18n.count(f'"{clave}"'), 2)
+
+# La configuracion real del usuario: sin esto no se llena NADA. Es una
+# preferencia, no un fallo del codigo, asi que solo se avisa.
+_sett_path = RAIZ / "config" / "settings.py"
+if _sett_path.exists() and not re.search(r'^external_apply_enabled\s*=\s*True',
+                                         _sett_path.read_text(encoding="utf-8"), re.M):
+    print("  [aviso] external_apply_enabled esta apagado: las externas solo se registran")
 
 # =========================================================================
 print("\n" + "=" * 60)

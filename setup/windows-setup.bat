@@ -31,6 +31,14 @@ if not defined PY (
 
 for /f "tokens=2" %%v in ('%PY% --version 2^>^&1') do set "PYVER=%%v"
 echo   Python found: !PYVER!
+%PY% -c "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)"
+if errorlevel 1 (
+  echo   ERROR: Python 3.10 or newer is required.
+  echo   Get it from https://www.python.org/downloads/
+  echo.
+  pause
+  exit /b 1
+)
 
 :: --- Dependencies -------------------------------------------------------
 echo.
@@ -65,7 +73,8 @@ for %%f in (personals questions search settings secrets) do (
 
 echo.
 echo ===============================================
-echo   Done. Start the bot with:
+echo   Done. Start the bot by double-clicking INICIAR.bat
+echo   or with:
 echo.
 echo       %PY% runAiBot.py
 echo.

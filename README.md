@@ -40,12 +40,73 @@ A free Groq key is enough to run the whole thing.
 
 ## Install
 
+### Windows: install it like any other app (recommended)
+
+1. Install **Google Chrome** if you don't have it: <https://www.google.com/chrome/>
+2. Download **`CVSniper-Setup-<version>.exe`** from the
+   [Releases page](https://github.com/Disaqx/CVSniper/releases) and run it.
+3. Click through the installer. CVSniper appears in the **Start menu** (and on
+   the desktop if you ticked that box).
+
+Nothing else to install: the installer carries its own Python with every
+library the bot needs, and it does not ask for administrator rights.
+
+**Uninstall:** Settings → Apps → Installed apps → CVSniper → Uninstall. It asks
+whether to also delete your data (configuration, API keys, application
+history, generated resumes, logs); answer No to keep them for a reinstall.
+Installing a newer version on top keeps your data as well.
+
+> Windows SmartScreen may say "Windows protected your PC", because the
+> installer is not code-signed: click **More info → Run anyway**.
+
+<details>
+<summary>Building the installer yourself</summary>
+
+GitHub Actions builds it on every push that touches `installer/` (download it
+from the run's artifacts), and attaches it to the Release when a `v*` tag is
+pushed — the workflow also installs it, checks it and uninstalls it on a clean
+Windows machine. To build it locally you need Inno Setup 6, Python 3.12 x64
+and git:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File installer\build_installer.ps1 -Version 1.2.0
+```
+
+Output: `dist\CVSniper-Setup-1.2.0.exe`. Only committed files go in.
+</details>
+
+### Windows without the installer (from the source code)
+
+1. Install **Google Chrome**: <https://www.google.com/chrome/>
+2. Install **Python** from <https://www.python.org/downloads/>. On the first
+   screen of the installer, tick **"Add Python to PATH"** before clicking
+   Install. This is the step people miss.
+3. On this repository's GitHub page click the green **Code** button →
+   **Download ZIP**, and extract it somewhere (Documents is fine).
+4. Open the extracted folder and double-click **`INICIAR.bat`**.
+
+The first time it installs everything it needs (a couple of minutes), then the
+bot opens. From then on, double-clicking `INICIAR.bat` is all you do. If
+something goes wrong the window stays open with the reason instead of
+vanishing.
+
+> Windows may show "Windows protected your PC" the first time: click
+> **More info → Run anyway**. It is a plain text script — open it in Notepad if
+> you want to see what it does.
+
+### Linux / macOS
+
 ```bash
 git clone https://github.com/Disaqx/CVSniper.git
 cd CVSniper
+bash start.sh
 ```
 
-Then run the setup script for your platform:
+`start.sh` runs `setup/setup.sh` the first time (it checks Python, Tkinter and
+Chrome, creates a `.venv` and installs the dependencies) and then starts the
+bot. Use `bash start.sh` every time after that too.
+
+### Setup scripts, if you prefer them
 
 ```bash
 # Windows
@@ -55,7 +116,7 @@ setup\windows-setup.bat
 bash setup/setup.sh
 ```
 
-It checks your Python version, installs the dependencies and creates your
+They check your Python version, install the dependencies and create your
 config files from the templates. Or do it by hand:
 
 ```bash
@@ -89,7 +150,7 @@ Five files under `config/`, all managed from the settings window. They are
 **gitignored** — they hold your personal data and your API keys, and never
 leave your machine.
 
-> Screening logic is covered by `tests/` — run `py -3 tests/test_filtros.py`
+> Screening logic is covered by `tests/` — run `python tests/test_filtros.py`
 > after changing a filter. See `tests/README.md` for why they are written the
 > way they are.
 
@@ -411,8 +472,15 @@ account.
 
 - `config/*.py` hold your data and keys and are **gitignored** — only the
   `*.default.py` templates are versioned
+- Your LinkedIn password and your LLM API key are kept in the operating
+  system's credential store (Windows Credential Manager, macOS Keychain, the
+  Linux Secret Service), not in `config/secrets.py`, which only points to them.
+  An older `secrets.py` with them in plain text is moved there automatically.
+  Where no credential store exists they stay in the file, as before
 - Your resume, your CSV history and your logs never leave the folder
-- The only outbound traffic is LinkedIn itself and the LLM provider you chose
+- The only outbound traffic is LinkedIn itself, the LLM provider you chose,
+  and one request to GitHub at startup to see whether a newer version is out
+  (`check_for_updates = False` in `config/settings.py` turns it off)
 
 > Automating LinkedIn is against their terms of service. Your account is yours
 > to risk. `stealth_mode` and `click_gap` exist to reduce the odds, not to

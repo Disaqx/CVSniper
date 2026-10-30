@@ -88,6 +88,10 @@ TRANSLATIONS = {
         "btn_mode_external":    "SOLO EXTERNAS",
         "btn_mode_both":        "AMBAS",
         "msg_mode_changed":     "Modo de postulación: {}",
+        "upd_title":            "Nueva versión disponible",
+        "upd_msg":              "Hay una versión nueva de CVSniper: {} (tienes la {}).\n\nTrae correcciones y mejoras. Descarga el instalador nuevo y ejecútalo: tu configuración y tu historial se conservan.",
+        "upd_download":         "DESCARGAR",
+        "upd_later":            "AHORA NO",
         # Etiquetas cortas del switch de la cabecera (caben ~5 caracteres)
         "sw_mode_easy":         "EASY",
         "sw_mode_both":         "AMBAS",
@@ -372,6 +376,10 @@ TRANSLATIONS = {
         "btn_mode_external":    "EXTERNAL ONLY",
         "btn_mode_both":        "BOTH",
         "msg_mode_changed":     "Application mode: {}",
+        "upd_title":            "New version available",
+        "upd_msg":              "A new version of CVSniper is out: {} (you have {}).\n\nIt brings fixes and improvements. Download the new installer and run it: your settings and history are kept.",
+        "upd_download":         "DOWNLOAD",
+        "upd_later":            "NOT NOW",
         # Short labels for the header switch (about 5 characters fit)
         "sw_mode_easy":         "EASY",
         "sw_mode_both":         "BOTH",

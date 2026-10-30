@@ -11,6 +11,7 @@ import webbrowser
 from ctypes import c_int, c_void_p, Structure, sizeof, windll, pointer, byref
 from ctypes import wintypes
 from modules.i18n import T, get_language
+from modules import credentials
 
 def _fix_window_rendering(widget):
     """Strip WS_EX_LAYERED after the window is fully shown via after().
@@ -414,6 +415,11 @@ def _read_py_var(filepath, varname):
             if isinstance(node, ast.Assign):
                 for t in node.targets:
                     if isinstance(t, ast.Name) and t.id == varname:
+                        # `llm_api_key = from_keyring("llm_api_key")`: the value
+                        # is in the OS credential store, not in the file.
+                        nombre = credentials.keyring_call(node.value)
+                        if nombre:
+                            return credentials.from_keyring(nombre)
                         try:
                             return ast.literal_eval(node.value)
                         except Exception:
@@ -449,6 +455,15 @@ def _write_py_var(filepath, varname, new_value):
                 replacement = f'{varname} = []'
         else:
             replacement = f'{varname} = {repr(new_value)}'
+
+        # The password and API key go to the OS credential store when there is
+        # one; the file then only says where to fetch them from.
+        if (os.path.basename(filepath) == "secrets.py" and varname in credentials.SECRET_FIELDS
+                and isinstance(new_value, str) and not credentials.is_placeholder(new_value)
+                and credentials.store(varname, new_value)):
+            replacement = f'{varname} = from_keyring("{varname}")'
+            source = credentials.with_import(source)
+        lines = source.splitlines(keepends=True)
 
         # Use ast to find the exact line range of the assignment
         try:
@@ -1849,6 +1864,23 @@ def ui_confirm(title, message, buttons):
     status_queue.put(("status", current_ui_status))
     status_queue.put(("details", current_ui_details))
     return val
+
+def ui_notify_update(version, url):
+    """Offer a newer release without blocking the bot: the answer is awaited
+    in a thread of its own, so a run carries on while the dialog is open."""
+    from modules.version import __version__
+    if _ui_crashed:
+        print(f"[CVSniper] New version {version} available: {url}")
+        return
+    resp_q = queue.Queue()
+    alert_queue.put((T("upd_title"), T("upd_msg").format(version, __version__), resp_q,
+                     [T("upd_download"), T("upd_later")]))
+
+    def _esperar():
+        if resp_q.get() == T("upd_download"):
+            webbrowser.open(url)
+    threading.Thread(target=_esperar, daemon=True).start()
+
 
 def ui_ask_text(title, question, placeholder=""):
     """Show a text-input dialog and return the entered string (empty string = skipped)."""

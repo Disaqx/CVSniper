@@ -32,6 +32,25 @@ if ! $PY -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)'; the
   exit 1
 fi
 
+# Tkinter draws the control panel. Most distros ship it as a separate package,
+# and without it the bot dies on startup with a confusing traceback.
+if ! $PY -c 'import tkinter' >/dev/null 2>&1; then
+  echo "  ERROR: Tkinter (the window toolkit) is missing."
+  echo "  Debian/Ubuntu : sudo apt install python3-tk"
+  echo "  Fedora        : sudo dnf install python3-tkinter"
+  echo "  macOS         : brew install python-tk"
+  exit 1
+fi
+
+# Chrome is only checked, not installed: the bot cannot run without it, so
+# better to say so now than after the dependencies are in.
+if ! command -v google-chrome >/dev/null 2>&1 && ! command -v google-chrome-stable >/dev/null 2>&1 \
+   && ! command -v chromium >/dev/null 2>&1 && ! command -v chromium-browser >/dev/null 2>&1 \
+   && [ ! -d "/Applications/Google Chrome.app" ]; then
+  echo "  WARNING: Google Chrome was not found. Install it before running the bot:"
+  echo "           https://www.google.com/chrome/"
+fi
+
 # --- Dependencies ------------------------------------------------------------
 # A venv keeps this off the system Python. Recent Debian and Homebrew refuse
 # a plain `pip install` outside one anyway (PEP 668).
@@ -67,8 +86,7 @@ echo
 echo "==============================================="
 echo "  Done. Start the bot with:"
 echo
-echo "      source .venv/bin/activate"
-echo "      python runAiBot.py"
+echo "      bash start.sh"
 echo
 echo "  Everything is configured from the settings"
 echo "  window, no need to edit files by hand."

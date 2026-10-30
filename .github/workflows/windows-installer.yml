@@ -1,0 +1,95 @@
+# Builds the Windows installer (CVSniper-Setup-<version>.exe), installs it on
+# a clean runner, checks the bundled Python and the "Installed apps" entry, and
+# uninstalls it again. On a v* tag the installer is attached to a GitHub
+# Release, which is where users download it from.
+name: Windows installer
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+    branches: ['**']
+    paths:
+      - 'installer/**'
+      - 'requirements.txt'
+      - 'requirements.lock'
+      - 'modules/credentials.py'
+      - 'modules/version.py'
+      - '.github/workflows/windows-installer.yml'
+
+permissions:
+  contents: write   # attaching the installer to a Release
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: x64
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup -y --no-progress
+          }
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          # A tag must match modules/version.py, or the update check would keep
+          # telling people on that release that it is newer than what they have.
+          $local = (Select-String -Path modules\version.py -Pattern '__version__\s*=\s*"([^"]+)"').Matches[0].Groups[1].Value
+          if ($env:GITHUB_REF_TYPE -eq 'tag') {
+            $v = $env:GITHUB_REF_NAME -replace '^v', ''
+            if ($v -ne $local) { throw "Tag $env:GITHUB_REF_NAME does not match modules/version.py ($local)" }
+          } else { $v = "$local-dev.$env:GITHUB_RUN_NUMBER" }
+          ./installer/build_installer.ps1 -Version $v -PythonExe (Get-Command python).Source
+
+      - name: Install, check and uninstall
+        shell: pwsh
+        run: |
+          $setup = (Get-ChildItem dist\CVSniper-Setup-*.exe).FullName
+          $app = "$env:LOCALAPPDATA\Programs\CVSniper"
+          $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{40788D52-54D8-43FC-A8CA-28FA142558D4}_is1'
+
+          Start-Process $setup -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/LOG=install.log' -Wait
+          if (-not (Test-Path "$app\runAiBot.py")) { Get-Content install.log; throw "runAiBot.py not installed" }
+          if (-not (Test-Path $key)) { throw "No entry in Installed apps" }
+          if (-not (Test-Path "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\CVSniper.lnk")) { throw "No Start menu shortcut" }
+          if (Test-Path "$app\config\personals.py") { throw "Personal config leaked into the installer" }
+          Write-Host "Installed apps entry:"; Get-ItemProperty $key | Select-Object DisplayName, DisplayVersion, Publisher, UninstallString | Format-List
+
+          # Runs from the INSTALLED copy, so this also proves the Python is relocatable.
+          & "$app\python\python.exe" -E -s -c "import tkinter; tkinter.Tcl(); import selenium, flask, pyautogui, undetected_chromedriver, openai, fitz; print('installed Python OK')"
+          if ($LASTEXITCODE -ne 0) { throw "Installed Python is broken" }
+          & "$app\python\python.exe" -E -s -m compileall -q "$app\runAiBot.py" "$app\modules" "$app\app.py"
+          if ($LASTEXITCODE -ne 0) { throw "App does not compile" }
+
+          # The API key must reach Windows Credential Manager and come back out.
+          & "$app\python\python.exe" -E -s -c "import sys; sys.path.insert(0, r'$app'); from modules import credentials as c; assert c.available(), 'no store'; assert c.store('ci_probe', 'ok'); assert c.from_keyring('ci_probe') == 'ok'; c.store('ci_probe', ''); print('credential store OK')"
+          if ($LASTEXITCODE -ne 0) { throw "Credential store does not work" }
+
+          # The uninstaller re-launches itself from %TEMP% and returns at once, so poll.
+          Start-Process "$app\unins000.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait
+          $deadline = (Get-Date).AddMinutes(3)
+          while (((Test-Path $key) -or (Test-Path $app)) -and (Get-Date) -lt $deadline) { Start-Sleep 2 }
+          if (Test-Path $key) { throw "Uninstall left the Installed apps entry" }
+          if (Test-Path "$app\python") { throw "Uninstall left the bundled Python" }
+          if (Test-Path $app) { Write-Host "Left behind:"; Get-ChildItem $app -Recurse | Select-Object -ExpandProperty FullName; throw "Uninstall left files behind" }
+          Write-Host "Install / uninstall OK"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CVSniper-Setup
+          path: dist/*.exe
+
+      - name: Attach to the Release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.exe

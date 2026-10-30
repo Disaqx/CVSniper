@@ -31,6 +31,10 @@ IGNORE = {
     "build_release.py", "release.ps1", "release_notes.md",
     ".claude", "CVSniper", "REVISED_CV.md", "qa_database.json",
     ".setup_done",
+    # source-checkout launchers: the release ships its own SETUP.bat/START flow
+    "INICIAR.bat", "start.sh",
+    # the Inno Setup installer is its own distribution channel
+    "installer",
     # personal data — never ship
     "David_Pineros_CV.md", "friend_cv_data.json", "profiles",
     # dev environment folders — never include in release

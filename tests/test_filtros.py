@@ -135,6 +135,17 @@ check("encendido: 'POS System Administrator' relevante", relevant("POS System Ad
 check("encendido: 'Chef de Cuisine' NO relevante", relevant("Chef de Cuisine", "On-site"), False)
 ns["enable_job_focus_filter"] = PERFIL["enable_job_focus_filter"]
 
+# Un filtro de enfoque encendido SIN palabras clave (config a medio llenar)
+# descartaría todas las ofertas; se trata como apagado.
+ns["primary_focus_keywords"] = []
+ns["secondary_focus_keywords"] = []
+ns["enable_job_focus_filter"] = True
+check("encendido sin palabras clave NO descarta todo",
+      relevant("Chef de Cuisine", "On-site"), True)
+ns["enable_job_focus_filter"] = PERFIL["enable_job_focus_filter"]
+ns["primary_focus_keywords"] = PERFIL["primary_focus_keywords"]
+ns["secondary_focus_keywords"] = PERFIL["secondary_focus_keywords"]
+
 # =========================================================================
 print("\n5. Tolerancia de experiencia (current=%s, tolerancia=%s)"
       % (PERFIL["current_experience"], PERFIL["experience_tolerance"]))

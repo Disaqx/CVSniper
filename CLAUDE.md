@@ -91,6 +91,7 @@ Groq (free tier) is the recommended default. Any OpenAI-compatible endpoint work
 | Path | Content |
 |------|---------|
 | `all excels/all_applied_applications_history.csv` | Successful applications |
+| `all excels/application_notes.csv` | Why each application went out: AI score/reason and the salary-below-target note shown in the dashboard |
 | `all excels/failed_applications.csv` | Failed attempts with error reason |
 | `all excels/qa_database.json` | AI Q&A cache (single source; the old root-level `qa_database.json` is auto-migrated on first run) |
 | `logs/log.txt` | Full execution log |
@@ -161,6 +162,13 @@ Esta sección documenta el estado actual del proyecto y las mejoras futuras soli
     - **`FileExistsError` de undetected_chromedriver.** En Windows `os.rename` no sobrescribe el `undetected_chromedriver.exe` de una ejecución anterior. `_start_driver` mata los chromedriver, borra `%APPDATA%\undetected_chromedriver\undetected_chromedriver.exe` y la carpeta `undetected`, y reintenta una vez antes de caer al driver normal.
     - **Cuelgues sin mensaje.** El driver normal no tenía tiempo límite: ahora usa `_with_timeout` (120 s) con un error claro. Todos los pasos del arranque y de los filtros se anotan con `timed_step`, que además escribe «still waiting on …» cada 30 s si algo se bloquea; se fijan tiempos máximos de carga de página (120 s) y de script (60 s), y `taskkill` tiene timeout. No se encontró ningún bucle infinito en `apply_filters()` (todas las esperas están acotadas): el silencio de las 19:46 pudo ser el portátil suspendido o una llamada de Selenium bloqueada en el renderer, y ahora el log lo dirá.
     - **El CV no se encontraba y el mensaje confundía.** `validator.resume_path_problem` distingue ruta absoluta de relativa, busca PDFs parecidos en la misma carpeta y explica que se cambia en Ajustes → «Respuestas» → «Ruta del CV (PDF)».
+
+10. ✅ **«No se postula a nada» después de la 1.1.0 (noviembre 2026):**
+    - **Detección del botón de Apply y del modal, también en la página nueva.** `external_apply.find_apply_button()` busca por clase y por etiqueta («Easy Apply», «Solicitud sencilla», «Apply», «Postularme») sin tocar el `role=switch` del filtro; `find_easy_apply_modal()` acepta la clase antigua o un diálogo con el texto del flujo y **excluye el panel de filtros**, que también dice «Easy Apply» (confundirlos hacía que el bot tratara los filtros como formulario de postulación). `runAiBot` usa ese modal en vez de la clase fija.
+    - **Tarjetas con `currentJobId`.** La página nueva es una SPA: algunas tarjetas solo enlazan con `?currentJobId=<id>`, no con `/jobs/view/`. Nuevo diseño en `JOB_CARD_LAYOUTS` y el id se extrae también de ahí. `find_job_cards()` elige el diseño que más tarjetas encuentra (un `data-occludable-job-id` suelto en el panel de detalles ya no tapa las 25 reales).
+    - **El contenedor de una tarjeta ya no sube hasta la lista entera.** Antes, en el diseño de solo-enlaces, podía abarcar el `<ul>` con todas: el texto de una tarjeta «Applied» marcaba **todas** como postuladas. La subida se detiene al encontrar un ancestro con más de un enlace de oferta.
+    - **Filtro de área encendido sin palabras clave** ya no descarta todo (se trata como apagado y se avisa). Al arrancar se imprimen los **filtros activos**, y al final de cada término un **«Resumen de descartes»** con el motivo y el número de ofertas perdidas: la próxima vez el log dice si es «título vetado», «fuera de enfoque», «IA baja», «ya postulado», «no es Easy Apply» o «Apply no llevó a ningún sitio».
+    - **El dashboard explica cada postulación.** `all excels/application_notes.csv` guarda puntuación y motivo de la IA + un aviso cuando el salario publicado parece inferior al objetivo («se aplicó igual»); el dashboard lo muestra en la columna «Por qué se aplicó». Es informativo: no cambia los filtros.
 
 **Pasos Faltantes (To-Do):**
 1. **Aplicador Universal v2:** soporte multi-página (Workday) — hoy va a revisión manual. La creación automática de cuentas queda descartada por diseño: exige verificación de email y CAPTCHA, es frágil y arriesgado para la cuenta del usuario.

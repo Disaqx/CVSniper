@@ -23,6 +23,7 @@ caché de preguntas y, si hace falta, una IA (Groq por defecto).
 | Ofertas externas (Greenhouse, Lever…) | `modules/external_apply.py` |
 | Validación de la configuración al arrancar | `modules/validator.py` |
 | Ventana de control y ajustes (Tkinter) | `modules/bot_ui.py` |
+| Dashboard web (historial y «por qué se aplicó») | `app.py` + `templates/index.html` |
 | Configuración del usuario | `config/*.py` (plantillas en `config/*.default.py`) |
 | Registro completo de cada ejecución | `logs/log.txt` y `logs/AAAA-MM-DD.log` |
 | Diagnóstico del DOM cuando no hay tarjetas | `logs/linkedin_search_layout_<búsqueda>_<fecha>.json` |
@@ -91,7 +92,16 @@ En la versión instalada (instalador de Windows), todo vive en
      empresa y el estado «Solicitado/Applied» (también busca el estado en el
      texto de la tarjeta, no solo en la clase antigua); luego filtros (lista
      negra, palabras prohibidas, años de experiencia, residencia) y Easy Apply
-     (`easy_apply.py`).
+     (`easy_apply.py`). El botón de Apply se busca por clase **y** por su
+     etiqueta («Easy Apply», «Solicitud sencilla», «Apply»), porque la página
+     nueva no siempre conserva `jobs-apply-button`. El modal de Easy Apply se
+     reconoce por su clase o por ser un diálogo con ese texto, y se excluye el
+     panel de filtros (que también dice «Easy Apply»).
+   - Cada descarte se cuenta por motivo (`note_skip`) y al final de cada
+     término el log imprime **«Resumen de descartes …»** con cuántas ofertas se
+     cayeron y por qué. Al arrancar se imprimen los **filtros activos**
+     (enfoque, listas, experiencia, IA, residencia), que es lo que suele estar
+     demasiado estricto cuando no se postula a nada.
    - Paginación: `go_to_next_page()` usa los botones numerados («Page N+1») o un
      botón «Next»/«Siguiente» con etiqueta exacta; si no hay ninguno, termina
      ese término.
@@ -99,8 +109,14 @@ En la versión instalada (instalador de Windows), todo vive en
      y pasa al siguiente término.
 7. **Barrido remoto** (`remote sweep`): repite los términos con las ubicaciones
    extra (Worldwide, Latin America, United States, Spain…).
-8. **Resumen** al final: postuladas, enlaces externos, fallidas y saltadas.
-   El historial se guarda en `all excels/`.
+8. **Dashboard** (`app.py`): además del historial, lee
+   `all excels/application_notes.csv` y muestra una columna **«Por qué se
+   aplicó»**: la puntuación y el motivo de la IA y, si se detectó un salario
+   por debajo del objetivo, el aviso «Salario publicado ≈ $X, por debajo de tu
+   objetivo; se aplicó igual». Es informativo: no cambia a qué se postula.
+9. **Resumen** al final: postuladas, enlaces externos, fallidas y saltadas.
+   El historial se guarda en `all excels/` y los motivos en
+   `all excels/application_notes.csv`.
 
 ## De dónde sale cada mensaje del log
 
@@ -113,6 +129,10 @@ En la versión instalada (instalador de Windows), todo vive en
 | `WARNING: still waiting on '<paso>' after Ns` | `helpers.timed_step` (lo usa `open_chrome`, `job_search`) |
 | `The resume was not found at '…'` (+ rutas parecidas y dónde cambiarla) | `validator.resume_path_problem` |
 | `Navigating directly to search URL...` / `Search navigation worked normally!` | `runAiBot.apply_to_jobs` |
+| `Filtros activos: enfoque=…; títulos vetados=…; experiencia=…; IA=…` | `runAiBot.log_active_filters` |
+| `WARNING: 'filtrar por área' está activado pero no tiene palabras clave…` | `runAiBot.log_active_filters` |
+| `Resumen de descartes…` con cada motivo | `runAiBot.print_skip_summary` |
+| `Salario publicado ≈ $… por debajo de tu objetivo; se aplicó igual.` | `job_search.salary_below_target` (va al dashboard, no al log) |
 | `LinkedIn opened the NEW results page (/jobs/search-results/).` | `job_search.log_navigation_report` |
 | `WARNING: LinkedIn quitó el filtro …` (uno por filtro perdido) | `job_search.log_navigation_report` |
 | `Easy Apply is not in the results URL: each card will be checked…` | `runAiBot._apply_to_jobs_for_location` |

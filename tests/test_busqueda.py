@@ -149,7 +149,7 @@ print("\n3. El id de la oferta, en cualquier diseño")
 js = extraer(
     RAIZ / "modules" / "job_search.py",
     {"job_id_from_values"},
-    {"_ID_IN_URL", "_ID_IN_URN"},
+    {"_ID_IN_URL", "_ID_IN_URN", "_ID_IN_CURRENT"},
     {"re": re, "print_lg": sin_log},
 )
 job_id = js["job_id_from_values"]
@@ -164,6 +164,12 @@ check("urn:li:jobPosting", job_id(urn="urn:li:jobPosting:4485334635"), "44853346
 check("id al final del slug del enlace", job_id(href=HREF_PUBLICO), "4485334635")
 check("enlace corto /jobs/view/<id>",
       job_id(href="https://www.linkedin.com/jobs/view/4489590619/"), "4489590619")
+# La página nueva es una SPA: seleccionar una tarjeta pone currentJobId, no /jobs/view/.
+check("currentJobId de la página nueva",
+      job_id(href="https://www.linkedin.com/jobs/search-results/?currentJobId=4489590619&keywords=x"),
+      "4489590619")
+check("currentJobId no se confunde con otro parámetro",
+      job_id(href="https://www.linkedin.com/jobs/search-results/?keywords=4489590619"), None)
 check("sin datos no inventa", job_id(), None)
 check("un enlace que no es de oferta", job_id(href="https://www.linkedin.com/feed/"), None)
 
@@ -194,6 +200,8 @@ check("el diseño público usa data-entity-urn (visto en vivo)",
       "data-entity-urn" in layouts["job-search-card"]["card"], True)
 check("el respaldo son enlaces a /jobs/view/",
       layouts["view-link"]["card"], "a[href*='/jobs/view/']")
+check("la página nueva enlaza con currentJobId",
+      layouts["current-job-id"]["card"], "a[href*='currentJobId=']")
 check("cada diseño trae título, empresa, ubicación y estado",
       [n for n, l in layouts.items()
        if not all(k in l for k in ("title", "company", "location", "state", "card"))], [])
@@ -227,6 +235,41 @@ check("'remoto' se reconoce",
 check("'Remote (Hybrid)' se reconoce",
       js["work_style_is_remote"]("Remote (Hybrid)"), True)
 check("'On-site' no es remoto", js["work_style_is_remote"]("On-site"), False)
+
+print("   -- aviso de salario por debajo del objetivo (solo informativo) --")
+js_sal = extraer(
+    RAIZ / "modules" / "job_search.py",
+    {"salary_below_target"},
+    {"_SALARY_AMOUNT"},
+    {"re": re, "print_lg": sin_log},
+)
+salario = js_sal["salary_below_target"]
+aviso = salario("Salario: $3.000.000 COP, prestaciones de ley.", 4_000_000)
+check("un salario por debajo del objetivo genera aviso", isinstance(aviso, str), True)
+check("el aviso dice cuánto paga", "3.000.000" in (aviso or ""), True)
+check("el aviso dice cuál es el objetivo", "4.000.000" in (aviso or ""), True)
+check("y deja claro que se aplicó igual", "se aplicó igual" in (aviso or ""), True)
+check("un salario por encima no genera aviso",
+      salario("Pagamos $4.500.000 COP", 4_000_000), None)
+check("'3,5 millones' se entiende",
+      "3.500.000" in (salario("Salario de 3,5 millones", 4_000_000) or ""), True)
+check("un rango que llega al objetivo no avisa",
+      salario("$3.000.000 a $4.200.000", 4_000_000), None)
+check("USD/EUR no se convierten a ojo",
+      salario("USD 1,200 per month", 4_000_000), None)
+check("sin cifras de salario no inventa",
+      salario("Buscamos una persona proactiva.", 4_000_000), None)
+check("sin objetivo configurado no avisa",
+      salario("$1.000.000", 0), None)
+check("el aviso no se dispara con un año o un id",
+      salario("Experiencia de 3 años, cargo 2026", 4_000_000), None)
+
+# El bug que este test vigila: el contenedor de una tarjeta subía hasta el <ul>
+# con todas, y entonces "Applied" de CUALQUIER tarjeta marcaba todas como
+# postuladas. La subida tiene que parar al llegar a más de un enlace de oferta.
+src_job_search = (RAIZ / "modules" / "job_search.py").read_text(encoding="utf-8")
+check("el contenedor se detiene antes de la lista completa",
+      "length > 1" in src_job_search and "currentJobId=']" in src_job_search, True)
 
 # =========================================================================
 print("\n6. El CV que no está: mensaje y sugerencias")
@@ -473,6 +516,13 @@ js2 = extraer(
     {"re": re,
      "By": By,
      "click_gap": 0,
+     "NoSuchElementException": NoSuchElementException,
+     "StaleElementReferenceException": __import__(
+         "selenium.common.exceptions", fromlist=["StaleElementReferenceException"]
+     ).StaleElementReferenceException,
+     "ElementClickInterceptedException": __import__(
+         "selenium.common.exceptions", fromlist=["ElementClickInterceptedException"]
+     ).ElementClickInterceptedException,
      "print_lg": sin_log,
      "buffer": lambda *a, **k: None,
      "sleep": lambda *a, **k: None,
@@ -496,6 +546,11 @@ class _Nodo:
     def find_element(self, by, selector):
         if selector in self._hijos:
             return self._hijos[selector]
+        # Los selectores de enlace ahora agrupan dos formas ("/jobs/view/" o
+        # "currentJobId="): vale cualquiera de las claves guardadas.
+        for clave, hijo in self._hijos.items():
+            if clave in selector or selector in clave:
+                return hijo
         raise NoSuchElementException(selector)
 
     def find_elements(self, by, selector):
@@ -577,6 +632,46 @@ check("sin selectores: id desde el enlace", detalles[0], "4489869210")
 check("sin selectores: título de la 1ª línea", detalles[1], "Treasury Analyst")
 check("sin selectores: empresa de la 2ª línea", detalles[2], "Veta Virtual")
 check("sin selectores: ubicación de la 3ª línea", detalles[3], "Santiago, Chile")
+
+# =========================================================================
+print("\n11. El dashboard explica por qué se aplicó")
+# =========================================================================
+# app.py no abre Chrome ni Tk: se importa tal cual y se le apunta a una carpeta
+# temporal con el historial y la hoja de motivos.
+sys.path.insert(0, str(RAIZ))
+import app as dashboard  # noqa: E402
+
+carpeta_dash = Path(tempfile.mkdtemp(prefix="cvsniper-dash-"))
+try:
+    (carpeta_dash / "all_applied_applications_history.csv").write_text(
+        "Job ID,Title,Company,Work Location,Work Style,About Job,Experience required,"
+        "Skills required,HR Name,HR Link,Resume,Re-posted,Date Posted,Date Applied,"
+        "Job Link,External Job link,Questions Found,Connect Request\n"
+        "4489590619,Analista de Tesorería,Acme,Bogotá,On-site,desc,2,,N/A,N/A,x,"
+        "False,,2026-11-17,https://www.linkedin.com/jobs/view/4489590619,Easy Applied,,\n",
+        encoding="utf-8",
+    )
+    (carpeta_dash / "application_notes.csv").write_text(
+        "Job ID,Date Applied,AI Score,AI Reason,Applied Despite\n"
+        '4489590619,2026-11-17,40,Salario por debajo,'
+        '"IA 40/100: Salario por debajo | Salario publicado ≈ $3.000.000 COP, '
+        'por debajo de tu objetivo ($4.000.000); se aplicó igual."\n',
+        encoding="utf-8",
+    )
+    dashboard.PATH = str(carpeta_dash) + os.sep
+    dashboard.NOTES_FILE = str(carpeta_dash / "application_notes.csv")
+    cliente = dashboard.app.test_client()
+    respuesta = cliente.get("/applied-jobs")
+    datos = respuesta.get_json()
+    check("el endpoint responde", respuesta.status_code, 200)
+    check("incluye la nota de la aplicación", len(datos), 1)
+    check("puntuación de la IA", datos[0].get("AI_Score"), "40")
+    check("explica que se aplicó igual",
+          "se aplicó igual" in (datos[0].get("Applied_Despite") or ""), True)
+    portada = cliente.get("/").get_data(as_text=True)
+    check("la tabla del dashboard tiene la columna", "Por qué se aplicó" in portada, True)
+finally:
+    shutil.rmtree(carpeta_dash, ignore_errors=True)
 
 # =========================================================================
 print("\n" + "=" * 60)

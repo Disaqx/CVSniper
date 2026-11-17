@@ -116,8 +116,81 @@ def detect_ats(url: str) -> tuple[str, bool]:
 
 _APPLY_BTN_XP = (
     ".//button[contains(@class,'jobs-apply-button')] | "
-    ".//a[contains(@class,'jobs-apply-button')]"
+    ".//a[contains(@class,'jobs-apply-button')] | "
+    ".//button[contains(@data-testid,'apply')] | "
+    ".//a[contains(@data-testid,'apply')] | "
+    # Newer SDUI job pages do not always keep the jobs-apply-button class: the
+    # button is recognised by its label instead. role=switch is excluded on
+    # purpose — the Easy Apply *filter* is a switch with the same words.
+    ".//button[not(@role='switch') and ("
+    "contains(translate(normalize-space(.),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'easy apply') or "
+    "contains(translate(normalize-space(.),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'solicitud sencilla') or "
+    "contains(translate(normalize-space(.),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'postulación simplificada') or "
+    "normalize-space(.)='Apply' or normalize-space(.)='Postularme' or normalize-space(.)='Solicitar')] | "
+    ".//button[not(@role='switch') and ("
+    "contains(translate(@aria-label,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'easy apply') or "
+    "contains(translate(@aria-label,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'solicitud sencilla'))]"
 )
+
+# The Easy Apply modal has kept the same class, but the new page may render it
+# inside a generic dialog. Either shape counts while it carries the flow's text.
+_EASY_APPLY_MODAL_TEXT = re.compile(
+    r"easy apply|solicitud sencilla|postulaci[oó]n simplificada|candidatura simplificada",
+    re.IGNORECASE,
+)
+# The search filters panel also contains the words "Easy Apply" (the filter
+# switch). Treating it as the application modal made the bot try to walk a
+# filter form as if it were the application, for every single job.
+_FILTER_DIALOG_TEXT = re.compile(
+    r"all filters|todos los filtros|show results|mostrar resultados|apply current filters",
+    re.IGNORECASE,
+)
+
+
+# The Easy Apply button as it is detected BEFORE clicking. Old design: the
+# jobs-apply-button class. New SDUI pane: the button only says what it does.
+# Used only to open the modal; the generic Apply button is clicked once, by
+# probe_apply_button(), never here.
+EASY_APPLY_BUTTON_XP = (
+    ".//button[contains(@class,'jobs-apply-button') and ("
+    "contains(@aria-label,'Easy') or contains(@aria-label,'Solicitud') or "
+    "contains(normalize-space(.),'Easy Apply') or "
+    "contains(normalize-space(.),'Solicitud sencilla'))]"
+)
+
+
+def find_easy_apply_modal():
+    """The open Easy Apply modal, in the old class or the new dialog shape."""
+    try:
+        modales = driver.find_elements(By.CLASS_NAME, "jobs-easy-apply-modal")
+        if modales:
+            return modales[0]
+    except WebDriverException:
+        pass
+    try:
+        for selector in ("[data-testid*='easy-apply']", "div[role='dialog']"):
+            for elemento in driver.find_elements(By.CSS_SELECTOR, selector):
+                try:
+                    texto = elemento.text or ""
+                except WebDriverException:
+                    continue
+                if _EASY_APPLY_MODAL_TEXT.search(texto) and not _FILTER_DIALOG_TEXT.search(texto):
+                    return elemento
+    except WebDriverException:
+        pass
+    return None
+
+
+def easy_apply_modal_open() -> bool:
+    return find_easy_apply_modal() is not None
+
+
+def find_apply_button():
+    """The job's Apply button on the details pane, across the known designs."""
+    try:
+        return driver.find_element(By.XPATH, _APPLY_BTN_XP)
+    except WebDriverException:
+        return None
 
 
 def _is_linkedin(url: str) -> bool:
@@ -161,8 +234,10 @@ def probe_apply_button(linkedin_tab: str) -> tuple[str, str | None]:
     same-tab redirects were reported as "Apply did not open a new tab".
     """
     try:
-        apply_btn = driver.find_element(By.XPATH, _APPLY_BTN_XP)
-    except NoSuchElementException:
+        apply_btn = find_apply_button()
+        if apply_btn is None:
+            return "none", None
+    except WebDriverException:
         return "none", None
 
     tabs_before = set(driver.window_handles)
@@ -215,7 +290,7 @@ def probe_apply_button(linkedin_tab: str) -> tuple[str, str | None]:
             return ("external", url) if url else ("none", None)
 
         try:
-            if driver.find_elements(By.CLASS_NAME, "jobs-easy-apply-modal"):
+            if easy_apply_modal_open():
                 return "easy_apply", None
             actual = driver.current_url
         except WebDriverException:

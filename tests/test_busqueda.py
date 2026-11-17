@@ -455,6 +455,130 @@ check("y cae directo al driver normal", driver_final, "DRIVER-NORMAL")
 check("queda registrado", reg["criticos"], 1)
 
 # =========================================================================
+print("\n10. Leer una tarjeta de cada diseño (con elementos de mentira)")
+# =========================================================================
+# El rediseño no puede probarse sin sesión de LinkedIn, pero sí se puede
+# comprobar que la refactorización no cambió lo que se lee de la tarjeta
+# clásica: mismo título, empresa, ubicación, modalidad y estado "Applied".
+from selenium.common.exceptions import NoSuchElementException
+from selenium.webdriver.common.by import By
+
+js2 = extraer(
+    RAIZ / "modules" / "job_search.py",
+    {"job_id_from_values", "pick_card_layout", "layout_by_name", "current_layout_name",
+     "is_applied_state", "_first_text", "_card_lines", "_attr", "card_apply_marker",
+     "easy_apply_marker", "get_job_main_details", "_fold"},
+    {"JOB_CARD_LAYOUTS", "_ACTIVE_LAYOUT", "_APPLIED_STATES", "_ACCENTS",
+     "_ID_IN_URL", "_ID_IN_URN", "_EASY_APPLY_MARKERS", "_EXTERNAL_MARKERS"},
+    {"re": re,
+     "By": By,
+     "click_gap": 0,
+     "print_lg": sin_log,
+     "buffer": lambda *a, **k: None,
+     "sleep": lambda *a, **k: None,
+     "scroll_to_view": lambda *a, **k: None,
+     "discard_job": lambda *a, **k: None,
+     "actions": SimpleNamespace(send_keys=lambda *a, **k: None),
+     "driver": SimpleNamespace(execute_script=lambda *a, **k: None,
+                               current_url="https://www.linkedin.com/jobs/search/?keywords=x")},
+)
+
+
+class _Nodo:
+    """Lo mínimo de un WebElement que usa get_job_main_details."""
+
+    def __init__(self, text="", attrs=None, hijos=None, tag="div"):
+        self.text = text
+        self.tag_name = tag
+        self._attrs = attrs or {}
+        self._hijos = hijos or {}
+
+    def find_element(self, by, selector):
+        if selector in self._hijos:
+            return self._hijos[selector]
+        raise NoSuchElementException(selector)
+
+    def find_elements(self, by, selector):
+        return []
+
+    def get_attribute(self, name):
+        return self._attrs.get(name)
+
+    def get_dom_attribute(self, name):
+        return self._attrs.get(name)
+
+    def click(self):
+        pass
+
+    def is_selected(self):
+        return False
+
+
+# --- diseño clásico: li[data-occludable-job-id] ---------------------------
+ANCLA_CLASICA = _Nodo("Analista de Tesorería", {"href": "https://www.linkedin.com/jobs/view/analista-4489590619"},
+                      tag="a")
+TARJETA_CLASICA = _Nodo(
+    "Analista de Tesorería\nAcme · Bogotá, Colombia (Remote)\nApplied",
+    attrs={"data-occludable-job-id": "4489590619"},
+    hijos={
+        "a[href*='/jobs/view/']": ANCLA_CLASICA,
+        "a.job-card-container__link": _Nodo("Analista de Tesorería"),
+        ".artdeco-entity-lockup__subtitle": _Nodo("Acme · Bogotá, Colombia (Remote)"),
+        ".job-card-container__metadata-item": _Nodo("Bogotá, Colombia (Remote)"),
+        ".job-card-container__footer-job-state": _Nodo("Applied"),
+    },
+)
+js2["_ACTIVE_LAYOUT"]["name"] = "occludable-job-id"
+detalles = js2["get_job_main_details"](TARJETA_CLASICA, set(), set())
+check("clásico: id", detalles[0], "4489590619")
+check("clásico: título", detalles[1], "Analista de Tesorería")
+check("clásico: empresa", detalles[2], "Acme")
+check("clásico: ubicación sin la modalidad", detalles[3], "Bogotá, Colombia")
+check("clásico: modalidad", detalles[4], "Remote")
+check("clásico: ya postulado -> skip", detalles[5], True)
+
+TARJETA_CLASICA._hijos[".job-card-container__footer-job-state"] = _Nodo("Be an early applicant")
+TARJETA_CLASICA.text = "Analista de Tesorería\nAcme · Bogotá, Colombia (Remote)\nBe an early applicant"
+detalles = js2["get_job_main_details"](TARJETA_CLASICA, set(), set())
+check("clásico: sin postular -> no skip", detalles[5], False)
+
+# --- diseño público: div.job-search-card[data-entity-urn] ------------------
+ANCLA_PUBLICA = _Nodo("Analista Financiero y Tesorería",
+                      {"href": "https://cl.linkedin.com/jobs/view/analista-financiero-y-tesoreria-at-"
+                               "empresa-confidencial-4485334635?position=1&pageNum=0"}, tag="a")
+TARJETA_PUBLICA = _Nodo(
+    "Analista Financiero y Tesorería\nEmpresa confidencial\nHuechuraba, Santiago\n2 weeks ago",
+    attrs={"data-entity-urn": "urn:li:jobPosting:4485334635"},
+    hijos={
+        "a[href*='/jobs/view/']": ANCLA_PUBLICA,
+        "h3.base-search-card__title": _Nodo("Analista Financiero y Tesorería"),
+        "h4.base-search-card__subtitle": _Nodo("Empresa confidencial"),
+        ".job-search-card__location": _Nodo("Huechuraba, Santiago Metropolitan Region, Chile"),
+    },
+)
+js2["_ACTIVE_LAYOUT"]["name"] = "job-search-card"
+detalles = js2["get_job_main_details"](TARJETA_PUBLICA, set(), set())
+check("público: id desde data-entity-urn", detalles[0], "4485334635")
+check("público: título", detalles[1], "Analista Financiero y Tesorería")
+check("público: empresa", detalles[2], "Empresa confidencial")
+check("público: ubicación", detalles[3], "Huechuraba, Santiago Metropolitan Region, Chile")
+check("público: sin estado -> no skip", detalles[5], False)
+
+# Y sin ningún selector conocido (solo el texto de la tarjeta) tampoco se cae.
+TARJETA_SIN_SELECTORES = _Nodo(
+    "Treasury Analyst\nVeta Virtual\nSantiago, Chile\n2 days ago",
+    hijos={"a[href*='/jobs/view/']": _Nodo(
+        "Treasury Analyst",
+        {"href": "https://cl.linkedin.com/jobs/view/treasury-analyst-at-veta-4489869210"}, tag="a")},
+)
+js2["_ACTIVE_LAYOUT"]["name"] = "view-link"
+detalles = js2["get_job_main_details"](TARJETA_SIN_SELECTORES, set(), set())
+check("sin selectores: id desde el enlace", detalles[0], "4489869210")
+check("sin selectores: título de la 1ª línea", detalles[1], "Treasury Analyst")
+check("sin selectores: empresa de la 2ª línea", detalles[2], "Veta Virtual")
+check("sin selectores: ubicación de la 3ª línea", detalles[3], "Santiago, Chile")
+
+# =========================================================================
 print("\n" + "=" * 60)
 if fallos:
     print(f"{len(fallos)} FALLOS:")

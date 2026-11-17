@@ -1269,7 +1269,7 @@ def get_job_main_details(job: WebElement, blacklisted_companies: set, rejected_j
     title = title.split("\n", 1)[0].strip() or "Unknown"
 
     other_details = _first_text(card, layout["company"])
-    work_location = _first_text(card, layout["location"])
+    work_location = _first_text(card, layout["location"]) or "Unknown"
     details_split = other_details.split(' · ') if other_details else []
     company = details_split[0].strip() if details_split and details_split[0].strip() else "Unknown"
     if work_location == "Unknown" and len(details_split) > 1:

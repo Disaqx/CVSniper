@@ -241,6 +241,52 @@ def _cleanup_residual_chromedriver():
     _close_bot_profile_chrome()
 
 
+def uc_cache_paths(appdata: str | None = None) -> tuple[str, str, str]:
+    """Where undetected_chromedriver unzips its patched driver on Windows.
+
+    Returns (folder, driver exe, unpacked folder). Kept as a function so a test
+    can point it at a temporary directory instead of the real %APPDATA%.
+    """
+    import os
+
+    base = os.path.join(
+        appdata or os.environ.get("APPDATA") or os.path.expanduser("~"),
+        "undetected_chromedriver",
+    )
+    return base, os.path.join(base, "undetected_chromedriver.exe"), os.path.join(base, "undetected")
+
+
+def _clear_uc_cache() -> list[str]:
+    """Delete the patched driver uc left behind, so it can unzip a fresh one.
+
+    `os.rename` does not overwrite on Windows: a stale undetected_chromedriver.exe
+    from an earlier run makes the next start die with
+    `FileExistsError: [WinError 183]` before Chrome is even launched.
+    """
+    import os
+    import shutil
+
+    _, exe, carpeta = uc_cache_paths()
+    borrados: list[str] = []
+    for ruta in (exe, carpeta):
+        if not os.path.exists(ruta):
+            continue
+        try:
+            if os.path.isdir(ruta):
+                shutil.rmtree(ruta)
+            else:
+                os.remove(ruta)
+            borrados.append(ruta)
+        except Exception as e:
+            print_lg(
+                f"WARNING: could not delete '{ruta}': {e}. Close any window using it "
+                "and the next run will retry."
+            )
+    if borrados:
+        print_lg("Removed the stale undetected_chromedriver files: " + ", ".join(borrados))
+    return borrados
+
+
 def _close_bot_profile_chrome():
     """Close Chrome windows left running on the bot's throwaway profile.
 
@@ -324,6 +370,32 @@ def _binary_major_version(path: str) -> int | None:
     return None
 
 
+def _stealth_driver():
+    """Start the undetected_chromedriver session (runs inside `_with_timeout`)."""
+    import undetected_chromedriver as uc
+
+    print_lg("Starting Chrome in stealth mode...")
+    chrome_bin = _find_chrome_binary() or _selenium_manager_chrome()
+    if not chrome_bin:
+        # uc would crash with "Binary Location Must be a String"
+        raise RuntimeError(
+            "Google Chrome was not found. Install it from "
+            "https://www.google.com/chrome/ for stealth mode."
+        )
+    # The version of the binary actually launched, not whatever the registry
+    # remembers: a mismatch makes uc fetch the wrong driver.
+    version_main = _binary_major_version(chrome_bin) or _get_chrome_major_version()
+    print_lg(f"  Chrome {version_main or '?'}: {chrome_bin}")
+    print_lg(f"  Launching (the first run downloads a driver; giving up after {STEALTH_TIMEOUT}s)...")
+    uc_kwargs = {
+        "options": _build_options(uc.ChromeOptions()),
+        "browser_executable_path": chrome_bin,
+    }
+    if version_main:
+        uc_kwargs["version_main"] = version_main
+    return uc.Chrome(**uc_kwargs)
+
+
 def _start_driver():
     """Open Chrome, preferring the patched driver when stealth mode is on.
 
@@ -331,40 +403,46 @@ def _start_driver():
     it trails Chrome releases and breaks on upgrade day. When that happens the
     plain Selenium driver still works, so the failure is downgraded to a
     warning rather than killing the run.
+
+    On Windows uc unzips `undetected_chromedriver.exe` next to its cache with
+    `os.rename`, which does not overwrite: a leftover exe from an earlier run
+    makes every start fail with FileExistsError. When that (or a PermissionError
+    from an exe still in use) shows up, the stale files are deleted and stealth
+    mode is retried exactly once before falling back.
     """
     _close_bot_profile_chrome()
     if stealth_mode:
-        try:
-            import undetected_chromedriver as uc
-
-            print_lg("Starting Chrome in stealth mode...")
-            chrome_bin = _find_chrome_binary() or _selenium_manager_chrome()
-            if not chrome_bin:
-                # uc would crash with "Binary Location Must be a String"
-                raise RuntimeError(
-                    "Google Chrome was not found. Install it from "
-                    "https://www.google.com/chrome/ for stealth mode."
+        for intento in (1, 2):
+            try:
+                return _with_timeout(_stealth_driver, STEALTH_TIMEOUT)
+            except (FileExistsError, PermissionError) as e:
+                print_lg(
+                    "WARNING: undetected_chromedriver could not replace its driver "
+                    f"files ({e.__class__.__name__}: {e})."
                 )
-            # The version of the binary actually launched, not whatever the
-            # registry remembers: a mismatch makes uc fetch the wrong driver.
-            version_main = _binary_major_version(chrome_bin) or _get_chrome_major_version()
-            print_lg(f"  Chrome {version_main or '?'}: {chrome_bin}")
-            print_lg(f"  Launching (the first run downloads a driver; giving up after {STEALTH_TIMEOUT}s)...")
-            uc_kwargs = {
-                "options": _build_options(uc.ChromeOptions()),
-                "browser_executable_path": chrome_bin,
-            }
-            if version_main:
-                uc_kwargs["version_main"] = version_main
-            return _with_timeout(lambda: uc.Chrome(**uc_kwargs), STEALTH_TIMEOUT)
-        except Exception as e:
-            critical_error_log(
-                "Stealth mode could not start (undetected_chromedriver). "
-                "Falling back to the standard driver — LinkedIn is more likely "
-                "to flag the session.",
-                e,
-            )
-            _cleanup_residual_chromedriver()
+                try:
+                    _cleanup_residual_chromedriver()
+                except Exception as limpio_error:
+                    print_lg(f"WARNING: could not stop the old chromedriver: {limpio_error}")
+                _clear_uc_cache()
+                if intento == 2:
+                    critical_error_log(
+                        "Stealth mode could not start (undetected_chromedriver) even after "
+                        "cleaning its cache. Falling back to the standard driver — LinkedIn "
+                        "is more likely to flag the session.",
+                        e,
+                    )
+                    break
+                print_lg("Retrying stealth mode once with a clean driver cache...")
+            except Exception as e:
+                critical_error_log(
+                    "Stealth mode could not start (undetected_chromedriver). "
+                    "Falling back to the standard driver — LinkedIn is more likely "
+                    "to flag the session.",
+                    e,
+                )
+                _cleanup_residual_chromedriver()
+                break
 
     print_lg("Starting Chrome...")
     return webdriver.Chrome(options=_build_options(ChromeOptions()))

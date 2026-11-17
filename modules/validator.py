@@ -12,8 +12,107 @@ the next on the following run is the thing this is meant to avoid.
 from __future__ import annotations
 
 import os
+import unicodedata
 
 from modules.helpers import print_lg
+
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# Words that make a PDF look like somebody's CV. Used only to suggest a file
+# when the configured resume path does not exist — never to pick one silently.
+_RESUME_HINTS = ("hoja", "cv", "curriculum", "resume", "vitae")
+
+
+def _clean_path(raw: str) -> str:
+    """The path as typed, without the quotes a file dialog may have added."""
+    return str(raw or "").strip().strip('"').strip("'")
+
+
+def _fold_name(text: str) -> str:
+    """Lowercase and strip accents, so "HÓJA" and "hoja" match."""
+    return "".join(
+        c for c in unicodedata.normalize("NFD", str(text or ""))
+        if unicodedata.category(c) != "Mn"
+    ).lower()
+
+
+def looks_like_resume_name(file_name: str) -> bool:
+    folded = _fold_name(file_name)
+    return any(hint in folded for hint in _RESUME_HINTS)
+
+
+def similar_pdfs(path: str, limit: int = 5) -> list[str]:
+    """PDFs in the same folder that look like the missing resume, best first.
+
+    An absolute path that no longer exists usually means the file was moved or
+    renamed (or the folder came from another PC). The closest PDFs next to it
+    are the most useful thing to show: the user can copy the right one back
+    into the field instead of searching the disk.
+    """
+    from difflib import SequenceMatcher
+
+    ruta = _clean_path(path)
+    if not ruta:
+        return []
+    absoluta = ruta if os.path.isabs(ruta) else os.path.join(_PROJECT_ROOT, ruta)
+    carpeta = os.path.dirname(absoluta) or _PROJECT_ROOT
+    try:
+        nombres = os.listdir(carpeta)
+    except OSError:
+        return []
+    pdfs = [
+        n for n in nombres
+        if n.lower().endswith(".pdf") and os.path.isfile(os.path.join(carpeta, n))
+    ]
+    if not pdfs:
+        return []
+    # A CV-sounding name beats a slightly closer match: "cv_sandra.pdf" is a
+    # better suggestion for HOJA_DE_VIDA_SANDRA.pdf than "contrato.pdf".
+    con_pista = [n for n in pdfs if looks_like_resume_name(n)]
+    candidatos = con_pista or pdfs
+    objetivo = os.path.basename(absoluta)
+    candidatos.sort(
+        key=lambda n: SequenceMatcher(None, objetivo.lower(), n.lower()).ratio(),
+        reverse=True,
+    )
+    return [os.path.join(carpeta, n) for n in candidatos[:limit]]
+
+
+def resume_path_problem(raw_path: str) -> str | None:
+    r"""Why the configured resume file is not readable, and what to do about it.
+
+    The old message said "the path is relative to the project folder" even for
+    `C:\Users\...\HOJA_DE_VIDA.pdf`, which sends the user looking for a file
+    that was never relative in the first place.
+    """
+    ruta = _clean_path(raw_path)
+    absoluta = ruta if os.path.isabs(ruta) else os.path.join(_PROJECT_ROOT, ruta)
+    if os.path.exists(absoluta):
+        return None
+    if os.path.isabs(ruta):
+        mensaje = (
+            f"The resume was not found at '{ruta}'. That is an absolute path, so "
+            "the file was moved, renamed or deleted (it is not a project-folder "
+            "problem)."
+        )
+    else:
+        mensaje = (
+            f"The resume was not found at '{ruta}'. The path is relative to the "
+            f"project folder, and it points at '{absoluta}', which does not exist."
+        )
+
+    sugerencias = similar_pdfs(absoluta)
+    carpeta = os.path.dirname(absoluta) or _PROJECT_ROOT
+    if sugerencias:
+        mensaje += "\n  Closest PDFs in that folder (copy the right one into the setting):\n"
+        mensaje += "\n".join(f"    - {s}" for s in sugerencias)
+    else:
+        mensaje += f"\n  No PDF (similar or otherwise) was found in '{carpeta}'."
+    mensaje += (
+        '\n  Change it in Ajustes/Settings -> "Respuestas" / "Responses" tab -> '
+        '"Ruta del CV (PDF)" / "Resume path (PDF)" (default_resume_path in config/questions.py).'
+    )
+    return mensaje
 
 # Values LinkedIn's own filter UI accepts. Anything else is silently ignored by
 # the site, which looks like the filter "not working" rather than a typo.
@@ -115,11 +214,8 @@ def validate_config() -> None:
         )
         if not default_resume_path:
             r.error("default_resume_path is empty in config/questions.py")
-        elif not os.path.exists(default_resume_path):
-            r.error(
-                f"The resume was not found at '{default_resume_path}'. "
-                "The path is relative to the project folder."
-            )
+        elif not os.path.exists(_clean_path(default_resume_path)):
+            r.error(resume_path_problem(default_resume_path))
         _check_number(r, "years_of_experience", years_of_experience, minimum=0, maximum=70)
         _check_number(r, "confidence_level", confidence_level, minimum=1, maximum=10)
         _check_number(r, "desired_salary", desired_salary, minimum=0, required=False)

@@ -185,7 +185,10 @@ def rehacer(url, deseado):
     """Ejecuta la funcion real con un driver de mentira."""
     d = _DriverFalso(url)
     ns_js = {"re": re, "driver": d, "print_lg": lambda *a, **k: None,
-             "buffer": lambda *a, **k: None}
+             "buffer": lambda *a, **k: None,
+             # La función consulta si es la página nueva antes de reescribir.
+             "NEW_SEARCH_PATH": "/jobs/search-results/",
+             "_NEW_PAGE_FILTER_NOTICE": False}
     exec(compile(ast.Module([fn_ee], []), "<job_search>", "exec"), ns_js)
     cambio = ns_js["ensure_easy_apply_state"](deseado)
     return cambio, d.current_url
@@ -207,6 +210,11 @@ check("quitarlo como primer parametro no rompe la URL",
 check("fuera de la pagina de resultados no toca nada",
       rehacer("https://www.linkedin.com/feed/", False),
       (False, "https://www.linkedin.com/feed/"))
+# La pagina nueva (/jobs/search-results/) no tiene filtros en la URL: anadirle
+# f_LF=f_AL puede volver a redirigir, así que no se toca (se filtra por tarjeta).
+check("en la pagina nueva NO se reescribe la URL",
+      rehacer("https://www.linkedin.com/jobs/search-results/?keywords=Help%20Desk", True),
+      (False, "https://www.linkedin.com/jobs/search-results/?keywords=Help%20Desk"))
 check("se comprueba en cada pagina de resultados, no solo al filtrar",
       "if ensure_easy_apply_state(_ea_filtro):" in src_bot, True)
 

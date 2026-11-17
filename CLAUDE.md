@@ -98,7 +98,7 @@ Groq (free tier) is the recommended default. Any OpenAI-compatible endpoint work
 
 ## Tests
 
-`python tests/test_filtros.py` and `python tests/test_modo.py` (no pytest needed). They extract the pure predicates from the source with `ast` — importing `job_search.py` would launch Chrome — and run them against a fixed test profile, so they pass on a fresh clone without `config/*.py`. See `tests/README.md`. Runtime validation is still `modules/validator.py` at startup plus `logs/log.txt`.
+`python tests/test_filtros.py`, `python tests/test_modo.py` and `python tests/test_busqueda.py` (no pytest needed). They extract the pure predicates from the source with `ast` — importing `job_search.py` would launch Chrome — and run them against a fixed test profile, so they pass on a fresh clone without `config/*.py`. `test_busqueda.py` also exercises the real `_start_driver()` retry with a fake Chrome, the URL/report helpers and the resume suggestion against a temporary folder. See `tests/README.md`. Runtime validation is still `modules/validator.py` at startup plus `logs/log.txt`.
 
 ## Windows installer (`installer/`)
 
@@ -155,6 +155,12 @@ Esta sección documenta el estado actual del proyecto y las mejoras futuras soli
    - Instalador construido desde `requirements.lock` (versiones exactas).
    - Tests en cada push (`.github/workflows/tests.yml`).
    - Aviso de versión nueva al arrancar (`modules/updates.py`, versión en `modules/version.py`; `check_for_updates` en settings).
+
+9. ✅ **Ninguna postulación en toda una tarde (noviembre 2026)** — cuatro fallos del informe de la usuaria:
+    - **LinkedIn cambió la página de búsqueda.** El bot abre `/jobs/search/` y LinkedIn lo redirige a `/jobs/search-results/`, que se lleva `location`, `f_LF=f_AL`, `f_WT`, `f_TPR` y `sortBy` y no tiene `li[data-occludable-job-id]`. Ahora `job_search` guarda en un solo sitio las URLs (`build_search_url`, `navigation_report`, `add_legacy_easy_apply`) y los diseños de tarjeta (`JOB_CARD_LAYOUTS`: clásico, público con `data-entity-urn`, `[data-job-id]` y enlaces `/jobs/view/`). La navegación ya no es un «funcionó» porque la URL contenga «search»: registra cada filtro que LinkedIn quitó (`WARNING: LinkedIn quitó el filtro X`), reintenta una vez con `f_AL=true`, filtra Easy Apply tarjeta a tarjeta cuando se perdió de la URL, y si no encuentra tarjetas guarda el DOM real en `logs/linkedin_search_layout_*.json`. Probado en vivo contra la página pública de LinkedIn (detectó 60 tarjetas y leyó id/título/empresa reales); la página nueva autenticada no se pudo abrir sin sesión.
+    - **`FileExistsError` de undetected_chromedriver.** En Windows `os.rename` no sobrescribe el `undetected_chromedriver.exe` de una ejecución anterior. `_start_driver` mata los chromedriver, borra `%APPDATA%\undetected_chromedriver\undetected_chromedriver.exe` y la carpeta `undetected`, y reintenta una vez antes de caer al driver normal.
+    - **Cuelgues sin mensaje.** El driver normal no tenía tiempo límite: ahora usa `_with_timeout` (120 s) con un error claro. Todos los pasos del arranque y de los filtros se anotan con `timed_step`, que además escribe «still waiting on …» cada 30 s si algo se bloquea; se fijan tiempos máximos de carga de página (120 s) y de script (60 s), y `taskkill` tiene timeout. No se encontró ningún bucle infinito en `apply_filters()` (todas las esperas están acotadas): el silencio de las 19:46 pudo ser el portátil suspendido o una llamada de Selenium bloqueada en el renderer, y ahora el log lo dirá.
+    - **El CV no se encontraba y el mensaje confundía.** `validator.resume_path_problem` distingue ruta absoluta de relativa, busca PDFs parecidos en la misma carpeta y explica que se cambia en Ajustes → «Respuestas» → «Ruta del CV (PDF)».
 
 **Pasos Faltantes (To-Do):**
 1. **Aplicador Universal v2:** soporte multi-página (Workday) — hoy va a revisión manual. La creación automática de cuentas queda descartada por diseño: exige verificación de email y CAPTCHA, es frágil y arriesgado para la cuenta del usuario.

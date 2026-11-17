@@ -1032,9 +1032,12 @@ def apply_filters(location_str: str, sort_by: str, date_posted: str, pause_after
             except Exception:
                 print_lg("Show results button not found — filters may already be applied.")
 
-        if pause_after_filters and "Turn off Pause after search" == ui_confirm("Please check your results", "These are your configured search results and filter. It is safe to change them while this dialog is open, any changes later could result in errors and skipping this search run.", ["Turn off Pause after search", "Look's good, Continue"]):
-            pause_after_filters = False
-
+        if pause_after_filters:
+            # A modal dialog that writes nothing looks exactly like a hang — the
+            # 19:46 silence may have been this dialog waiting for a click.
+            print_lg("Waiting for you to confirm the results in the control window (pause after search is ON).")
+            if "Turn off Pause after search" == ui_confirm("Please check your results", "These are your configured search results and filter. It is safe to change them while this dialog is open, any changes later could result in errors and skipping this search run.", ["Turn off Pause after search", "Look's good, Continue"]):
+                pause_after_filters = False
     except Exception as e:
         print_lg(f"Setting the preferences failed: {e}")
         # Continue silently — filters may be partially applied, bot will proceed

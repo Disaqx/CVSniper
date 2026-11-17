@@ -12,6 +12,26 @@ app = Flask(__name__)
 CORS(app)
 
 PATH = 'all excels/'
+NOTES_FILE = PATH + 'application_notes.csv'
+
+
+def _application_notes() -> dict:
+    """Why each application went out, keyed by job id (sidecar CSV).
+
+    Kept apart from the history CSV so an installation from 1.0.0 keeps its old
+    header and still opens here; a missing sidecar simply means no notes yet.
+    """
+    notas = {}
+    try:
+        with open(NOTES_FILE, 'r', encoding='utf-8') as file:
+            for row in csv.DictReader(file):
+                if row.get('Job ID'):
+                    notas[row['Job ID']] = row
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        print(f"Could not read application notes: {e}")
+    return notas
 
 # ---------------------------------------------------------------------------
 # Pages
@@ -33,9 +53,11 @@ def get_applied_jobs():
     '''
     try:
         jobs = []
+        notas = _application_notes()
         with open(PATH + 'all_applied_applications_history.csv', 'r', encoding='utf-8') as file:
             reader = csv.DictReader(file)
             for row in reader:
+                nota = notas.get(row['Job ID'], {})
                 jobs.append({
                     'Job_ID': row['Job ID'],
                     'Title': row['Title'],
@@ -44,7 +66,10 @@ def get_applied_jobs():
                     'HR_Link': row['HR Link'],
                     'Job_Link': row['Job Link'],
                     'External_Job_link': row['External Job link'],
-                    'Date_Applied': row['Date Applied']
+                    'Date_Applied': row['Date Applied'],
+                    'AI_Score': nota.get('AI Score', ''),
+                    'AI_Reason': nota.get('AI Reason', ''),
+                    'Applied_Despite': nota.get('Applied Despite', ''),
                 })
         return jsonify(jobs)
     except FileNotFoundError:

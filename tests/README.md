@@ -80,6 +80,13 @@ path:
   public `div.job-search-card[data-entity-urn]` checked live) and the fallback
 - the Easy Apply / external markers in both languages, and that a card that says
   nothing stays "unknown" instead of being skipped
+- the id from `?currentJobId=<id>` (the new single-page results), and the guard
+  that stops a card container from growing into the whole results list — the bug
+  that made one "Applied" card mark every card as already applied
+- `salary_below_target()`: pesos and "millones" are compared, USD/EUR are left
+  alone, and a range that reaches the target does not warn
+- the dashboard: `/applied-jobs` merges `application_notes.csv` and the table has
+  the "Por qué se aplicó" column
 - `_start_driver()` run with a fake Chrome: a `FileExistsError` triggers one
   cleanup + retry, a second one falls back to the standard driver, and an
   unrelated error falls back immediately

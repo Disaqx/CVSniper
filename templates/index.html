@@ -89,6 +89,8 @@
         .sort-button:hover{ color:var(--accent2); }
         .applied-column{ width:70px; text-align:center; }
         .tick{ color:var(--ok); font-weight:700; }
+        .why-column{ max-width:360px; font-size:12px; line-height:1.35; color:var(--dim); }
+        .why-column .salary{ color:#f0b429; }
 
         /* ---- Overlay ---- */
 
@@ -144,6 +146,7 @@
                             <th>Job Title</th>
                             <th>Company</th>
                             <th>HR Contact</th>
+                            <th>Por qué se aplicó</th>
                             <th>
                                 External Link
                                 <button class="sort-button" onclick="sortByExternalLink()">↕️</button>
@@ -193,6 +196,21 @@
                 hrCell.textContent = 'N/A';
             }
             row.appendChild(hrCell);
+
+            // Why the application went out even though something did not match
+            // (a salary below the target, an AI concern): "se aplicó igual".
+            const whyCell = document.createElement('td');
+            whyCell.className = 'why-column';
+            const score = job.AI_Score ? `${job.AI_Score}/100` : '';
+            const why = job.Applied_Despite || job.AI_Reason || '';
+            if (score || why) {
+                whyCell.textContent = (score ? score + ' · ' : '') + why;
+                whyCell.title = why;
+                if (/salario|salary/i.test(why)) whyCell.classList.add('salary');
+            } else {
+                whyCell.textContent = '—';
+            }
+            row.appendChild(whyCell);
 
             const extCell = document.createElement('td');
             const appliedCell = document.createElement('td');

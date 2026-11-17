@@ -3,6 +3,7 @@
 ```
 py -3 tests/test_filtros.py
 py -3 tests/test_modo.py
+py -3 tests/test_busqueda.py
 ```
 
 No need for pytest, and no need to be in the project folder — they locate it
@@ -64,6 +65,29 @@ answers:
   panel and pushed STOP off the edge
 - agreement questions: *"¿Está de acuerdo con ocupar el rol?"* must answer Yes.
   Answering No there is an instant rejection, and it is what the bot was doing.
+
+`test_busqueda.py` — LinkedIn's new results page, Chrome startup and the resume
+path:
+
+- the search URL builder (location, `geoId`, `f_LF=f_AL`, `f_WT=2`, `f_JT`) and
+  the `f_AL=true` retry alias
+- `navigation_report()` against the exact final URL from the user's log: the new
+  `/jobs/search-results/` page, the filters it dropped, the authwall, the case
+  where LinkedIn adds Easy Apply back, and `f_AL=true` counting as the filter
+- job ids from every hook seen in the wild: `data-occludable-job-id`,
+  `data-job-id`, `urn:li:jobPosting:<id>` and `/jobs/view/<slug>-<id>`
+- the card-layout table: priority order, the real selectors (including the
+  public `div.job-search-card[data-entity-urn]` checked live) and the fallback
+- the Easy Apply / external markers in both languages, and that a card that says
+  nothing stays "unknown" instead of being skipped
+- `_start_driver()` run with a fake Chrome: a `FileExistsError` triggers one
+  cleanup + retry, a second one falls back to the standard driver, and an
+  unrelated error falls back immediately
+- `_clear_uc_cache()` deleting the stale exe and `undetected/` folder, and
+  `_with_timeout()` raising a TimeoutError that names the step
+- `timed_step`'s heartbeat: it says what is taking too long while it is stuck
+- the resume message: absolute vs relative path, similar PDFs suggested from the
+  same folder, and the settings path where it is fixed
 
 ## Adding a case
 

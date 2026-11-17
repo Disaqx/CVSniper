@@ -34,7 +34,6 @@ import re
 import time
 import shutil
 import pyautogui
-from urllib.parse import quote
 
 # ── Auto-copy config templates if personal config files are missing ──────────
 _CONFIG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config")
@@ -66,7 +65,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support.select import Select
 from selenium.webdriver.remote.webelement import WebElement
-from selenium.common.exceptions import NoSuchElementException, ElementClickInterceptedException, NoSuchWindowException, ElementNotInteractableException, WebDriverException
+from selenium.common.exceptions import NoSuchElementException, ElementClickInterceptedException, NoSuchWindowException, ElementNotInteractableException, WebDriverException, TimeoutException
 
 from config.personals import *
 from config.questions import *
@@ -116,9 +115,12 @@ from modules.ai.qa_database import save_to_qa_database
 from modules.linkedin_login import is_logged_in_LN, login_LN
 from modules.job_search import (
     re_experience, is_job_relevant, is_title_blacklisted,
-    requires_ineligible_residency, set_search_location,
+    requires_ineligible_residency,
     apply_filters, ensure_easy_apply_state, get_page_info, get_job_main_details, check_blacklist,
-    extract_years_of_experience, get_job_description
+    extract_years_of_experience, get_job_description,
+    build_search_url, navigation_report, add_legacy_easy_apply,
+    log_navigation_report, find_job_cards, dump_search_layout, card_apply_marker,
+    go_to_next_page,
 )
 from modules.easy_apply import (
     CareerOpsActivatedException, upload_resume, resolve_value_for_category,
@@ -468,56 +470,78 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str, remote_o
         _donde = f"{location} (Remote)" if remote_only else location
         status_details = f"'{searchTerm}' in '{_donde}' ({len(top_manual_jobs)}/5 matches)" if is_career_ops_mode() else f"'{searchTerm}' in '{_donde}'"
         ui_update_status(status_prefix, status_details)
-        search_url = "https://www.linkedin.com/jobs/search/?keywords=" + quote(searchTerm)
-        if location and location.strip():
-            search_url += "&location=" + quote(location.strip())
-            if geo_id:
-                search_url += "&geoId=" + quote(geo_id)
-        # Easy Apply, set in the URL. apply_filters() also ticks the toggle, but
-        # it finds it by its translated label and silently gives up when the
-        # label does not match — which is how a run ends up walking external
-        # jobs it was never meant to see.
+        # The URL builder lives in job_search so the remote-sweep test and the
+        # bot use the same code. Easy Apply is set in the URL because
+        # apply_filters() also ticks the toggle, but it finds it by its
+        # translated label and silently gives up when the label does not match.
         # The MODE decides, not the config: with external jobs wanted, filtering
         # to Easy Apply would hide the very jobs the mode is for.
         _ea_filtro = bool(easy_apply_only and wants_easy_apply() and not wants_external()
                           and not is_career_ops_mode())
-        if _ea_filtro:
-            search_url += "&f_LF=f_AL"
-        # f_WT is LinkedIn's workplace-type filter: 1 on-site, 2 remote, 3 hybrid.
-        # Setting it in the URL is language-independent, unlike clicking the
-        # checkbox by its label.
-        if remote_only:
-            search_url += "&f_WT=2"
-            # f_JT is the job type. LinkedIn has no freelance filter; "C"
-            # (Contract) is the nearest equivalent.
-            if remote_job_types:
-                search_url += "&f_JT=" + quote(",".join(remote_job_types))
+        search_url = build_search_url(
+            searchTerm, location=location, geo_id=geo_id,
+            easy_apply=_ea_filtro, remote_only=remote_only, job_types=remote_job_types,
+        )
         print_lg("\n________________________________________________________________________________________________________________________\n")
         print_lg(f'\n>>>> Now searching for "{searchTerm}" in "{_donde}" <<<<\n')
 
         # Navigate directly to the search URL (Portmaster firewall disabled)
         page_loaded = False
+        report: dict = {}
         print_lg(f"Navigating directly to search URL...")
         try:
             driver.get(search_url)
             buffer(5)
-            
+
             current_url = driver.current_url
             print_lg(f"After navigation - URL: {current_url}")
-            
-            if "search" in current_url.lower() and "keyword" in current_url.lower():
-                page_loaded = True
+            report = navigation_report(search_url, current_url)
+
+            # LinkedIn's new results page drops f_LF/f_AL. `f_AL=true` is the
+            # pre-2024 alias and is the one URL shape that was seen to keep the
+            # classic page (live check, anonymous session, 2026-11-16), so it
+            # gets exactly one retry before falling back to card-by-card checks.
+            if report["ok"] and _ea_filtro and not report["easy_apply_kept"]:
+                retry_url = add_legacy_easy_apply(search_url)
+                print_lg(f"Retrying once with the legacy Easy Apply parameter: {retry_url}")
+                driver.get(retry_url)
+                buffer(5)
+                current_url = driver.current_url
+                print_lg(f"After retry - URL: {current_url}")
+                reintento = navigation_report(retry_url, current_url)
+                if reintento["ok"]:
+                    report = reintento
+
+            log_navigation_report(report, current_url)
+            page_loaded = bool(report["ok"])
+            if page_loaded:
                 print_lg("Search navigation worked normally!")
-            else:
-                print_lg("Direct navigation failed. URL did not change to search results.")
-                
+
         except Exception as e:
             print_lg(f"Navigation failed: {e}")
             page_loaded = False
-        
+
         if not page_loaded:
             print_lg(f"SKIPPING search term '{searchTerm}' - navigation failed.")
             continue
+
+        # What survived the redirect decides how the cards are filtered:
+        #  * Easy Apply in the URL  -> LinkedIn already did it.
+        #  * Easy Apply dropped    -> read each card's label before opening it.
+        _ea_en_url = bool(report.get("easy_apply_kept"))
+        _ea_por_tarjeta = bool(_ea_filtro and not _ea_en_url)
+        _filtros_perdidos = set(report.get("dropped") or [])
+        if _ea_por_tarjeta:
+            print_lg(
+                "Easy Apply is not in the results URL: each card will be checked for "
+                "the Easy Apply / Solicitud sencilla label before it is opened."
+            )
+        if remote_only and "f_WT" in _filtros_perdidos:
+            print_lg(
+                "WARNING: LinkedIn quitó el filtro remoto (f_WT=2). This pass may show "
+                "on-site listings; they are not skipped automatically because the card "
+                "does not always say the work style."
+            )
 
         pause_after_filters = apply_filters(location, sort_by, date_posted, pause_after_filters,
                                             remote_only, easy_apply_filter=_ea_filtro)
@@ -528,23 +552,37 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str, remote_o
         try:
             while current_count < switch_number:
                 ui_pause_check()
-                # Wait until job listings are loaded
-                wait.until(EC.presence_of_all_elements_located((By.XPATH, "//li[@data-occludable-job-id]")))
+                # Whichever card design LinkedIn is serving today (the old
+                # li[data-occludable-job-id] or the new results page), it is
+                # detected in one place: job_search.JOB_CARD_LAYOUTS.
+                job_listings = find_job_cards(driver)
+                if not job_listings:
+                    print_lg("No job cards found. Saving a map of the page for the next fix.")
+                    try:
+                        dump_search_layout(searchTerm)
+                    except Exception as mapa_error:
+                        print_lg(f"Could not save the page map: {mapa_error}")
+                    raise TimeoutException("no job cards found with any known layout")
 
                 # LinkedIn puts the Easy Apply filter back by itself on some
                 # navigations. Checked on every page, not just once after
                 # apply_filters(), because that drift is what made "external
                 # only" quietly turn into "Easy Apply only" halfway through.
                 if ensure_easy_apply_state(_ea_filtro):
-                    wait.until(EC.presence_of_all_elements_located((By.XPATH, "//li[@data-occludable-job-id]")))
+                    job_listings = find_job_cards(driver)
+                    if not job_listings:
+                        print_lg("No job cards found after reloading the results. Saving a map of the page.")
+                        try:
+                            dump_search_layout(searchTerm)
+                        except Exception as mapa_error:
+                            print_lg(f"Could not save the page map: {mapa_error}")
+                        raise TimeoutException("no job cards after reloading with the Easy Apply filter")
 
                 pagination_element, current_page = get_page_info()
 
                 # Find all job listings in current page
                 buffer(3)
-                job_listings = driver.find_elements(By.XPATH, "//li[@data-occludable-job-id]")  
 
-            
                 for job in job_listings:
                     ui_pause_check()
                     if keep_screen_awake: pyautogui.press('shiftright')
@@ -552,6 +590,16 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str, remote_o
                     title, company = "Unknown", "Unknown"
                     try:
                         print_lg("\n-@-\n")
+
+                        # With the Easy Apply filter gone from the URL, the card
+                        # label is the only cheap way to avoid opening an
+                        # external listing. A card that says nothing still goes
+                        # through: the old design never printed the badge.
+                        if _ea_por_tarjeta and card_apply_marker(job) == "external":
+                            print_lg("Skipping a listing the card marks as external apply "
+                                     "(the Easy Apply URL filter was dropped).")
+                            skip_count += 1
+                            continue
 
                         job_id,title,company,work_location,work_style,skip = get_job_main_details(job, blacklisted_companies, rejected_jobs)
 
@@ -987,15 +1035,9 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str, remote_o
 
 
 
-                # Switching to next page
-                if pagination_element == None:
-                    print_lg("Couldn't find pagination element, probably at the end page of results!")
-                    break
-                try:
-                    pagination_element.find_element(By.XPATH, f"//button[@aria-label='Page {current_page+1}']").click()
-                    print_lg(f"\n>-> Now on Page {current_page+1} \n")
-                except NoSuchElementException:
-                    print_lg(f"\n>-> Didn't find Page {current_page+1}. Probably at the end page of results!\n")
+                # Switching to next page: numbered pages on the old design, a
+                # "Next" control or endless scroll on the new one.
+                if not go_to_next_page(pagination_element, current_page):
                     break
 
         except (NoSuchWindowException, WebDriverException) as e:

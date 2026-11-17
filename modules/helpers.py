@@ -11,6 +11,8 @@ import os
 import platform
 import re
 import tempfile
+import threading
+import time
 import traceback
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -100,6 +102,56 @@ def print_lg(
     except Exception:
         # Never let logging take the bot down
         pass
+
+
+class _TimedStep:
+    """Context manager behind `timed_step()`."""
+
+    def __init__(self, step: str, slow_after: float, heartbeat: float) -> None:
+        self.step = step
+        self.slow_after = slow_after
+        self.heartbeat = heartbeat
+        self.started = 0.0
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def _watch(self) -> None:
+        while not self._stop.wait(self.heartbeat):
+            print_lg(
+                f"WARNING: still waiting on '{self.step}' after "
+                f"{time.monotonic() - self.started:.0f}s"
+            )
+
+    def __enter__(self) -> "_TimedStep":
+        self.started = time.monotonic()
+        print_lg(f"{self.step}...")
+        if self.heartbeat and self.heartbeat > 0:
+            self._thread = threading.Thread(target=self._watch, daemon=True)
+            self._thread.start()
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=1)
+        elapsed = time.monotonic() - self.started
+        if exc_type is not None:
+            print_lg(f"{self.step} failed after {elapsed:.1f}s: {exc_type.__name__}: {exc}")
+        elif elapsed >= self.slow_after:
+            print_lg(f"{self.step} finished in {elapsed:.1f}s")
+        return False
+
+
+def timed_step(step: str, slow_after: float = 3.0, heartbeat: float = 30.0) -> _TimedStep:
+    """Log a step before it starts and while it is taking too long.
+
+    A Selenium/ChromeDriver call can block for minutes without raising: the two
+    silent gaps in the 2026-10 logs ("Starting Chrome..." for ten minutes,
+    "Launching..." with nothing after it) happened inside calls that never
+    returned. When that happens again, the heartbeat line names the step that
+    is stuck, which is the only thing a log written afterwards can never tell.
+    """
+    return _TimedStep(step, slow_after, heartbeat)
 
 
 def critical_error_log(context: str, error: Exception | str) -> None:

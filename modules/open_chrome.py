@@ -26,6 +26,7 @@ from modules.helpers import (
     find_default_profile_directory,
     get_default_temp_profile,
     print_lg,
+    timed_step,
 )
 
 try:
@@ -149,7 +150,7 @@ def _get_chrome_major_version() -> int | None:
     elif system == "Darwin":
         try:
             cmd = ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "--version"]
-            out = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL)
+            out = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL, timeout=10)
             m = re.search(r"(\d+)\.", out)
             if m:
                 return int(m.group(1))
@@ -158,7 +159,8 @@ def _get_chrome_major_version() -> int | None:
     else:
         for binary in ("google-chrome", "google-chrome-stable", "chromium"):
             try:
-                out = subprocess.check_output([binary, "--version"], text=True, stderr=subprocess.DEVNULL)
+                out = subprocess.check_output([binary, "--version"], text=True,
+                                              stderr=subprocess.DEVNULL, timeout=10)
                 m = re.search(r"(\d+)\.", out)
                 if m:
                     return int(m.group(1))
@@ -234,7 +236,10 @@ def _cleanup_residual_chromedriver():
     if platform.system() == "Windows":
         try:
             for exe in ("chromedriver.exe", "undetected_chromedriver.exe"):
-                subprocess.run(["taskkill", "/F", "/IM", exe], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                # The timeout matters: taskkill itself has hung before, and
+                # this runs while the run is already in trouble.
+                subprocess.run(["taskkill", "/F", "/IM", exe], stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL, timeout=15)
             time.sleep(1)
         except Exception:
             pass
@@ -321,9 +326,16 @@ def _close_bot_profile_chrome():
 # on the debugging port it waits forever and the UI sits on "Starting Chrome
 # in stealth mode...". Past this, give up and use the standard driver.
 STEALTH_TIMEOUT = 90
+# Selenium's own driver download/launch has no timeout either: on 2026-07-22
+# this took 10 minutes between "Starting Chrome..." and the next log line.
+FALLBACK_TIMEOUT = 120
+# Once Chrome is up, a page that never finishes loading or a script that never
+# returns must not freeze the bot for the rest of the afternoon.
+PAGE_LOAD_TIMEOUT = 120
+SCRIPT_TIMEOUT = 60
 
 
-def _with_timeout(fn, seconds: int):
+def _with_timeout(fn, seconds: int, what: str = "operation"):
     """Run `fn` in a worker thread; raise TimeoutError if it does not return."""
     import threading
 
@@ -342,10 +354,22 @@ def _with_timeout(fn, seconds: int):
         # Kill what it launched so the late thread fails instead of leaving a
         # second Chrome holding the profile the fallback needs.
         _cleanup_residual_chromedriver()
-        raise TimeoutError(f"stealth start did not finish in {seconds}s")
+        raise TimeoutError(f"{what} did not finish in {seconds}s")
     if "error" in result:
         raise result["error"]
     return result["value"]
+
+
+def _configure_timeouts(drv) -> None:
+    """Cap the navigation and script-command waits on a live driver."""
+    for setter, valor, nombre in (
+        ("set_page_load_timeout", PAGE_LOAD_TIMEOUT, "page load"),
+        ("set_script_timeout", SCRIPT_TIMEOUT, "script"),
+    ):
+        try:
+            getattr(drv, setter)(valor)
+        except Exception as e:
+            print_lg(f"WARNING: could not set the {nombre} timeout to {valor}s: {e}")
 
 
 def _binary_major_version(path: str) -> int | None:
@@ -375,7 +399,17 @@ def _stealth_driver():
     import undetected_chromedriver as uc
 
     print_lg("Starting Chrome in stealth mode...")
-    chrome_bin = _find_chrome_binary() or _selenium_manager_chrome()
+    chrome_bin = None
+    with timed_step("Locating the Chrome binary", slow_after=3, heartbeat=20):
+        chrome_bin = _find_chrome_binary()
+        if not chrome_bin:
+            # Selenium Manager can download a browser, so it gets a deadline.
+            try:
+                chrome_bin = _with_timeout(_selenium_manager_chrome, 45,
+                                           "Selenium Manager locating Chrome")
+            except TimeoutError:
+                chrome_bin = None
+                print_lg("WARNING: Selenium Manager did not answer in 45s.")
     if not chrome_bin:
         # uc would crash with "Binary Location Must be a String"
         raise RuntimeError(
@@ -393,7 +427,11 @@ def _stealth_driver():
     }
     if version_main:
         uc_kwargs["version_main"] = version_main
-    return uc.Chrome(**uc_kwargs)
+    # The heartbeat is the point: `_with_timeout` gives up after 90s, but the
+    # 2026-07 run logged "Launching..." and then nothing at all. If that
+    # happens again, these lines say how long it has been stuck and on what.
+    with timed_step("Launching the stealth driver", slow_after=10, heartbeat=30):
+        return uc.Chrome(**uc_kwargs)
 
 
 def _start_driver():
@@ -410,21 +448,25 @@ def _start_driver():
     from an exe still in use) shows up, the stale files are deleted and stealth
     mode is retried exactly once before falling back.
     """
-    _close_bot_profile_chrome()
+    with timed_step("Closing leftover Chrome windows from a previous run", slow_after=4, heartbeat=30):
+        _close_bot_profile_chrome()
+
     if stealth_mode:
         for intento in (1, 2):
             try:
-                return _with_timeout(_stealth_driver, STEALTH_TIMEOUT)
+                return _with_timeout(_stealth_driver, STEALTH_TIMEOUT,
+                                     what=f"stealth start (attempt {intento})")
             except (FileExistsError, PermissionError) as e:
                 print_lg(
                     "WARNING: undetected_chromedriver could not replace its driver "
                     f"files ({e.__class__.__name__}: {e})."
                 )
-                try:
-                    _cleanup_residual_chromedriver()
-                except Exception as limpio_error:
-                    print_lg(f"WARNING: could not stop the old chromedriver: {limpio_error}")
-                _clear_uc_cache()
+                with timed_step("Cleaning up the stale stealth driver", slow_after=4, heartbeat=30):
+                    try:
+                        _cleanup_residual_chromedriver()
+                    except Exception as limpio_error:
+                        print_lg(f"WARNING: could not stop the old chromedriver: {limpio_error}")
+                    _clear_uc_cache()
                 if intento == 2:
                     critical_error_log(
                         "Stealth mode could not start (undetected_chromedriver) even after "
@@ -445,7 +487,23 @@ def _start_driver():
                 break
 
     print_lg("Starting Chrome...")
-    return webdriver.Chrome(options=_build_options(ChromeOptions()))
+
+    def _fallback_driver():
+        with timed_step("Launching the standard Chrome driver", slow_after=10, heartbeat=30):
+            return webdriver.Chrome(options=_build_options(ChromeOptions()))
+
+    try:
+        return _with_timeout(
+            _fallback_driver,
+            FALLBACK_TIMEOUT,
+            what=f"the standard Chrome driver (after {FALLBACK_TIMEOUT}s it is given up on)",
+        )
+    except TimeoutError:
+        raise TimeoutError(
+            f"The standard Chrome driver did not start within {FALLBACK_TIMEOUT}s. "
+            "Chrome may be busy with another window on this profile: close every "
+            "Chrome window, or set safe_mode = True in config/settings.py, and run again."
+        )
 
 
 try:
@@ -459,6 +517,10 @@ except Exception as e:
     print_lg("  - stealth mode is behind a fresh Chrome release: set")
     print_lg("    stealth_mode = False in config/settings.py")
     sys.exit(1)
+
+# Without these, a page that never finishes loading (or a script that hangs in
+# the renderer) blocks every later Selenium call with no timeout at all.
+_configure_timeouts(driver)
 
 wait = WebDriverWait(driver, WAIT_TIMEOUT)
 actions = ActionChains(driver)

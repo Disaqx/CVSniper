@@ -260,9 +260,15 @@ def probe_apply_button(linkedin_tab: str) -> tuple[str, str | None]:
         except WebDriverException:
             return "none", None
 
-    fin = time.time() + 12
+    # Easy Apply opens in place, so a quick look here avoids paying the whole
+    # external-tab wait on every Easy Apply job (which is most of them).
+    time.sleep(0.5)
+    if easy_apply_modal_open():
+        return "easy_apply", None
+
+    fin = time.time() + 8
     while time.time() < fin:
-        time.sleep(0.5)
+        time.sleep(0.4)
         try:
             nuevas = [h for h in driver.window_handles if h not in tabs_before]
         except WebDriverException:

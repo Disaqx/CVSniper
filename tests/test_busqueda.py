@@ -21,6 +21,9 @@ import unicodedata
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlsplit
 
+from selenium.webdriver.common.by import By
+from selenium.common.exceptions import NoSuchElementException
+
 RAIZ = Path(__file__).resolve().parent.parent
 
 fallos = []
@@ -57,7 +60,7 @@ print("\n1. Construir la URL de búsqueda")
 js = extraer(
     RAIZ / "modules" / "job_search.py",
     {"build_search_url", "add_legacy_easy_apply"},
-    {"_EASY_APPLY_TRUE"},
+    {"_EASY_APPLY_TRUE", "_DATE_POSTED_TO_TPR", "_SORT_BY_TO_URL"},
     {"quote": quote, "print_lg": sin_log},
 )
 build = js["build_search_url"]
@@ -81,6 +84,14 @@ check("barrido remoto: f_WT=2 y f_JT",
             remote_only=True, job_types=["C"]),
       "https://www.linkedin.com/jobs/search/?keywords=Help%20Desk"
       "&location=Worldwide&geoId=92000000&f_WT=2&f_JT=C")
+check("fecha y orden viajan en la URL (para no abrir el panel de filtros)",
+      build("Help Desk", location="Bogotá, Colombia",
+            date_posted="Past week", sort_by="Most recent"),
+      "https://www.linkedin.com/jobs/search/?keywords=Help%20Desk"
+      "&location=Bogot%C3%A1%2C%20Colombia&f_TPR=r604800&sortBy=DD")
+check("'Any time' no añade f_TPR",
+      build("Help Desk", date_posted="Any time", sort_by="Most relevant"),
+      "https://www.linkedin.com/jobs/search/?keywords=Help%20Desk&sortBy=R")
 check("el alias no se duplica",
       legacy(BASE + "&f_AL=true"), BASE + "&f_AL=true")
 check("el alias se añade una vez",
@@ -270,6 +281,55 @@ check("el aviso no se dispara con un año o un id",
 src_job_search = (RAIZ / "modules" / "job_search.py").read_text(encoding="utf-8")
 check("el contenedor se detiene antes de la lista completa",
       "length > 1" in src_job_search and "currentJobId=']" in src_job_search, True)
+
+# =========================================================================
+print("\n6b. La descripción en los diseños nuevos (sin la clase vieja)")
+# =========================================================================
+js_desc = extraer(
+    RAIZ / "modules" / "job_search.py",
+    {"_first_visible_text", "find_job_description_element", "find_company_box"},
+    {"_DESCRIPTION_SELECTORS", "_COMPANY_BOX_SELECTORS"},
+    {"By": By, "print_lg": sin_log},
+)
+
+
+class _NodoTexto:
+    def __init__(self, text):
+        self.text = text
+
+
+class _DriverFalso:
+    def __init__(self, mapa):
+        self.mapa = mapa
+
+    def find_elements(self, by, selector):
+        return self.mapa.get(selector, [])
+
+
+js_desc["driver"] = _DriverFalso({
+    ".jobs-box__html-content": [],                       # el diseño viejo no está
+    ".jobs-description__content": [_NodoTexto("x" * 80)],  # el nuevo sí
+})
+check("encuentra la descripción del diseño nuevo",
+      (js_desc["find_job_description_element"]().text or "")[:1], "x")
+
+js_desc["driver"] = _DriverFalso({
+    ".jobs-box__html-content": [_NodoTexto("corta")],       # un rótulo, no la descripción
+    "[data-testid='job-description']": [_NodoTexto("y" * 90)],
+})
+check("ignora un texto demasiado corto y sigue buscando",
+      (js_desc["find_job_description_element"]().text or "")[:1], "y")
+
+js_desc["driver"] = _DriverFalso({})
+check("sin descripción devuelve None (y el bot sigue, no se cae)",
+      js_desc["find_job_description_element"](), None)
+
+js_desc["driver"] = _DriverFalso({
+    ".jobs-company__box": [],
+    "[data-testid='about-company']": [_NodoTexto("Somos una empresa con 20 años")],
+})
+check("encuentra 'Sobre la empresa' por el selector nuevo",
+      "empresa" in js_desc["find_company_box"]().text, True)
 
 # =========================================================================
 print("\n6. El CV que no está: mensaje y sugerencias")
@@ -672,6 +732,55 @@ try:
     check("la tabla del dashboard tiene la columna", "Por qué se aplicó" in portada, True)
 finally:
     shutil.rmtree(carpeta_dash, ignore_errors=True)
+
+# =========================================================================
+print("\n12. Actualización automática")
+# =========================================================================
+import hashlib  # noqa: E402
+import json  # noqa: E402
+
+upd = extraer(
+    RAIZ / "modules" / "updates.py",
+    {"_pick_installer_asset", "installer_command", "_sha256", "_parts", "is_newer"},
+    {"REPO"},
+    {"re": re, "os": os, "hashlib": hashlib, "print_lg": sin_log,
+     "__version__": "1.1.1"},
+)
+
+ASSETS = [
+    {"name": "CVSniper-Setup-1.2.0.exe",
+     "browser_download_url": "https://github.com/x/CVSniper-Setup-1.2.0.exe",
+     "size": 123, "digest": "sha256:abc"},
+    {"name": "CVSniper-Setup-1.1.9.exe",
+     "browser_download_url": "https://github.com/x/CVSniper-Setup-1.1.9.exe"},
+    {"name": "notas.txt", "browser_download_url": "https://github.com/x/notas.txt"},
+]
+elegido = upd["_pick_installer_asset"](ASSETS, "1.2.0")
+check("elige el instalador de la versión publicada", elegido["name"], "CVSniper-Setup-1.2.0.exe")
+check("y su URL de descarga", elegido["browser_download_url"].endswith("1.2.0.exe"), True)
+check("ignora assets que no son el instalador",
+      upd["_pick_installer_asset"]([{"name": "notas.txt"}], "1.2.0"), None)
+check("si no hay coincidencia exacta, usa el primer setup",
+      upd["_pick_installer_asset"](ASSETS, "9.9.9")["name"], "CVSniper-Setup-1.2.0.exe")
+
+cmd = upd["installer_command"](r"C:\tmp\CVSniper-Setup-1.2.0.exe", r"C:\app\CVSniper.cmd")
+check("instalación silenciosa (sin ventanas ni reinicio)",
+      "/VERYSILENT" in cmd and "/SUPPRESSMSGBOXES" in cmd and "/NORESTART" in cmd, True)
+check("cierra la app para reemplazar archivos",
+      "/CLOSEAPPLICATIONS" in cmd and "/FORCECLOSEAPPLICATIONS" in cmd, True)
+check("vuelve a abrir CVSniper al terminar",
+      'start "" /min' in cmd and "CVSniper.cmd" in cmd, True)
+
+_archivo = Path(tempfile.mkdtemp(prefix="cvsniper-sha-")) / "x.bin"
+try:
+    _archivo.write_bytes(b"cvsniper")
+    check("el SHA-256 coincide con el valor conocido",
+          upd["_sha256"](str(_archivo))[:16], hashlib.sha256(b"cvsniper").hexdigest()[:16])
+finally:
+    shutil.rmtree(_archivo.parent, ignore_errors=True)
+
+check("1.2.0 es más nueva que 1.1.1", upd["is_newer"]("v1.2.0", "1.1.1"), True)
+check("1.1.1 no es más nueva que 1.1.1", upd["is_newer"]("1.1.1", "1.1.1"), False)
 
 # =========================================================================
 print("\n" + "=" * 60)

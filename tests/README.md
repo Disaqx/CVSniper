@@ -85,6 +85,11 @@ path:
   that made one "Applied" card mark every card as already applied
 - `salary_below_target()`: pesos and "millones" are compared, USD/EUR are left
   alone, and a range that reaches the target does not warn
+- the description/company finders against a fake page: they find the new
+  `jobs-description__content` / `data-testid` blocks, skip a too-short text, and
+  return None instead of crashing when nothing matches
+- the updater's pure parts: picking the setup exe from a release, the silent
+  installer command (with the relaunch), SHA-256 and version comparison
 - the dashboard: `/applied-jobs` merges `application_notes.csv` and the table has
   the "Por qué se aplicó" column
 - `_start_driver()` run with a fake Chrome: a `FileExistsError` triggers one

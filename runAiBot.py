@@ -141,11 +141,21 @@ ui_start(driver)
 print("[CVSniper] Checking configuration...")
 ui_enforce_configuration()
 
-# Tell the user when a newer release is out (one quiet request, in the background).
+# Tell the user when a newer release is out, and — on an installed copy —
+# download and apply it in place so updating does not mean uninstalling.
+from modules.version import __version__ as _cvsniper_version
+print_lg(f"[CVSniper] Version {_cvsniper_version}")
 if globals().get("check_for_updates", True):
-    from modules.updates import check_in_background
+    from modules.updates import auto_update
     from modules.bot_ui import ui_notify_update
-    check_in_background(ui_notify_update)
+    try:
+        auto_update(
+            ui_notify_update,
+            status=ui_update_status,
+            shutdown=lambda: driver.quit(),
+        )
+    except Exception as _update_error:
+        print_lg(f"[CVSniper] No se pudo comprobar la actualización: {_update_error}")
 
 # ── Flask dashboard starts in background (opens only when user clicks the button) ──
 from modules.bot_ui import start_flask_dashboard, open_dashboard_in_browser, FLASK_URL
@@ -567,6 +577,7 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str, remote_o
         search_url = build_search_url(
             searchTerm, location=location, geo_id=geo_id,
             easy_apply=_ea_filtro, remote_only=remote_only, job_types=remote_job_types,
+            date_posted=date_posted, sort_by=sort_by,
         )
         print_lg("\n________________________________________________________________________________________________________________________\n")
         print_lg(f'\n>>>> Now searching for "{searchTerm}" in "{_donde}" <<<<\n')
@@ -611,13 +622,13 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str, remote_o
             print_lg(f"SKIPPING search term '{searchTerm}' - navigation failed.")
             continue
 
-        # What survived the redirect decides how the cards are filtered:
-        #  * Easy Apply in the URL  -> LinkedIn already did it.
-        #  * Easy Apply dropped    -> read each card's label before opening it.
+        # In Easy Apply mode the card label is always worth a look: it costs one
+        # text read and it keeps the bot out of the external listings LinkedIn
+        # sneaks in when the URL filter is ignored.
         _ea_en_url = bool(report.get("easy_apply_kept"))
-        _ea_por_tarjeta = bool(_ea_filtro and not _ea_en_url)
+        _ea_por_tarjeta = bool(_ea_filtro)
         _filtros_perdidos = set(report.get("dropped") or [])
-        if _ea_por_tarjeta:
+        if _ea_filtro and not _ea_en_url:
             print_lg(
                 "Easy Apply is not in the results URL: each card will be checked for "
                 "the Easy Apply / Solicitud sencilla label before it is opened."
@@ -669,7 +680,7 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str, remote_o
                 pagination_element, current_page = get_page_info()
 
                 # Find all job listings in current page
-                buffer(3)
+                buffer(1.5)
 
                 for job in job_listings:
                     ui_pause_check()

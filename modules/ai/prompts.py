@@ -69,6 +69,12 @@ JOB POSTING
 -----------
 {}
 
+The posting may be written in Spanish, English, Portuguese or any other
+language. Read it in its original language: do not penalise it for not being in
+English, and do not treat a translated job title or a local spelling of a tool
+as a different profession. "Solicitud sencilla" is Easy Apply; "remoto" is
+remote; "medio tiempo" is part-time.
+
 Your job is to spot the few postings that are a waste of an application — not to
 find reasons to say no. An application costs the candidate almost nothing, and
 postings routinely list more than the employer settles for.

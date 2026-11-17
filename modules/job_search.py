@@ -361,13 +361,19 @@ def search_design(url: str) -> str:
 
 def build_search_url(search_term: str, location: str | None = None, geo_id: str | None = None,
                      easy_apply: bool = False, remote_only: bool = False,
-                     job_types=()) -> str:
+                     job_types=(), date_posted: str | None = None,
+                     sort_by: str | None = None) -> str:
     """The results URL the bot asks LinkedIn for.
 
     Stays on the classic `/jobs/search/` path on purpose: it is the design the
     bot knows, and in a live check (anonymous session, 2026-11-16) LinkedIn kept
     every parameter there. The new page is chosen by LinkedIn, not by us, which
     is why `navigation_report()` exists.
+
+    Date and order go in the URL (`f_TPR`, `sortBy`) because that is what lets
+    `apply_filters()` skip the whole filter panel when there is nothing else to
+    tick: driving that modal in a Spanish UI is slow and was where the bot
+    clicked things it should not have.
     """
     url = "https://www.linkedin.com/jobs/search/?keywords=" + quote(str(search_term))
     if location and str(location).strip():
@@ -388,7 +394,27 @@ def build_search_url(search_term: str, location: str | None = None, geo_id: str 
         # (Contract) is the nearest equivalent.
         if job_types:
             url += "&f_JT=" + quote(",".join(job_types))
+    # f_TPR is the posting age; sortBy=DD is "most recent", R "most relevant".
+    tpr = _DATE_POSTED_TO_TPR.get(str(date_posted or "").strip())
+    if tpr:
+        url += "&f_TPR=" + tpr
+    orden = _SORT_BY_TO_URL.get(str(sort_by or "").strip())
+    if orden:
+        url += "&sortBy=" + orden
     return url
+
+
+# LinkedIn's query-string values for the two settings the bot used to apply by
+# clicking the filter panel. "Any time" has no parameter (it is the default).
+_DATE_POSTED_TO_TPR = {
+    "Past 24 hours": "r86400",
+    "Past week": "r604800",
+    "Past month": "r2592000",
+}
+_SORT_BY_TO_URL = {
+    "Most recent": "DD",
+    "Most relevant": "R",
+}
 
 
 def add_legacy_easy_apply(url: str) -> str:
@@ -656,7 +682,7 @@ def _dedupe_cards(cards: list[WebElement]) -> list[WebElement]:
     return unicos
 
 
-def find_job_cards(driver, timeout: float = 15, log: bool = True) -> list[WebElement]:
+def find_job_cards(driver, timeout: float = 10, log: bool = True) -> list[WebElement]:
     """Return the job cards on the results page, whichever layout LinkedIn used.
 
     Every known layout is tried on each poll and the one that finds the MOST
@@ -1023,6 +1049,24 @@ def apply_filters(location_str: str, sort_by: str, date_posted: str, pause_after
     with timed_step("Reading the search location", slow_after=5, heartbeat=30):
         set_search_location(location_str)
 
+    # Everything the user configured may already be in the URL (date, order,
+    # Easy Apply, workplace type). Opening LinkedIn's filter panel just to tick
+    # one switch is slow, and in a Spanish UI the labels often do not match —
+    # which is how the bot ended up clicking around the panel. If there is
+    # nothing else to tick, skip it entirely.
+    _panel_needed = bool(
+        experience_level or companies or job_type or location or industry
+        or job_function or job_titles or benefits or commitments or salary
+        or (on_site and not remote_only)
+        or under_10_applicants or in_your_network or fair_chance_employer
+    )
+    if not _panel_needed:
+        print_lg(
+            "No extra filters configured: date, order and Easy Apply are already "
+            "in the URL. Skipping the filter panel."
+        )
+        return pause_after_filters
+
     try:
         recommended_wait = 1 if click_gap < 1 else 0
 
@@ -1154,7 +1198,9 @@ def get_page_info() -> tuple[WebElement | None, int | None]:
             "artdeco-pagination",
             "artdeco-pagination__pages",
         ])
-        scroll_to_view(driver, pagination_element)
+        # No scroll_to_view here: the old code jumped to the bottom of the page
+        # just to read the page number, which looked like the bot "going to the
+        # bottom and doing nothing". Clicking the next page scrolls on its own.
         current_page = int(pagination_element.find_element(By.XPATH, "//button[contains(@class, 'active')]").text)
         return pagination_element, current_page
     except Exception:
@@ -1427,9 +1473,70 @@ def get_job_main_details(job: WebElement, blacklisted_companies: set, rejected_j
 
 
 # Function to check for Blacklisted words in About Company
+# Selectors for the two blocks the bot reads on the job details pane. The old
+# `jobs-company__box` / `jobs-box__html-content` classes are not guaranteed on
+# the new page; when the description selector fails, the AI pre-screening is
+# skipped entirely ("no analiza nada") and every offer looks identical.
+_COMPANY_BOX_SELECTORS = (
+    ".jobs-company__box",
+    ".jobs-company__company-description",
+    "[data-testid='about-company']",
+    "section[class*='company']",
+)
+_DESCRIPTION_SELECTORS = (
+    ".jobs-box__html-content",
+    ".jobs-description__content",
+    ".jobs-description-content__text",
+    "[data-testid='job-description']",
+    "#job-details",
+    ".description__text",
+    "article[class*='description']",
+    "div[class*='description']",
+)
+
+
+def _first_visible_text(selectors, minimum: int = 1):
+    """First element among `selectors` whose text is at least `minimum` chars.
+
+    Uses `find_elements` (immediate) instead of a 5-second `WebDriverWait` per
+    selector: on a page without these classes the old code paid 5 s per job
+    before giving up, which is most of why a page of 25 offers took minutes.
+    """
+    for selector in selectors:
+        try:
+            elementos = driver.find_elements(By.CSS_SELECTOR, selector)
+        except Exception:
+            continue
+        for elemento in elementos:
+            try:
+                texto = (elemento.text or "").strip()
+            except Exception:
+                continue
+            if len(texto) >= minimum:
+                return elemento
+    return None
+
+
+def find_company_box():
+    return _first_visible_text(_COMPANY_BOX_SELECTORS, minimum=20)
+
+
+def find_job_description_element():
+    return _first_visible_text(_DESCRIPTION_SELECTORS, minimum=40)
+
+
 def check_blacklist(rejected_jobs: set, job_id: str, company: str, blacklisted_companies: set) -> tuple[set, set, WebElement] | ValueError:
-    jobs_top_card = try_find_by_classes(driver, ["job-details-jobs-unified-top-card__primary-description-container","job-details-jobs-unified-top-card__primary-description","jobs-unified-top-card__primary-description","jobs-details__main-content"])
-    about_company_org = find_by_class(driver, "jobs-company__box")
+    jobs_top_card = None
+    try:
+        jobs_top_card = try_find_by_classes(driver, ["job-details-jobs-unified-top-card__primary-description-container","job-details-jobs-unified-top-card__primary-description","jobs-unified-top-card__primary-description","jobs-details__main-content"])
+    except Exception:
+        pass
+    about_company_org = find_company_box()
+    if about_company_org is None:
+        # No "About the company" block on this design: there is nothing to
+        # check, and waiting five seconds per job for it is what made a page
+        # take minutes.
+        return rejected_jobs, blacklisted_companies, jobs_top_card
     scroll_to_view(driver, about_company_org)
     about_company_org = about_company_org.text
     about_company = about_company_org.lower()
@@ -1445,8 +1552,9 @@ def check_blacklist(rejected_jobs: set, job_id: str, company: str, blacklisted_c
                 rejected_jobs.add(job_id)
                 blacklisted_companies.add(company)
                 raise ValueError(f'\n"{about_company_org}"\n\nContains "{word}".')
-    buffer(click_gap)
-    scroll_to_view(driver, jobs_top_card)
+    if jobs_top_card is not None:
+        buffer(click_gap)
+        scroll_to_view(driver, jobs_top_card)
     return rejected_jobs, blacklisted_companies, jobs_top_card
 
 
@@ -1524,7 +1632,10 @@ def get_job_description(
         skip = False
         skipReason = None
         skipMessage = None
-        jobDescription = find_by_class(driver, "jobs-box__html-content").text
+        _descripcion = find_job_description_element()
+        jobDescription = (_descripcion.text or "").strip() if _descripcion is not None else "Unknown"
+        if not jobDescription:
+            jobDescription = "Unknown"
         jobDescriptionLow = jobDescription.lower()
         for word in bad_words:
             if _contains_term(jobDescriptionLow, word):

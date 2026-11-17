@@ -6,6 +6,9 @@ ui_language = "es"
 # Avisar al arrancar si hay una version nueva de CVSniper / Tell me at startup when a new version is out
 check_for_updates = True
 
+# Descargar e instalar sola la version nueva (sin desinstalar) / Download and apply the new version automatically
+auto_update = True
+
 # >>>>>>>>>>> LinkedIn Settings <<<<<<<<<<<
 
 # Que postulaciones atiende el bot / Which applications the bot handles:

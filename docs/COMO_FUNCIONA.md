@@ -52,14 +52,25 @@ En la versión instalada (instalador de Windows), todo vive en
    relativa («relativa a la carpeta del proyecto»), busca PDFs parecidos en esa
    carpeta y dice dónde cambiarla (Ajustes → pestaña «Respuestas» → «Ruta del
    CV (PDF)»). Si hay problemas, los lista y termina.
-4. **Login** (`linkedin_login.py`): si no encuentra el enlace «Sign in», asume
+4. **Actualización automática** (`updates.auto_update`, solo en la copia
+   instalada): consulta GitHub, y si hay una versión nueva descarga el
+   `CVSniper-Setup-X.Y.Z.exe`, verifica su SHA-256 cuando GitHub lo publica, lo
+   ejecuta en silencio (`/VERYSILENT`, Inno Setup actualiza encima sin
+   desinstalar) y reinicia CVSniper. Si algo falla, avisa con el diálogo de
+   siempre y el bot sigue. Se apaga con `auto_update = False` en
+   `config/settings.py`.
+5. **Login** (`linkedin_login.py`): si no encuentra el enlace «Sign in», asume
    que ya hay sesión.
-5. **Cliente de IA**: Groq por defecto (`config/secrets.py`).
-6. **Bucle de búsqueda** (`runAiBot.apply_to_jobs`, línea ~430). Por cada
+6. **Cliente de IA**: Groq por defecto (`config/secrets.py`).
+7. **Bucle de búsqueda** (`runAiBot.apply_to_jobs`, línea ~430). Por cada
    término de búsqueda:
    - `job_search.build_search_url()` construye
      `https://www.linkedin.com/jobs/search/?keywords=…` y añade `&location=`,
-     `&geoId=`, `&f_LF=f_AL` (solo Easy Apply), `&f_WT=2` (remoto) y `&f_JT=`.
+     `&geoId=`, `&f_LF=f_AL` (solo Easy Apply), `&f_WT=2` (remoto), `&f_JT=`,
+     `&f_TPR=` (fecha) y `&sortBy=` (orden). Con eso, si no hay más filtros
+     configurados, `apply_filters()` **no abre el panel de filtros**: era lo más
+     lento y donde el bot podía acabar clicando avisos de LinkedIn. Si hay
+     filtros de verdad (empresas, experiencia, modalidad…), sí lo abre.
    - `driver.get(url)` y `job_search.navigation_report()` compara lo pedido con
      la URL final: detecta el muro de login, la página nueva
      `/jobs/search-results/` y **cada filtro que LinkedIn se llevó**, con una
@@ -96,7 +107,11 @@ En la versión instalada (instalador de Windows), todo vive en
      etiqueta («Easy Apply», «Solicitud sencilla», «Apply»), porque la página
      nueva no siempre conserva `jobs-apply-button`. El modal de Easy Apply se
      reconoce por su clase o por ser un diálogo con ese texto, y se excluye el
-     panel de filtros (que también dice «Easy Apply»).
+     panel de filtros (que también dice «Easy Apply»). La descripción y «Sobre
+     la empresa» se buscan con varios selectores (`.jobs-box__html-content`,
+     `.jobs-description__content`, `[data-testid='job-description']`…); si no
+     aparecen, se sigue sin esperar 5 s por cada una. Sin descripción la IA no
+     puede analizar la oferta, y eso era parte de la lentitud.
    - Cada descarte se cuenta por motivo (`note_skip`) y al final de cada
      término el log imprime **«Resumen de descartes …»** con cuántas ofertas se
      cayeron y por qué. Al arrancar se imprimen los **filtros activos**
@@ -107,14 +122,14 @@ En la versión instalada (instalador de Windows), todo vive en
      ese término.
    - Si no hay tarjetas → `TimeoutException` → «No (more) job listings for …»,
      y pasa al siguiente término.
-7. **Barrido remoto** (`remote sweep`): repite los términos con las ubicaciones
+8. **Barrido remoto** (`remote sweep`): repite los términos con las ubicaciones
    extra (Worldwide, Latin America, United States, Spain…).
-8. **Dashboard** (`app.py`): además del historial, lee
+9. **Dashboard** (`app.py`): además del historial, lee
    `all excels/application_notes.csv` y muestra una columna **«Por qué se
    aplicó»**: la puntuación y el motivo de la IA y, si se detectó un salario
    por debajo del objetivo, el aviso «Salario publicado ≈ $X, por debajo de tu
    objetivo; se aplicó igual». Es informativo: no cambia a qué se postula.
-9. **Resumen** al final: postuladas, enlaces externos, fallidas y saltadas.
+10. **Resumen** al final: postuladas, enlaces externos, fallidas y saltadas.
    El historial se guarda en `all excels/` y los motivos en
    `all excels/application_notes.csv`.
 
@@ -130,6 +145,9 @@ En la versión instalada (instalador de Windows), todo vive en
 | `The resume was not found at '…'` (+ rutas parecidas y dónde cambiarla) | `validator.resume_path_problem` |
 | `Navigating directly to search URL...` / `Search navigation worked normally!` | `runAiBot.apply_to_jobs` |
 | `Filtros activos: enfoque=…; títulos vetados=…; experiencia=…; IA=…` | `runAiBot.log_active_filters` |
+| `No extra filters configured: … Skipping the filter panel.` | `job_search.apply_filters` (rápido: todo va en la URL) |
+| `Descargando CVSniper X…` / `Instalando CVSniper X … y reiniciando` | `updates.auto_update` |
+| `[CVSniper] Version X.Y.Z` | `runAiBot` (primera línea del log) |
 | `WARNING: 'filtrar por área' está activado pero no tiene palabras clave…` | `runAiBot.log_active_filters` |
 | `Resumen de descartes…` con cada motivo | `runAiBot.print_skip_summary` |
 | `Salario publicado ≈ $… por debajo de tu objetivo; se aplicó igual.` | `job_search.salary_below_target` (va al dashboard, no al log) |

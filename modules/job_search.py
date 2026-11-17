@@ -219,6 +219,10 @@ def is_job_relevant(title: str, work_style: str) -> bool:
     try:
         if not enable_job_focus_filter:
             return True
+        # An enabled filter with no words cannot be intentional — it would skip
+        # every single job. Treat it as off (the caller warns about it once).
+        if not (primary_focus_keywords or []) and not (secondary_focus_keywords or []):
+            return True
         title_low = _fold(title)
         # Check primary focus (always relevant)
         for kw in primary_focus_keywords:
@@ -233,6 +237,68 @@ def is_job_relevant(title: str, work_style: str) -> bool:
         return False
     except Exception:
         return True  # Fail open if config missing
+
+
+# Salary figures as they are written in Colombian postings: "$3.000.000",
+# "COP 3.500.000", "3,5 millones". Used only to add a note to the dashboard —
+# never to skip a job.
+_SALARY_AMOUNT = re.compile(
+    r'(?P<cur>USD|EUR|COP|\$)?\s*'
+    r'(?P<num>\d{1,3}(?:[.,]\d{3})+|\d+(?:[.,]\d+)?)\s*'
+    r'(?P<unit>millones?|mill[oó]n|millions?|k)?',
+    re.IGNORECASE,
+)
+
+
+def salary_below_target(description: str, target) -> str | None:
+    """A note when the posting's salary looks below `target`, else None.
+
+    Advisory only: the bot still applies. The point is that the dashboard can
+    say "this one paid less than you wanted, and it was applied to anyway"
+    instead of hiding the trade-off. Deliberately conservative: only COP-like
+    figures (>= 1,000,000 and not marked USD/EUR) are compared, because turning
+    dollars into pesos here would be guessing an exchange rate.
+    """
+    try:
+        objetivo = float(target or 0)
+    except (TypeError, ValueError):
+        return None
+    if objetivo <= 0:
+        return None
+    candidatos: list[float] = []
+    for match in _SALARY_AMOUNT.finditer(description or ""):
+        moneda = (match.group("cur") or "").lower()
+        if moneda in ("usd", "eur"):
+            continue
+        crudo = match.group("num")
+        if re.fullmatch(r"\d{1,3}(?:[.,]\d{3})+", crudo):
+            crudo = re.sub(r"[.,]", "", crudo)
+        else:
+            crudo = crudo.replace(",", ".")
+        try:
+            valor = float(crudo)
+        except ValueError:
+            continue
+        unidad = (match.group("unit") or "").lower()
+        if unidad.startswith(("millon", "millón", "million")):
+            valor *= 1_000_000
+        elif unidad == "k":
+            valor *= 1_000
+        if valor >= 1_000_000:
+            candidatos.append(valor)
+    if not candidatos:
+        return None
+    maximo = max(candidatos)
+    if maximo >= objetivo:
+        return None
+
+    def _pesos(n: float) -> str:
+        return "$" + f"{n:,.0f}".replace(",", ".")
+
+    return (
+        f"Salario publicado ≈ {_pesos(maximo)} COP, por debajo de tu objetivo "
+        f"({_pesos(objetivo)}); se aplicó igual."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -457,6 +523,15 @@ JOB_CARD_LAYOUTS = (
         "state": (".job-card-container__footer-job-state",),
     },
     {
+        "name": "current-job-id",
+        "card": "a[href*='currentJobId=']",
+        "id_attrs": (),
+        "title": (),
+        "company": (),
+        "location": (),
+        "state": (),
+    },
+    {
         "name": "view-link",
         "card": "a[href*='/jobs/view/']",
         "id_attrs": (),
@@ -473,6 +548,10 @@ _ACTIVE_LAYOUT: dict = {"name": None, "design": None}
 
 _ID_IN_URL = re.compile(r"/jobs/view/(?:[^/?#]*-)?(\d{5,})")
 _ID_IN_URN = re.compile(r"urn:li:jobPosting:(\d+)")
+# The new results page is a single-page app: selecting a card sets
+# `currentJobId` in the URL instead of pointing at /jobs/view/<id>. That is the
+# only id some cards expose, so it counts as a real source.
+_ID_IN_CURRENT = re.compile(r"[?&]currentJobId=(\d{5,})")
 
 
 def job_id_from_values(occludable: str | None = None, item_id: str | None = None,
@@ -480,7 +559,8 @@ def job_id_from_values(occludable: str | None = None, item_id: str | None = None
     """The numeric job id from whichever attribute this card uses.
 
     Precedence: the explicit card attributes first (they describe the card
-    itself), then the urn, then the detail link — `.../jobs/view/<slug>-<id>`.
+    itself), then the urn, then the detail link — `.../jobs/view/<slug>-<id>` or
+    `...?currentJobId=<id>` on the new single-page results.
     """
     for valor in (occludable, item_id):
         if valor and str(valor).strip().isdigit():
@@ -490,7 +570,7 @@ def job_id_from_values(occludable: str | None = None, item_id: str | None = None
         if encontrado:
             return encontrado.group(1)
     if href:
-        encontrado = _ID_IN_URL.search(str(href))
+        encontrado = _ID_IN_URL.search(str(href)) or _ID_IN_CURRENT.search(str(href))
         if encontrado:
             return encontrado.group(1)
     return None
@@ -579,12 +659,18 @@ def _dedupe_cards(cards: list[WebElement]) -> list[WebElement]:
 def find_job_cards(driver, timeout: float = 15, log: bool = True) -> list[WebElement]:
     """Return the job cards on the results page, whichever layout LinkedIn used.
 
-    Retries the known layouts until one of them finds something or `timeout`
-    runs out, then returns [] so the caller can move on to the next search term
+    Every known layout is tried on each poll and the one that finds the MOST
+    cards wins (ties keep the priority order). Picking the first non-empty
+    selector was wrong on pages that keep a stray `data-occludable-job-id` in
+    the details pane: one element there hid the 25 real cards.
+
+    Returns [] after `timeout` so the caller moves on to the next search term
     instead of dying with a TimeoutException from a hard-coded XPath.
     """
     fin = time.monotonic() + max(0.0, float(timeout))
     while True:
+        mejor_layout = None
+        mejores: list[WebElement] = []
         for layout in JOB_CARD_LAYOUTS:
             try:
                 elementos = driver.find_elements(By.CSS_SELECTOR, layout["card"])
@@ -593,15 +679,18 @@ def find_job_cards(driver, timeout: float = 15, log: bool = True) -> list[WebEle
             if not elementos:
                 continue
             tarjetas = _dedupe_cards(elementos)
-            if tarjetas:
-                if _ACTIVE_LAYOUT["name"] != layout["name"]:
-                    _ACTIVE_LAYOUT["name"] = layout["name"]
-                    if log:
-                        print_lg(
-                            f"LinkedIn search layout: {layout['name']} "
-                            f"({len(tarjetas)} tarjetas, selector: {layout['card']})"
-                        )
-                return tarjetas
+            if len(tarjetas) > len(mejores):
+                mejores = tarjetas
+                mejor_layout = layout
+        if mejores and mejor_layout is not None:
+            if _ACTIVE_LAYOUT["name"] != mejor_layout["name"]:
+                _ACTIVE_LAYOUT["name"] = mejor_layout["name"]
+                if log:
+                    print_lg(
+                        f"LinkedIn search layout: {mejor_layout['name']} "
+                        f"({len(mejores)} tarjetas, selector: {mejor_layout['card']})"
+                    )
+            return mejores
         if time.monotonic() >= fin:
             if log:
                 print_lg(
@@ -627,16 +716,20 @@ def reset_layout_cache() -> None:
 
 
 def _card_container(job: WebElement) -> WebElement:
-    """The whole card around a /jobs/view/ link.
+    """The whole card around a /jobs/view/ or currentJobId link.
 
-    For the `view-link` layout the element found *is* the anchor, so title and
+    For the link-only layouts the element found *is* the anchor, so title and
     company have to be read from its ancestors. The biggest ancestor within four
-    levels is the card: LinkedIn's wrappers add the company, location and state.
+    levels is the card, but the climb stops as soon as an ancestor holds more
+    than one job link: otherwise it reaches the <ul> with every card and the
+    whole page's text ends up treated as one listing (which, among other things,
+    makes every card look "Applied" as soon as one of them is).
     """
     try:
         return driver.execute_script(
             "let el = arguments[0], best = el;"
             "for (let i = 0; i < 4 && el; i++) { el = el.parentElement; if (!el) break;"
+            "  if (el.querySelectorAll(\"a[href*='/jobs/view/'], a[href*='currentJobId=']\").length > 1) break;"
             "  const t = (el.innerText || '').trim();"
             "  if (t.length > (best.innerText || '').length + 15) best = el; }"
             "return best;",
@@ -1179,7 +1272,7 @@ def card_apply_marker(job: WebElement) -> str | None:
     is skipped before wasting a click.
     """
     try:
-        tarjeta = _card_container(job) if current_layout_name() == "view-link" else job
+        tarjeta = _card_container(job) if current_layout_name() in ("view-link", "current-job-id") else job
         return easy_apply_marker((tarjeta.text or "") + "\n" + ("\n".join(_card_lines(tarjeta))))
     except Exception:
         return None
@@ -1212,7 +1305,8 @@ def get_job_main_details(job: WebElement, blacklisted_companies: set, rejected_j
     # of the page. So the card is scrolled to first and given a moment.
     for _intento in range(4):
         try:
-            job_details_button = job.find_element(By.CSS_SELECTOR, "a[href*='/jobs/view/']")
+            job_details_button = job.find_element(
+                By.CSS_SELECTOR, "a[href*='/jobs/view/'], a[href*='currentJobId=']")
             break
         except StaleElementReferenceException:
             raise  # the card is gone for good; waiting will not bring it back
@@ -1227,7 +1321,7 @@ def get_job_main_details(job: WebElement, blacklisted_companies: set, rejected_j
             href_propio = job.get_attribute("href") or ""
         except Exception:
             href_propio = ""
-        if "/jobs/view/" in href_propio:
+        if "/jobs/view/" in href_propio or "currentJobId=" in href_propio:
             job_details_button = job
             job_es_enlace = True
         else:

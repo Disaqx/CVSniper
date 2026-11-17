@@ -123,7 +123,7 @@ check("el sondeo vive en external_apply, no duplicado en runAiBot",
       "def probe_apply_button" in src_ext, True)
 check("runAiBot lo importa en vez de reimplementarlo",
       "probe_apply_button" in src_bot.split("\n")[0:120].__str__() or
-      "from modules.external_apply import external_apply, probe_apply_button" in src_bot, True)
+      ("from modules.external_apply import" in src_bot and "probe_apply_button" in src_bot), True)
 # runAiBot todavia puede clicar el boton de Easy Apply (lleva el guardia
 # aria-label 'Easy' y es justo lo que hay que abrir). Lo que no puede es clicar
 # el boton GENERICO: ese es el que abre las externas, y clicarlo aqui y otra vez

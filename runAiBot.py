@@ -34,6 +34,7 @@ import re
 import time
 import shutil
 import pyautogui
+from collections import Counter
 
 # ── Auto-copy config templates if personal config files are missing ──────────
 _CONFIG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config")
@@ -120,7 +121,7 @@ from modules.job_search import (
     extract_years_of_experience, get_job_description,
     build_search_url, navigation_report, add_legacy_easy_apply,
     log_navigation_report, find_job_cards, dump_search_layout, card_apply_marker,
-    go_to_next_page,
+    go_to_next_page, salary_below_target,
 )
 from modules.easy_apply import (
     CareerOpsActivatedException, upload_resume, resolve_value_for_category,
@@ -128,7 +129,9 @@ from modules.easy_apply import (
     is_sensitive_question, answer_common_questions, answer_questions,
     follow_company, discard_job, randomly_answered_questions
 )
-from modules.external_apply import external_apply, probe_apply_button
+from modules.external_apply import (
+    external_apply, probe_apply_button, find_easy_apply_modal, EASY_APPLY_BUTTON_XP,
+)
 
 
 pyautogui.FAILSAFE = False
@@ -180,6 +183,10 @@ desired_salary = int(as_number(desired_salary))
 current_ctc = int(as_number(current_ctc))
 notice_period = int(as_number(notice_period))
 switch_number = max(1, int(as_number(switch_number, 10)))
+
+# Kept as a number for the dashboard's "paying less than you wanted" note; the
+# rest of the flow uses the formatted string below.
+desired_salary_num = desired_salary
 
 desired_salary_lakhs = str(round(desired_salary / 100000, 2))
 desired_salary_monthly = str(round(desired_salary/12, 2))
@@ -276,6 +283,13 @@ FAILED_COLUMNS = [
     'Assumed Reason', 'Stack Trace', 'External Job link', 'Screenshot Name',
 ]
 
+# Why an application went out even when something did not match (a salary below
+# the target, an AI concern). Kept in its own CSV so the main history keeps its
+# header, and so an old install can be upgraded without migrating a 2 MB file.
+APPLICATION_NOTES_COLUMNS = ['Job ID', 'Date Applied', 'AI Score', 'AI Reason', 'Applied Despite']
+application_notes_file = os.path.join(
+    os.path.dirname(file_name) or "all excels", "application_notes.csv")
+
 
 def _append_csv_row(path: str, columns: list[str], row: dict, what: str) -> bool:
     """Append one row, writing the header if the file is new.
@@ -344,8 +358,9 @@ def submitted_jobs(job_id: str, title: str, company: str, work_location: str, wo
                    hr_link: str | Literal['Unknown'], resume: str, reposted: bool,
                    date_listed: datetime | Literal['Unknown'], date_applied: datetime | Literal['Pending'],
                    job_link: str, application_link: str, questions_list: set | None,
-                   connect_request: Literal['In Development']) -> None:
-    """Record an application that went through."""
+                   connect_request: Literal['In Development'],
+                   ai_score: int = 0, ai_reason: str = "", applied_despite: str = "") -> None:
+    """Record an application that went through, plus why it went out."""
     _append_csv_row(file_name, APPLIED_COLUMNS, {
         'Job ID': job_id, 'Title': title, 'Company': company,
         'Work Location': work_location, 'Work Style': work_style,
@@ -356,6 +371,15 @@ def submitted_jobs(job_id: str, title: str, company: str, work_location: str, wo
         'External Job link': application_link, 'Questions Found': questions_list,
         'Connect Request': connect_request,
     }, "applied jobs")
+    # The dashboard reads this to answer "why did it apply if it did not match?".
+    if ai_score or ai_reason or applied_despite:
+        _append_csv_row(application_notes_file, APPLICATION_NOTES_COLUMNS, {
+            'Job ID': job_id,
+            'Date Applied': date_applied,
+            'AI Score': ai_score,
+            'AI Reason': ai_reason,
+            'Applied Despite': applied_despite,
+        }, "application notes")
 
 
 # --------------------------------------------------------------------------
@@ -416,6 +440,67 @@ def _browser_alive() -> bool:
         return False
 
 
+# Why jobs were discarded, counted so the log can answer "it found offers but
+# applied to none — where did they go?" instead of leaving only scattered lines.
+skip_reasons: Counter = Counter()
+
+
+def note_skip(reason: str) -> None:
+    skip_reasons[reason] += 1
+
+
+def print_skip_summary(context: str = "") -> None:
+    if not skip_reasons:
+        return
+    total = sum(skip_reasons.values())
+    where = f" ({context})" if context else ""
+    print_lg(f"Resumen de descartes{where}: {total} en total")
+    for reason, count in skip_reasons.most_common(10):
+        print_lg(f"  - {count:>3} × {reason}")
+    principal = skip_reasons.most_common(1)[0][0]
+    if principal.startswith("IA:"):
+        print_lg(
+            "  Sugerencia: la IA es lo que más descarta. Baja 'Puntuación mínima de IA' "
+            "(ai_min_score) en Ajustes → Búsqueda, o ponlo en 0, si quieres postularte igual."
+        )
+    elif principal == "Fuera de las áreas de enfoque":
+        print_lg(
+            "  Sugerencia: revisa 'Filtrar por área' y sus palabras clave en "
+            "Ajustes → Búsqueda, o desactívalo para no descartar por título."
+        )
+
+
+def log_active_filters() -> None:
+    """Echo the settings that decide whether a job is applied to, once per run.
+
+    A run that applies to nothing is nearly always one of these being stricter
+    than the user thinks. Printing them at the start makes that visible without
+    reading the config files.
+    """
+    primarias = list(globals().get("primary_focus_keywords") or [])
+    secundarias = list(globals().get("secondary_focus_keywords") or [])
+    enfoque = bool(globals().get("enable_job_focus_filter", False))
+    tolerancia = globals().get("experience_tolerance", 0)
+    residencia = globals().get("enable_residency_filter", False)
+    if enfoque and not primarias and not secundarias:
+        print_lg(
+            "WARNING: 'filtrar por área' está activado pero no tiene palabras clave; "
+            "se ignora para no descartar todas las ofertas. Configúralo en "
+            "Ajustes → Búsqueda → palabras clave de enfoque, o desactívalo."
+        )
+    print_lg(
+        "Filtros activos: "
+        f"enfoque={'SÍ' if enfoque else 'no'}"
+        f" ({len(primarias)} primarias + {len(secundarias)} secundarias); "
+        f"títulos vetados={len(globals().get('title_bad_words') or [])}; "
+        f"palabras vetadas={len(bad_words or [])}; "
+        f"experiencia={current_experience} (+{tolerancia} de tolerancia); "
+        f"IA={'sí, mínimo ' + str(ai_min_score) if use_AI else 'no'}"
+        f"{' (estricta)' if use_AI and ai_prescreen_strict else ''}; "
+        f"residencia={'sí' if residencia else 'no'}"
+    )
+
+
 def _back_to_results() -> None:
     """After a job failed half-way: close whatever it left open, return to the results."""
     try: discard_job()
@@ -438,6 +523,7 @@ def apply_to_jobs(search_terms: list[str]) -> None:
         return nombre, (pinned.strip() or LINKEDIN_GEO_IDS.get(nombre.lower()))
 
     locations = search_location if isinstance(search_location, (list, tuple)) else [search_location]
+    log_active_filters()
     # (location, remote_only, geo_id) — the local pass first, then the worldwide
     # remote sweep, so nearby jobs are taken before the daily limit runs out.
     plan = [(nombre, False, geo) for nombre, geo in (_split_geo(loc) for loc in locations)]
@@ -562,6 +648,7 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str, remote_o
                         dump_search_layout(searchTerm)
                     except Exception as mapa_error:
                         print_lg(f"Could not save the page map: {mapa_error}")
+                    note_skip("Búsqueda sin tarjetas")
                     raise TimeoutException("no job cards found with any known layout")
 
                 # LinkedIn puts the Easy Apply filter back by itself on some
@@ -576,6 +663,7 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str, remote_o
                             dump_search_layout(searchTerm)
                         except Exception as mapa_error:
                             print_lg(f"Could not save the page map: {mapa_error}")
+                        note_skip("Búsqueda sin tarjetas (tras recargar)")
                         raise TimeoutException("no job cards after reloading with the Easy Apply filter")
 
                 pagination_element, current_page = get_page_info()
@@ -598,12 +686,14 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str, remote_o
                         if _ea_por_tarjeta and card_apply_marker(job) == "external":
                             print_lg("Skipping a listing the card marks as external apply "
                                      "(the Easy Apply URL filter was dropped).")
+                            note_skip("La tarjeta dice postulación externa")
                             skip_count += 1
                             continue
 
                         job_id,title,company,work_location,work_style,skip = get_job_main_details(job, blacklisted_companies, rejected_jobs)
 
                         if skip:
+                            note_skip("Ya postulado / empresa vetada / descartada antes")
                             if is_career_ops_mode():
                                 ui_update_status("Career-Ops: Skipping Job", f"{title} at {company} (Already Applied / Blacklisted) ({len(top_manual_jobs)}/5 matches)")
                             continue
@@ -613,6 +703,7 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str, remote_o
                         _mala = is_title_blacklisted(title)
                         if _mala:
                             print_lg(f'Skipping "{title}" — title contains "{_mala}"')
+                            note_skip(f"Título vetado ({_mala})")
                             if is_career_ops_mode():
                                 ui_update_status("Career-Ops: Skipping Job", f"{title} at {company} (Title blacklisted: {_mala}) ({len(top_manual_jobs)}/5 matches)")
                             skip_count += 1
@@ -620,8 +711,11 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str, remote_o
 
                         # Job focus filter — skip if title doesn't match user's focus areas
                         if not is_job_relevant(title, work_style):
-                            _kw_preview = " / ".join((primary_focus_keywords[:3] if primary_focus_keywords else []) + (secondary_focus_keywords[:2] if secondary_focus_keywords else []))
+                            _prim = globals().get("primary_focus_keywords") or []
+                            _sec = globals().get("secondary_focus_keywords") or []
+                            _kw_preview = " / ".join(_prim[:3] + _sec[:2])
                             print_lg(f'Skipping "{title}" — not in focus areas ({_kw_preview or "none configured"})')
+                            note_skip("Fuera de las áreas de enfoque")
                             if is_career_ops_mode():
                                 ui_update_status("Career-Ops: Skipping Job", f"{title} at {company} (Not in focus areas) ({len(top_manual_jobs)}/5 matches)")
                             skip_count += 1
@@ -637,6 +731,7 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str, remote_o
                         try:
                             if job_id in applied_jobs or find_by_class(driver, "jobs-s-apply__application-link", 2):
                                 print_lg(f'Already applied to "{title} | {company}" job. Job ID: {job_id}!')
+                                note_skip("Ya postulado (comprobación extra)")
                                 if is_career_ops_mode():
                                     ui_update_status("Career-Ops: Skipping Job", f"{title} at {company} (Already Applied) ({len(top_manual_jobs)}/5 matches)")
                                 continue
@@ -661,6 +756,7 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str, remote_o
                                 rejected_jobs, blacklisted_companies, jobs_top_card = check_blacklist(rejected_jobs,job_id,company,blacklisted_companies)
                         except ValueError as e:
                             print_lg(e, 'Skipping this job!\n')
+                            note_skip("Empresa con palabras vetadas")
                             if is_career_ops_mode():
                                 ui_update_status("Career-Ops: Skipping Job", f"{title} at {company} (Blacklist Match: {str(e)}) ({len(top_manual_jobs)}/5 matches)")
                             failed_job(job_id, job_link, resume, date_listed, "Found Blacklisted words in About Company", e, "Skipped", screenshot_name)
@@ -716,6 +812,7 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str, remote_o
                         ui_pause_check()
                         if skip:
                             print_lg(message)
+                            note_skip(f"Descripción: {reason}")
                             if is_career_ops_mode():
                                 ui_update_status("Career-Ops: Skipping Job", f"{title} at {company} ({reason}) ({len(top_manual_jobs)}/5 matches)")
                             failed_job(job_id, job_link, resume, date_listed, reason, message, "Skipped", screenshot_name)
@@ -729,6 +826,7 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str, remote_o
                         if _residencia:
                             _msg = f'\n{description}\n\nRequires residency/work authorisation you do not have: "{_residencia}". Skipping this job!\n'
                             print_lg(f'Skipping "{title}" — residency requirement: "{_residencia}"')
+                            note_skip("Residencia no autorizada")
                             if is_career_ops_mode():
                                 ui_update_status("Career-Ops: Skipping Job", f"{title} at {company} (Residency required) ({len(top_manual_jobs)}/5 matches)")
                             failed_job(job_id, job_link, resume, date_listed, "Residency/work authorisation required", _msg, "Skipped", screenshot_name)
@@ -777,6 +875,7 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str, remote_o
                                     reason = eval_result.get("reason", "AI determined user does not meet core requirements.") if isinstance(eval_result, dict) else "AI pre-screening failed."
                                     message = f'\n{description}\n\nAI Pre-screening failed ({_porque}): {reason}. Skipping this job!\n'
                                     print_lg(message)
+                                    note_skip(f"IA: {_porque}")
                                     if is_career_ops_mode():
                                         ui_update_status("Career-Ops: Skipping Job", f"{title} at {company} (AI Pre-screening: {reason}) ({len(top_manual_jobs)}/5 matches)")
                                     failed_job(job_id, job_link, resume, date_listed, "AI Pre-screening Rejected", message, "Skipped", screenshot_name)
@@ -818,8 +917,11 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str, remote_o
                         # external page, so it is not opened a second time.
                         external_link_already_open = None
                         # Case 1: Easy Apply Button
-                        # First try the classic button with "Easy" in aria-label
-                        is_easy_apply = try_xp(driver, ".//button[contains(@class,'jobs-apply-button') and contains(@class, 'artdeco-button--3') and contains(@aria-label, 'Easy')]")
+                        # The selector lives in external_apply: it covers the old
+                        # class and the new pane's label without ever matching the
+                        # generic Apply button (that one is clicked exactly once by
+                        # probe_apply_button).
+                        is_easy_apply = try_xp(driver, EASY_APPLY_BUTTON_XP)
                         # Fallback 1: check if apply link contains Easy Apply URL pattern
                         if not is_easy_apply:
                             try:
@@ -866,6 +968,7 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str, remote_o
                             except Exception: pass
                         if is_easy_apply and not wants_easy_apply():
                             print_lg(f'Skipping "{title}" — Easy Apply job (mode: {get_application_mode()})')
+                            note_skip("Easy Apply no deseado en el modo actual")
                             try: actions.send_keys(Keys.ESCAPE).perform()
                             except Exception: pass
                             skip_count += 1
@@ -876,7 +979,9 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str, remote_o
                                     raise CareerOpsActivatedException()
                                 try:
                                     errored = ""
-                                    modal = find_by_class(driver, "jobs-easy-apply-modal")
+                                    # Old design: class. New pane: a dialog that
+                                    # carries the Easy Apply wording.
+                                    modal = find_easy_apply_modal() or find_by_class(driver, "jobs-easy-apply-modal")
                                     if not wait_span_click(modal, "Next", 1):
                                         wait_span_click(modal, "Siguiente", 1)
                                     # if description != "Unknown":
@@ -972,6 +1077,7 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str, remote_o
 
                             except Exception as e:
                                 print_lg("Failed to Easy apply!")
+                                note_skip("Fallo al rellenar Easy Apply")
                                 add_to_manual_jobs(job_id, title, company, current_eval_score, f"Easy Apply failed: {eval_reason}")
                                 # print_lg(e)
                                 critical_error_log("Somewhere in Easy Apply process",e)
@@ -985,6 +1091,7 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str, remote_o
                             # Case 2a: external job, but the user asked for Easy
                             # Apply only. Nothing was opened, so nothing to clean up.
                             print_lg(f'Skipping "{title}" — not Easy Apply (mode: {get_application_mode()})')
+                            note_skip("No es Easy Apply (modo solo Easy Apply)")
                             ui_update_status("Skipping Job", f"{title} at {company} (not Easy Apply)")
                             skip_count += 1
                             continue
@@ -994,6 +1101,7 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str, remote_o
                             # to external_apply() would just click the same dead
                             # button again.
                             print_lg(f'Skipping "{title}" — Apply led nowhere (no application page found)')
+                            note_skip("Apply no llevó a ningún sitio")
                             ui_update_status("Skipping Job", f"{title} at {company} (Apply led nowhere)")
                             skip_count += 1
                             continue
@@ -1010,7 +1118,25 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str, remote_o
                                 return
                             if skip: continue
 
-                        submitted_jobs(job_id, title, company, work_location, work_style, description, experience_required, skills, hr_name, hr_link, resume, reposted, date_listed, date_applied, job_link, application_link, questions_list, connect_request)
+                        # What the dashboard will show next to the application:
+                        # the AI's own reasoning plus an explicit salary warning
+                        # when the posting pays less than the configured target.
+                        _nota_salario = salary_below_target(
+                            description, globals().get("desired_salary_num", 0))
+                        _peso = []
+                        if eval_reason and eval_reason not in (
+                                "No reason provided by AI.", "Default",
+                                "AI pre-screening passed."):
+                            _peso.append(f"IA {current_eval_score}/100: {eval_reason}")
+                        if _nota_salario:
+                            _peso.append(_nota_salario)
+                        applied_despite = " | ".join(_peso)
+
+                        _ai_evaluo = bool(use_AI and description != "Unknown")
+                        submitted_jobs(job_id, title, company, work_location, work_style, description, experience_required, skills, hr_name, hr_link, resume, reposted, date_listed, date_applied, job_link, application_link, questions_list, connect_request,
+                                       ai_score=current_eval_score if _ai_evaluo else 0,
+                                       ai_reason=eval_reason if _ai_evaluo else "",
+                                       applied_despite=applied_despite)
                         if uploaded:   useNewResume = False
 
                         print_lg(f'Successfully saved "{title} | {company}" job. Job ID: {job_id} info')
@@ -1028,6 +1154,7 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str, remote_o
                         if not _browser_alive():
                             raise
                         print_lg(f'Problem with "{title} | {company}", moving on to the next job: {e!r}')
+                        note_skip("Error al procesar la oferta")
                         critical_error_log("Processing a single job", e)
                         _back_to_results()
                         skip_count += 1
@@ -1057,7 +1184,11 @@ def _apply_to_jobs_for_location(search_terms: list[str], location: str, remote_o
                 print_lg(f"Failed to get page source, browser might have crashed. {page_source_error}")
             # print_lg(e)
 
-        
+        # "It found offers but applied to none" is the hardest failure to read
+        # from the log; this sums up where every discarded offer went.
+        print_skip_summary(f'"{searchTerm}"')
+
+
 def interruptible_sleep(seconds: float):
     initial_mode = is_career_ops_mode()
     steps = int(seconds * 10)

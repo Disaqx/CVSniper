@@ -201,12 +201,40 @@ def installer_command(installer_path: str, launcher_path: str) -> str:
     `/VERYSILENT /SUPPRESSMSGBOXES` keeps it invisible; `/CLOSEAPPLICATIONS
     /FORCECLOSEAPPLICATIONS` let Inno replace files this process still had open
     (the bot has already exited by the time the installer runs); `start /min`
-    reopens the app the way the Start-menu shortcut does.
+    reopens the app the way the Start-menu shortcut does. The log answers "why
+    did the update not take" without a second visit.
     '''
     flags = ("/VERYSILENT /SUPPRESSMSGBOXES /NORESTART "
              "/CLOSEAPPLICATIONS /FORCECLOSEAPPLICATIONS "
              "/LOG=%TEMP%\\CVSniper-update.log")
     return f'"{installer_path}" {flags} & start "" /min "{launcher_path}"'
+
+
+# A failed silent install (SmartScreen, antivirus, disk full) must not turn into
+# a download/restart loop on every launch: the attempt is remembered for a while.
+_ATTEMPT_HOURS = 6
+
+
+def _attempt_path() -> str:
+    return os.path.join(tempfile.gettempdir(), "CVSniper-update-attempt.json")
+
+
+def _recent_failed_attempt(version: str) -> bool:
+    try:
+        with open(_attempt_path(), "r", encoding="utf-8") as fh:
+            datos = json.load(fh)
+        return (str(datos.get("version")) == str(version)
+                and time.time() - float(datos.get("time", 0)) < _ATTEMPT_HOURS * 3600)
+    except Exception:
+        return False
+
+
+def _mark_attempt(version: str) -> None:
+    try:
+        with open(_attempt_path(), "w", encoding="utf-8") as fh:
+            json.dump({"version": str(version), "time": time.time()}, fh)
+    except Exception:
+        pass
 
 
 def auto_update(notify, status=None, shutdown=None) -> bool:
@@ -235,6 +263,13 @@ def auto_update(notify, status=None, shutdown=None) -> bool:
         # somewhere else. Keep the notice instead.
         notify(info["version"], info["page_url"])
         return False
+    if _recent_failed_attempt(info["version"]):
+        print_lg(
+            f"La actualización a {info['version']} ya se intentó hace menos de "
+            f"{_ATTEMPT_HOURS} h y no llegó a completarse; se avisa en vez de repetirla."
+        )
+        notify(info["version"], info["page_url"])
+        return False
     if status:
         status("Actualizando", f"Descargando CVSniper {info['version']}...")
     instalador = download_installer(
@@ -258,6 +293,7 @@ def auto_update(notify, status=None, shutdown=None) -> bool:
     try:
         subprocess.Popen(["cmd.exe", "/c", comando], close_fds=True,
                          creationflags=_DETACHED | _NEW_GROUP)
+        _mark_attempt(info["version"])
     except Exception as e:
         print_lg(f"No se pudo lanzar el instalador: {e}")
         notify(info["version"], info["page_url"])

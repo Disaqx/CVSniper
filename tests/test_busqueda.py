@@ -741,10 +741,11 @@ import json  # noqa: E402
 
 upd = extraer(
     RAIZ / "modules" / "updates.py",
-    {"_pick_installer_asset", "installer_command", "_sha256", "_parts", "is_newer"},
-    {"REPO"},
-    {"re": re, "os": os, "hashlib": hashlib, "print_lg": sin_log,
-     "__version__": "1.1.1"},
+    {"_pick_installer_asset", "installer_command", "_sha256", "_parts", "is_newer",
+     "_attempt_path", "_mark_attempt", "_recent_failed_attempt"},
+    {"REPO", "_ATTEMPT_HOURS"},
+    {"re": re, "os": os, "hashlib": hashlib, "print_lg": sin_log, "json": json,
+     "tempfile": tempfile, "time": time, "__version__": "1.1.1"},
 )
 
 ASSETS = [
@@ -781,6 +782,20 @@ finally:
 
 check("1.2.0 es más nueva que 1.1.1", upd["is_newer"]("v1.2.0", "1.1.1"), True)
 check("1.1.1 no es más nueva que 1.1.1", upd["is_newer"]("1.1.1", "1.1.1"), False)
+
+# Un intento fallido no puede convertirse en un bucle de descarga/reinicio.
+marca = upd["_attempt_path"]()
+try:
+    os.remove(marca)
+except OSError:
+    pass
+upd["_mark_attempt"]("9.9.9")
+check("recuerda el intento de instalación", upd["_recent_failed_attempt"]("9.9.9"), True)
+check("no bloquea otra versión distinta", upd["_recent_failed_attempt"]("9.9.8"), False)
+try:
+    os.remove(marca)
+except OSError:
+    pass
 
 # =========================================================================
 print("\n" + "=" * 60)
